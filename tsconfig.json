@@ -1,0 +1,35 @@
+{
+	"compilerOptions": {
+	"lib": ["DOM", "DOM.Iterable", "ES2022", "ES2021.WeakRef"],
+  
+	  "target": "ES2022",
+	  "module": "ESNext",
+	  "moduleResolution": "bundler",
+	  "rootDir": "./src",
+	  "outDir": "./dist",
+	  "declaration": true,
+	  "allowJs": true,
+	  "strict": true,
+	  "isolatedModules": false,
+	  "skipLibCheck": true,
+	  "verbatimModuleSyntax": true,
+	  "types":[
+	   "node",
+	   "@the-w1zard/alias_types",
+	   "@the-w1zard/dx",
+	   "@the-w1zard/types"
+	  ],
+		"baseUrl": ".",
+	  "paths": {
+		"~/*": ["src/*"],
+		"#STR": ["@the-w1zard/app_store"],
+		"#HPR": ["@the-w1zard/prim_helpers"],
+		"#PRIM": ["@the-w1zard/prims"],
+	  }
+	},
+	"include": [
+	  "**/*.ts"
+,    ],
+	"exclude": ["node_modules", "dist"],
+  }
+  

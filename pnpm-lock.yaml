@@ -1,0 +1,127 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@the-w1zard/alias_types':
+        specifier: ^1.0.2
+        version: 1.0.2
+      '@the-w1zard/databases':
+        specifier: ^1.0.1
+        version: 1.0.1
+      '@the-w1zard/dx':
+        specifier: ^1.0.8
+        version: 1.0.8
+      '@the-w1zard/mq':
+        specifier: ^1.0.0
+        version: 1.0.0
+      '@the-w1zard/resolvers':
+        specifier: ^1.0.1
+        version: 1.0.1
+      '@the-w1zard/store':
+        specifier: ^1.0.5
+        version: 1.0.5
+      '@the-w1zard/types':
+        specifier: ^1.0.1
+        version: 1.0.1
+    devDependencies:
+      '@tsconfig/node-lts':
+        specifier: ^24.0.0
+        version: 24.0.1
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
+      typescript:
+        specifier: ^6.0.0
+        version: 6.0.3
+
+packages:
+
+  '@the-w1zard/alias_types@1.0.2':
+    resolution: {integrity: sha512-e67l+UWJbHsr6EGu6jaFqjCGC43wd2Q5DESQZNgOf1UqGM1kcYCVua+pojvTUcQE2OLE/JflSHAbujCswqeZCg==}
+
+  '@the-w1zard/alias_types@https://raw.githubusercontent.com/the-w1zard/.github/refs/heads/main/libraries/the-w1zard-alias_types-1.0.1.tgz':
+    resolution: {tarball: https://raw.githubusercontent.com/the-w1zard/.github/refs/heads/main/libraries/the-w1zard-alias_types-1.0.1.tgz}
+    version: 1.0.1
+
+  '@the-w1zard/databases@1.0.1':
+    resolution: {integrity: sha512-++WiEZJjKG9Yu3bnKLJLI5NXnGaOw61h27HmQqNeoct6yGuNdLtU8eezN2SjNbRZJsA/gvKdb19k8ctBgNIsxw==}
+
+  '@the-w1zard/dx@1.0.8':
+    resolution: {integrity: sha512-1RCm2QfKecXZn9oGTSQV2JMkNwuVsM3m+xEI22soeumFoSpB0Tlm/XtMP5Kmqutk+nTamje41InQc9z14QHMlg==}
+
+  '@the-w1zard/mq@1.0.0':
+    resolution: {integrity: sha512-iwCaNDqy3UqEpO8joXpn9FtxjYKX5E32zdog40f2N0BfeTq00RfBAT310UCDharTPaqQFKCWgeMujhjHQAtPbA==}
+
+  '@the-w1zard/resolvers@1.0.1':
+    resolution: {integrity: sha512-DpZaL/yCrCbzqj/1Sj3WCHS/CMiRT5kmzfR0KXDwD88KNLW9igki88fNt8rq5D8sJEY0A/3QxizbHdj4Pzrsow==}
+
+  '@the-w1zard/store@1.0.5':
+    resolution: {integrity: sha512-YtfOW7cPnbOGxSfNSlWaT9Gi1E5yIK+A1H4FMp0dQqgZK4iBVRQSYQqmc405hCD2PecTwTD1cB8+Dwkczs+o/Q==}
+
+  '@the-w1zard/types@1.0.1':
+    resolution: {integrity: sha512-mBE0G4Wkle3qnH0zeA+a787hWatI/0c8hyJQN4GUAdPgsnO9XJ39950Q/MxlGg11dotswTMerV30ZTYJ/BM6PQ==}
+
+  '@tsconfig/node-lts@24.0.1':
+    resolution: {integrity: sha512-xo+1KtV5zVb90fyyeglG1n5cqg3cQXLlCkEpLptYlZUNk28xmwhuD5GmxoXwmrVtUTvaMyclun9kAd0TK7H+Pg==}
+
+  '@types/node@24.19.2':
+    resolution: {integrity: sha512-93d49wCWJkCyN87MxLpNN6KXPCwFw7bVUg79mGUV1OS40JGWwVCr8n61DXCSqz7CV6/VfPkb7xec7uP2M+QHWQ==}
+
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+  undici-types@7.24.6:
+    resolution: {integrity: sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg==}
+
+snapshots:
+
+  '@the-w1zard/alias_types@1.0.2': {}
+
+  '@the-w1zard/alias_types@https://raw.githubusercontent.com/the-w1zard/.github/refs/heads/main/libraries/the-w1zard-alias_types-1.0.1.tgz': {}
+
+  '@the-w1zard/databases@1.0.1':
+    dependencies:
+      '@the-w1zard/alias_types': 1.0.2
+
+  '@the-w1zard/dx@1.0.8':
+    dependencies:
+      '@the-w1zard/alias_types': 1.0.2
+
+  '@the-w1zard/mq@1.0.0':
+    dependencies:
+      '@the-w1zard/alias_types': 1.0.2
+      '@the-w1zard/dx': 1.0.8
+      '@the-w1zard/types': 1.0.1
+
+  '@the-w1zard/resolvers@1.0.1':
+    dependencies:
+      '@the-w1zard/alias_types': 1.0.2
+      '@the-w1zard/store': 1.0.5
+      '@the-w1zard/types': 1.0.1
+
+  '@the-w1zard/store@1.0.5':
+    dependencies:
+      '@the-w1zard/alias_types': 1.0.2
+      '@the-w1zard/dx': 1.0.8
+
+  '@the-w1zard/types@1.0.1':
+    dependencies:
+      '@the-w1zard/alias_types': https://raw.githubusercontent.com/the-w1zard/.github/refs/heads/main/libraries/the-w1zard-alias_types-1.0.1.tgz
+
+  '@tsconfig/node-lts@24.0.1': {}
+
+  '@types/node@24.19.2':
+    dependencies:
+      undici-types: 7.24.6
+
+  typescript@6.0.3: {}
+
+  undici-types@7.24.6: {}
