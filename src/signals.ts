@@ -85,6 +85,19 @@ const F_A = 3;
 const F_B = 4;
 const F_C = 5;
 const F_EXT = 7;
+const DOMAIN = {
+	STATE: 0,
+	CONTEXT: 1,
+	SIGNALS: 2,
+	ATOMS: 3,
+	SEND: 4,
+	SUB: 5,
+	DUPLEX: 6,
+	STREAM: 7,
+	DRS: 8,
+	SPREADSHEET: 9,
+	DB: 10,
+  } as const;
 const OP = {
 	READ: 0,
 	WRITE: 1,
@@ -98,11 +111,11 @@ const OP = {
 	EXTERNAL: 9,
 	OBSERVER: 10,
 	ASYNCEFFECT: 11,
-	DRC: 12,
-	SEND: 13,
-	SUB: 14,
-	DUPLEX: 15,
-	STREAM: 16,
+	SEND: 12,
+	SUB: 13,
+	DUPLEX: 14,
+	STREAM: 15,
+	DRC: 16,
 } as const;
 const busOP = {
 	SEND: 12,
@@ -236,481 +249,6 @@ function pow2(value: number): boolean {
 // #endregion
 //                                                                                                                    [SIGNALS_HUB]
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-class SIGNALS_HUB{ 
-	public root: SIGNALS
-	public STATE_CONTEXT = 'sauron'
-	#reg = new M2();
-
-	constructor(root:SIGNALS) {
-		this.root = root
-	}
-	public atom_reg = (() => {
-		const mt = <K, V>(s: S = this.root.s, m: S= this.root.m, r: S = this.root.r): Map<A, A> => {
-			let root = this.#reg.get(r); // this.STATE_CONTEXT === "sauron" ? (globalThis as A)[r] : null;
-			if (!root) {
-				root = new Map<A, Map<A, Map<A, A>>>();
-				this.#reg.set(r, root)// (globalThis as A)[r] = root;
-			}
-
-			let masterMap = root.get(m);
-			if (!masterMap) {
-				masterMap = new Map<A, Map<A, A>>();
-				root.set(m, masterMap);
-			}
-
-			let slaveMap = masterMap.get(`${s}_SIGNALS_`);
-			if (!slaveMap) {
-				slaveMap = new Map<K, V>();
-				masterMap.set(`${s}_SIGNALS_`, slaveMap);
-			}
-			return slaveMap as Map<A, A>;
-		}; // get channels / root channels
-		mt.gks = (r = this.root.r) => {
-			// 1. Root Lookup via Module Cache (Fast path)
-			let root = this.STATE_CONTEXT === "sauron" ? (globalThis as A)[r] : null;
-			if (!root) {
-				root = new Map<A, Map<A, Map<A, A>>>();
-				(globalThis as A)[r] = root;
-			}
-			return root;
-		}; // get sub_channel / master channels
-		mt.mss = (m = this.root.m, r = this.root.r) => {
-			let root = this.atom_reg.gks(r);
-			let masterMap = root.get(m);
-			if (!masterMap) {
-				masterMap = new Map<A, Map<A, A>>();
-				root.set(m, masterMap);
-			}
-			return masterMap;
-		}; // get value
-		mt.v = <T,>(k: A, t = this.root.s, s = this.root.m, c = this.root.r) => {
-			const reg = this.atom_reg(t, s, c);
-			return reg.get(k) as SIGNAL_CELL<T>;
-		}; // get meta value
-		mt.GET_META = (meta_key: string, s = this.root.s, m = this.root.m, r = this.root.r) => {
-			const atom_reg = this.atom_reg(s, m, r);
-			let meta_cache = atom_reg.get(meta_key);
-			if (!meta_cache) {
-				meta_cache = new Map<A, A>();
-				this.root.create(meta_key, meta_cache, undefined, s, m, r);
-			}
-			return meta_cache;
-		};
-		mt.MODULE_CACHE = <T = A,>(s = this.root.s, m = this.root.m, r = this.root.r): T => {
-			return this.atom_reg.GET_META(this.root.mc, s, m, r) as T;
-		};
-		return mt;
-	})();
-	public _channels(s: A = this.root.s, m: A = this.root.m, r: A = this.root.r) {
-       let root = this.STATE_CONTEXT === "sauron" ? (globalThis as A)[r] : null;
-        //let root = (globalThis as A)[r];
-        if (!root) {
-            root = new Map<A, Map<A, Map<A, A>>>();
-            (globalThis as A)[r] = root;
-        }
-
-        let masterMap = root.get(m);
-        if (!masterMap) {
-            masterMap = new Map<A, Map<A, A>>();
-            root.set(m, masterMap);
-        }
-
-        let metaMap = masterMap.get(`${s}_CHANNELS`);
-        if (!metaMap) {
-            metaMap = {
-                channels: new Map<string, Set<A>>(),
-                sub_channels: new Map<string, Map<string, Set<A>>>(),
-                trip_channels: new Map<string, Map<string, Set<A>>>(),
-                quad_channels: new Map<string, Map<string, Set<A>>>(),
-            };
-            masterMap.set(`${s}_CHANNELS`, metaMap);
-        }
-        return metaMap;
-    }
-	public _listeners(s = this.root.s, m = this.root.m, r = this.root.r) {
-		return this._channels(s, m, r).channels as Map<string, Set<A>>;
-	}
-	public MODULE_CACHE(s = this.root.s, m = this.root.m, r = this.root.r) {
-		const meta = this.getMetadata(s, m, r);
-		let module_cache = meta.get(this.root.mc);
-		if (!module_cache) {
-			module_cache = new Map<A, Map<A, Map<A, A>>>();
-			this.root.create(this.root.mc, module_cache, undefined, s, m, r);
-		}
-		return module_cache;
-	}
-	public getMetadata(s = this.root.s, m = this.root.m, r = this.root.r) {
-		let root = this.STATE_CONTEXT === "sauron" ? (globalThis as A)[r] : null;
-		if (!root) {
-			root = new Map<A, Map<A, Map<A, A>>>();
-			(globalThis as A)[r] = root;
-		}
-
-		let masterMap = root.get(m);
-		if (!masterMap) {
-			masterMap = new Map<A, Map<A, A>>();
-			root.set(m, masterMap);
-		}
-
-		let metaMap = masterMap.get(`${s}_SIGNALS`);
-		if (!metaMap) {
-			metaMap = {
-				_initial: new Map<string, A>(),
-				_sys: new Map<string, SysEntry>(),
-				_keyContracts: new Map<string, Set<string>>(),
-				_causal: new Map<string, CausalEntry[]>(),
-				_conflicts: new Map<string, ConflictPolicy>(),      
-				_contracts: new Map<string, A>(),      
-				_scopes: new Map<string, SignalScope>(),
-				_msgHandlers: new Map<string, Set<(p: A) => void>>(),
-				_mainMap: new Map<A, string>(),
-				_tupleCache: new Map<string, string>(),
-				_weakMap: new WeakMap<object, string>(),
-			};
-			masterMap.set(`${s}_SIGNALS`, metaMap);
-		}
-		return metaMap;
-	}
-
-	#context = new M2();
-	#meta = new M2();
-	public r = "_root_k_";
-	public m = "_master_k_";
-	public s = "_slave_k_";
-	public _globalNotifyCache = new WeakMap<A, Map<A, () => V>>();
-	public _notifyCache = new WeakMap<Map<A, Set<(value: A) => V>>, Map<A, () => V>>();
-	public dirty = new Set<FlushCallback>();
-	public _flushScheduled = false;
-	public openScopes = new Set<BatchScope>();
-	public store = {
-		get: <T = A,>(key: A, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): T | undefined => {
-			const { s, ms_reg, r } = opts;
-			const _state = this.state.getMap<A, A>(s, ms_reg, r);
-			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
-			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
-
-			// recordDependency(key)
-			if (_state.has(key)) return MaybePromise(_state.get(key));
-			if (_persistKeys.has(key) && _persistent.has(key)) {
-				const v = _persistent.get(key);
-				_state.set(key, v);
-				return MaybePromise(v);
-			}
-			return undefined;
-		},
-		set: <T = A,>(key: A, value: T | ((prev: T | undefined) => T), opts: { triggerRender?: boolean; cap?: number } & ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r, triggerRender: true, cap: 200 }) => {
-			const { triggerRender = true, s, ms_reg, r, cap } = opts;
-			const _state = this.state.getMap<A, A>(s, ms_reg, r);
-			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
-			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
-			const _listeners = this.state.getMap<A, Set<(value: A) => void>>(`${s}_LISTENERS`, ms_reg, r);
-			const prev = _state.get(key);
-			const next = typeof value === "function" ? (value as (prev: T | undefined) => T)(prev) : value;
-			if (Object.is(prev, next)) return;
-			// TIME TRAVEL
-
-			if (!this.root._time_travel_reverting) {
-				const meta = this.state.getMetadata(s, ms_reg, r);
-				let hist = meta._history.get(key);
-				if (!hist) {
-					hist = [];
-					meta._history.set(key, hist);
-				}
-				const lastActive = hist.findLastIndex((e: HistoryEntry) => !e.undone) ?? -1;
-				if (lastActive < hist.length - 1) hist.length = lastActive + 1; // truncate redo tail
-				hist.push({ k: (hist[hist.length - 1]?.k ?? 0) + 1, prev, next, ts: Date.now(), undone: false });
-				const cap_val = cap ?? 200;
-				while (hist.length > cap_val) hist.shift();
-			}
-			_state.set(key, next);
-			if (_persistKeys.has(key)) _persistent.set(key, next);
-			if (triggerRender) this.state.scheduleGlobalNotify(key, this.state.getMetadata(s, ms_reg, r), opts);
-			if (triggerRender) this.state.scheduleNotify(key, _listeners, _state);
-			return MaybePromise(next as T);
-		},
-		subscribe: <T = A,>(key: A, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): (() => void) => {
-			const { s, ms_reg, r } = opts;
-			const _listeners = this.state.getMap<A, Set<(value: A) => void>>(`${s}_LISTENERS`, ms_reg, r);
-
-			if (!_listeners.has(key)) _listeners.set(key, new Set());
-			_listeners.get(key)!.add(listener);
-			return () => {
-				_listeners.get(key)?.delete(listener);
-				if (_listeners.get(key)?.size === 0) _listeners.delete(key);
-			};
-		},
-		delete: (key: A, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): boolean => {
-			const { s, ms_reg, r } = opts;
-			const _state = this.state.getMap<A, A>(s, ms_reg, r);
-			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
-			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
-			const _listeners = this.state.getMap<A, Set<(value: A) => void>>(`${s}_LISTENERS`, ms_reg, r);
-
-			const existed = _state.delete(key);
-			if (_persistKeys.has(key)) {
-				_persistKeys.delete(key);
-				_persistent.delete(key);
-			}
-			_listeners.get(key)?.forEach((l) => l(undefined));
-			_listeners.delete(key);
-			return MaybePromise(existed);
-		},
-		entries: <T = A,>(opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): [A, T][] => {
-			const { s, ms_reg, r } = opts;
-			const _state = this.state.getMap<A, A>(s, ms_reg, r);
-			return MaybePromise(Array.from(_state.entries()));
-		},
-		persist: (key: A, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
-			const { s, ms_reg, r } = opts;
-			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
-_persistKeys.set(key, true);
-		},
-		unpersist: (key: A, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
-			const { s, ms_reg, r } = opts;
-			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
-			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
-			_persistKeys.delete(key);
-			_persistent.delete(key);
-		},
-		has: (key: A, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): boolean => {
-			const { s, ms_reg, r } = opts;
-			const _state = this.state.getMap<A, A>(s, ms_reg, r);
-			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
-			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
-
-			return _state.has(key) || (_persistKeys.has(key) && _persistent.has(key));
-		},
-		clear: (opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
-			const { s, ms_reg, r } = opts;
-			const _state = this.state.getMap<A, A>(s, ms_reg, r);
-			const _listeners = this.state.getMap<A, Set<(value: A) => void>>(`${s}_LISTENERS`, ms_reg, r);
-			_state.clear();
-			_listeners.clear();
-		},
-		clearPersistent: (opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
-			const { s, ms_reg, r } = opts;
-			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
-			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
-			_persistent.clear();
-			_persistKeys.clear();
-		},
-		_emit: (key: string | symbol, s = this.s, ms_reg = this.m, r = this.r): void => {
-			const opts = { s, ms_reg, r };
-			const _state = this.state.getMap(s, ms_reg, r);
-			const _listeners = this.state.getMap<A, Set<(value: A) => void>>(`${s}_LISTENERS`, ms_reg, r);
-			const meta = this.state.getMetadata(s, ms_reg, r);
-			this.state.scheduleNotify(key, _listeners, _state);
-			this.state.scheduleGlobalNotify(key, meta, opts);
-		},
-	};
-	public state = {
-		getMap: <K, V>(slave: A = this.s, master: A = this.m, rk: A = this.r): M2<K, V> => {
-			let root = this.#context.get(rk); // (globalThis as any)[rk]  //  ; (globalThis as any)[rk] = root;
-			if (!root) {
-				root = new M2<A, M2I<A, M2I<A, A>>>();
-				this.#context.set(rk, root);
-			}
-	
-			let masterMap = root.get(master);
-			if (!masterMap) {
-				masterMap = new M2<A, M2I<A, A>>();
-				root.set(master, masterMap);
-			}
-	
-			let slaveMap = masterMap.get(slave);
-			if (!slaveMap) {
-				slaveMap = new M2<K, V>();
-				masterMap.set(slave, slaveMap);
-			}
-			return slaveMap;
-		},
-		getMetadata:(s = this.s, m = this.m, r = this.r) => {
-			let root = this.#meta.get(r); //  (globalThis as A)[r]; // STATE_CONTEXT === "sauron" ?  : null;
-			if (!root) {
-				root = new M2<A, M2I<A, M2I<A, A>>>();
-				this.#meta.set(r, root);
-			}
-	
-			let masterMap = root.get(m);
-			if (!masterMap) {
-				masterMap = new M2<A, M2I<A, A>>();
-				root.set(m, masterMap);
-			}
-	
-			let metaMap = masterMap.get(s);
-			if (!metaMap) {
-				metaMap = {
-					_batches: new Set<S | SY>(),
-					_batchQueue: new Map<S | SY, A>(),
-					_batchOpts: new Map<S | SY, { triggerRender?: B }>(),
-					_history: new Map<S | SY, A[]>(),
-					_timeTravel: new Map<S | SY, N>(),
-					_globalListeners: new Set<(key: S | SY, value: A) => V>(),
-					_global_subscribers: new Map<S, Set<() => V>>(),
-					_waiters: new Map<S | SY, Set<(value: A) => V>>(),
-					_sys: new Map<S, A>(),
-					_sealed: new Set<S>(),
-					_frozen: new Set<S>(),
-					_keyContracts: new Map<S, Set<S>>(),
-					_conflicts: new Map<S, A>(),
-					_conflictStrategies: new Map<S, "latest" | "fail" | "accumulate">(),
-					_causal: new Map<S, A[]>(),
-					_scopes: new Map<S, A>(),
-					_msgHandlers: new Map<S, Set<(p: A) => V>>(),
-					_lastWriteSource: new Map<S, S>(),
-					_mainMap: new Map<A, S>(),
-					_tupleCache: new Map<S, S>(),
-					_weakMap: new WeakMap<O, S>(),
-					_boundaries: new WeakMap<O, S>(),
-				};
-				masterMap.set(s, metaMap);
-			}
-			return metaMap;
-		},
-		get: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): T | undefined => {
-			return MaybePromise(this.store.get<T>(key, opts) as T);
-		},
-		set: <T = A,>(key: string | symbol, value: T | ((prev: T | undefined) => T), opts: { triggerRender?: boolean } & ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
-			const { s, ms_reg, r, triggerRender = true } = opts;
-			this.store.set(key, value, { triggerRender, s, ms_reg, r });
-			return MaybePromise(value as T);
-		},
-		delete: (key: string | symbol, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): boolean => {
-			const { s, ms_reg, r } = opts;
-			const meta = this.state.getMetadata(s, ms_reg, r);
-			const deleted = this.store.delete(key, opts);
-			if (deleted) {
-				for (const listener of meta._globalListeners) {
-					try {
-						listener(key, undefined);
-					} catch (err) {
-						console.error(`[Sauron Global Listener Error]:`, err);
-					}
-				}
-			}
-			return deleted;
-		},
-		getByPrefix: <T = A,>(prefix: string, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): { key: string; value: T }[] => {
-			return this.store
-				.entries<T>(opts)
-				.filter(([key]) => typeof key === "string" && key.startsWith(prefix))
-				.map(([key, value]) => ({ key: key as string, value }));
-		},
-		getAll: <T = A,>(opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): Record<string | symbol, T> => {
-			const result: Record<string | symbol, T> = {};
-			for (const [key, value] of this.store.entries<T>(opts)) {
-				result[key] = value;
-			}
-			return result;
-		},
-		subscribe: <T = A,>(key: string | symbol, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): (() => void) => {
-			return this.store.subscribe<T>(key, listener, opts);
-		},
-		subscribeAll: (listener: (key: string | symbol, value: A) => void, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): (() => void) => {
-			const { s, ms_reg, r } = opts;
-			const meta = this.state.getMetadata(s, ms_reg, r);
-			meta._globalListeners.add(listener);
-			return () => {
-				meta._globalListeners.delete(listener);
-			};
-		},
-		clear: (opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
-			const { s, ms_reg, r } = opts;
-			const meta = this.state.getMetadata(s, ms_reg, r);
-			this.store.clear(opts);
-			meta._waiters.clear();
-			meta._globalListeners.clear();
-		},
-		waitFor: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): Promise<T> => {
-			const { s, ms_reg, r } = opts;
-			const meta = this.state.getMetadata(s, ms_reg, r);
-
-			// If it already exists, resolve immediately
-			const existing = this.state.get<T>(key, opts);
-			if (existing !== undefined) return Promise.resolve(existing);
-
-			return new Promise<T>((resolve) => {
-				if (!meta._waiters.has(key)) meta._waiters.set(key, new Set());
-				meta._waiters.get(key)!.add(resolve as A);
-			});
-		},
-		scheduleNotify: (key: A, _listeners: Map<A, Set<(value: A) => V>>, _state: Map<A, A>): V =>{
-			let cache = this._notifyCache.get(_listeners);
-			if (!cache) {
-				cache = new Map();
-				this._notifyCache.set(_listeners, cache);
-			}
-			let fn = cache.get(key);
-			if (!fn) {
-				fn = () => {
-					cache!.delete(key);
-					const val = _state.get(key);
-					_listeners.get(key)?.forEach((l) => l(val));
-				};
-				cache.set(key, fn);
-			}
-			this.state.onFlush(fn);
-		},
-		scheduleGlobalNotify :(key: S | SY, meta: A, opts: A): V => {
-			let cache = this._globalNotifyCache.get(meta);
-			if (!cache) {
-				cache = new Map();
-				this._globalNotifyCache.set(meta, cache);
-			}
-			let fn = cache.get(key);
-			if (!fn) {
-				fn = () => {
-					cache!.delete(key);
-					const finalVal = this.state.get(key, opts);
-					const waiters = meta._waiters.get(key);
-					if (waiters) {
-						for (const resolveFn of waiters) {
-							try {
-								resolveFn(finalVal);
-							} catch (err) {
-								console.error(`[Sauron Waiter Error]:`, err);
-							}
-						}
-						meta._waiters.delete(key);
-					}
-					for (const listener of meta._globalListeners) {
-						try {
-							listener(key, finalVal);
-						} catch (err) {
-							console.error(`[Sauron Global Listener Error]:`, err);
-						}
-					}
-				};
-				cache.set(key, fn);
-			}
-			this.state.onFlush(fn);
-		},
-		onFlush: (cb: FlushCallback): void =>{
-			this.dirty.add(cb);
-			this.state.scheduleDrain();
-		},
-		scheduleDrain: (): void =>{
-			if (this._flushScheduled) return;
-			this._flushScheduled = true;
-			queueMicrotask(this.state.drain);
-		},
-		drain: (): void =>{
-			this._flushScheduled = false;
-			if (this.dirty.size === 0) return;
-	
-			// An explicit openBatch() scope is still open (deliberately spanning an await) —
-			// don't drop the pending callbacks, just wait for closeBatch() to let them through.
-			if (this.openScopes.size > 0) {
-				this.state.scheduleDrain();
-				return;
-			}
-	
-			const callbacks = this.dirty;
-			this.dirty = new Set();
-			for (const cb of callbacks) cb();
-		}
-	};
-}
 type AVROField = { name: S; type: AVROSchema };
 type AVROSchema = S | AVROSchema[] | {
 		type: S | AVROSchema[];
@@ -1260,28 +798,237 @@ class BINARY_AVRO {
 			return this.#decode(raw.subarray(headerSize));
 		}
 }
+type Key = number | string | symbol | object;
+export class M2Dense<V = number> {
+		#vals: F64;
+		#live: U8;
+		#size = 0;
+		#odd: M<Key, V> | null = null;
+	
+		constructor(capacity = 1024) {
+			const cap = Math.max(1, capacity | 0);
+			this.#vals = new Float64Array(cap);
+			this.#live = new Uint8Array(cap);
+		}
+	
+		get size(): N {
+			return this.#size + (this.#odd === null ? 0 : this.#odd.size);
+		}
+		get capacity(): N {
+			return this.#vals.length;
+		}
+		/** live backing buffer: value of pid p is buffer[p], valid where live[p] === 1 */
+		get buffer(): F64 {
+			return this.#vals;
+		}
+		get live(): U8 {
+			return this.#live;
+		}
+	
+		// ---- Map API ----------------------------------------------------------
+		get(k: number): V | UD {
+			const l = this.#live;
+			if (typeof k === "number" && k >= 0 && k < l.length && l[k] === 1) return this.#vals[k] as V;
+			if (typeof k !== "number" || k < 0) return this.#odd === null ? undefined : this.#odd.get(k as Key);
+			return undefined;
+		}
+		has(k: number): boolean {
+			const l = this.#live;
+			if (typeof k === "number" && k >= 0 && k < l.length) return l[k] === 1;
+			return this.#odd !== null && this.#odd.has(k as Key);
+		}
+		set(k: number, v: V): this {
+			if (typeof v === "number" && typeof k === "number" && k >= 0) {
+				if (k >= this.#live.length) this.#grow(k);
+				if (this.#live[k] === 0) {
+					this.#live[k] = 1;
+					this.#size++;
+				}
+				this.#vals[k] = v;
+				return this;
+			}
+			(this.#odd ??= new Map()).set(k as Key, v);
+			return this;
+		}
+		delete(k: number): B {
+			const l = this.#live;
+			if (typeof k === "number" && k >= 0) {
+				if (k >= l.length || l[k] === 0) return false;
+				l[k] = 0;
+				this.#size--;
+				return true;
+			}
+			return this.#odd !== null && this.#odd.delete(k as Key);
+		}
+		clear() {
+			this.#live.fill(0);
+			this.#size = 0;
+			this.#odd?.clear();
+		}
+		*keys(): MapIterator<N> {
+			const l = this.#live,
+				n = l.length;
+			for (let k = 0; k < n; k++) if (l[k] === 1) yield k;
+			if (this.#odd !== null) yield* this.#odd.keys() as MapIterator<N>;
+		}
+		*values(): MapIterator<V> {
+			const l = this.#live,
+				n = this.#size;
+			if (this.#odd?.size) {
+				const odd = [...this.#odd.values()];
+				let seen = 0;
+				for (let k = 0; k < l.length && seen < n; k++)
+					if (l[k] === 1) {
+						seen++;
+						yield this.#vals[k] as V;
+					}
+				yield* odd;
+				return;
+			}
+			let seen = 0;
+			for (let k = 0; k < l.length && seen < n; k++)
+				if (l[k] === 1) {
+					seen++;
+					yield this.#vals[k] as V;
+				}
+		}
+		*entries(): MapIterator<[N, V]> {
+			const l = this.#live;
+			for (let k = 0; k < l.length; k++) if (l[k] === 1) yield [k, this.#vals[k] as V];
+			if (this.#odd !== null) yield* this.#odd.entries() as MapIterator<[N, V]>;
+		}
+		[Symbol.iterator](): MapIterator<[N, V]> {
+			return this.entries();
+		}
+		forEach(fn: (v: V, k: N, m: M<N, V>) => V, thisArg?: U) {
+			const l = this.#live;
+			for (let k = 0; k < l.length; k++) if (l[k] === 1) fn.call(thisArg, this.#vals[k] as V, k, this as U as Map<N, V>);
+			this.#odd?.forEach((v, k) => fn.call(thisArg, v, k as N, this as U as Map<N, V>));
+		}
+	
+		// ---- binary lane -------------------------------------------------------
+		/** read by pid — no typeof guard: pids are numbers */
+		g(pid: N): V | UD {
+			return this.#live[pid] === 1 ? (this.#vals[pid] as V) : undefined;
+		}
+		/** write by pid */
+		s(v: N, pid: N): this {
+			if (pid >= this.#live.length) this.#grow(pid);
+			if (this.#live[pid] === 0) {
+				this.#live[pid] = 1;
+				this.#size++;
+			}
+			this.#vals[pid] = v;
+			return this;
+		}
+		getOr(pid: N, dflt = 0): N {
+			return this.#live[pid] === 1 ? this.#vals[pid] : dflt;
+		}
+		/** pid += delta, returns the new value */
+		add(pid: N, delta: N): N {
+			if (pid >= this.#live.length) this.#grow(pid);
+			if (this.#live[pid] === 0) {
+				this.#live[pid] = 1;
+				this.#size++;
+			}
+			return (this.#vals[pid] += delta);
+		}
+		in(pid: N): B {
+			return this.#live[pid] === 1;
+		}
+		/** walk live pids without allocating an iterator */
+		forEachRaw(fn: (pid: N, value: N) => V) {
+			const l = this.#live;
+			for (let k = 0; k < l.length; k++) if (l[k] === 1) fn(k, this.#vals[k]);
+		}
+		/** values for a list of pids, NaN where absent */
+		gather(pids: ArrayLike<N>, out = new Float64Array(pids.length)): Float64Array {
+			for (let i = 0; i < pids.length; i++) {
+				const p = pids[i];
+				out[i] = this.#live[p] === 1 ? this.#vals[p] : NaN;
+			}
+			return out;
+		}
+		#grow(need: N) {
+			let cap = this.#live.length;
+			while (cap <= need) cap *= 2;
+			const v = new Float64Array(cap);
+			v.set(this.#vals);
+			this.#vals = v;
+			const l = new Uint8Array(cap);
+			l.set(this.#live);
+			this.#live = l;
+		}
+}
 type NestedRoot = Map<S, Map<S, M2Dense<number>>>;
+// #endregion
+//                                                                                                     [PROJECT_PLANET_KILLER]  HUB     
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class PROJECT_PLANET_KILLER {// YESSSS... THIS IS THE NOD THE PLATFORM IS MAKING WITH ITS NAME...
 	// (globalThis as A).ENC_ATOM = ENC_ATOM;
 	// (globalThis as A).AVRO = AVROI;
-	public LEAF_CAP = 1024;
+	public r 
+	public m 
+	public s 
+	public root: SIGNALS
+	public STATE_CONTEXT = 'sauron'
+	#reg = new M2();
+	#context = new M2();
+	#meta = new M2(); 
+	constructor(root:SIGNALS) {
+		this.root = root
+		this.r = Store.get('THE_WIZARD_ROOT_REG') ?? 'THE_WIZARD_ROOT_REG'
+		this.m = Store.get('SAURON_MASTER_REG') ?? 'SAURON_MASTER_REG'
+		this.s = Store.get('SAURON_SLAVE_REG') ?? 'SAURON_SLAVE_REG'
+	}
+	public _globalNotifyCache = new WeakMap<A, Map<A, () => V>>();
+	public _notifyCache = new WeakMap<Map<A, Set<(value: A) => V>>, Map<A, () => V>>();
+	public dirty = new Set<FlushCallback>();
+	public _flushScheduled = false;
+	public openScopes = new Set<BatchScope>();
+	public LEAF_CAP = 65_536;
 	public memoRoot: NestedRoot | UD;
 	public memoMaster: S | UD;
 	public memoSlave: S | UD;
 	public memoLeaf: M2Dense<N> | UD;
-	public values = new Float64Array(HOT_LEAF_COUNT * PID_CAP);
-	public present = new Uint8Array(HOT_LEAF_COUNT * PID_CAP);
-	public CLOUD_OFFSET = CLOUD_LEAF * PID_CAP;
-
-	public PID_CAP = 1 << 18;
 	public HOT_LEAF_COUNT = 2;
-
+	public PID_CAP = 1 << 18;
+	public values = new Float64Array(this.HOT_LEAF_COUNT *this. PID_CAP);
+	public present = new Uint8Array(this.HOT_LEAF_COUNT * this.PID_CAP);
 	public CLOUD_LEAF = 0;
 	public ATOMS_LEAF = 1;
-public ATOMS_OFFSET = ATOMS_LEAF * PID_CAP;
+	public DRS_LEAF = 2;
+	public CACHE_LEAF = 3;
+	public ATOMS_OFFSET = this.ATOMS_LEAF * this.PID_CAP;
+	public CLOUD_OFFSET = this.CLOUD_LEAF * this.PID_CAP;
+	public DRS_OFFSET = this.DRS_LEAF * this.PID_CAP;
+	public CACHE_OFFSET = this.CACHE_LEAF * this.PID_CAP;
 
 
 	public schemas = {
+		BUS_ATOM: new BINARY_AVRO({// FIXED LAYOUT ADDRESS HEADER BINARY SCHEMA OBJ
+				type: "record",
+				name: "ENC_ATOM",
+				fields: [
+					{ name: "r", type: ["int", "bytes"] },
+					{ name: "m", type: ["int", "bytes"] },
+					{ name: "s", type: ["int", "bytes"] },
+					{ name: "k", type: ["int", "bytes"] },
+					{ name: "payload", type: ["int", "bytes"] },
+				],
+		}),
+		QUEUE_ITEM: new BINARY_AVRO({// FIXED LAYOUT ADDRESS HEADER BINARY SCHEMA OBJ
+			type: "record",
+			name: "QUEUE_ITEM",
+			fields: [
+				{ name: "id", type: ["int", "bytes"] },
+				{ name: "r", type: ["int", "bytes"] },
+				{ name: "m", type: ["int", "bytes"] },
+				{ name: "s", type: ["int", "bytes"] },
+				{ name: "k", type: ["int", "bytes"] },
+				{ name: "payload", type: ["int", "bytes"] },
+			],
+	    }),
 		ENC_ATOM: new BINARY_AVRO({// FIXED LAYOUT ADDRESS HEADER BINARY SCHEMA OBJ
 			/** THIS GIVES US THE FLEXIILITY WE NEED SUCH AS:
 			 * - VARIABLE LENGTH PAYLAOD
@@ -1314,8 +1061,8 @@ public ATOMS_OFFSET = ATOMS_LEAF * PID_CAP;
 					{ name: "k", type: ["int", "bytes"] },
 					{ name: "payload", type: ["int", "bytes"] },
 				],
-			}),
-			AVROI :new BINARY_AVRO({
+		}),
+		AVROI :new BINARY_AVRO({
 				type: "record",
 				name: "SITHMessage",
 				fields: [
@@ -1326,7 +1073,7 @@ public ATOMS_OFFSET = ATOMS_LEAF * PID_CAP;
 				],
 		})
 	}
-	public getNestedMap(s: S = SAURON_SLAVE_REG, m: S = SAURON_MASTER_REG, r: S = THE_WIZARD_ROOT_REG,): M2Dense<N> {
+	public getNestedMap(s: S = this.s, m: S = this.m, r: S = this.r): M2Dense<N> {
 		const g = globalThis as unknown as Record<string, unknown>;
 		let root = g[r] as NestedRoot | undefined;
 
@@ -1359,51 +1106,510 @@ public ATOMS_OFFSET = ATOMS_LEAF * PID_CAP;
 
 		return leaf;
 	}
-	public atom = (() => {
+	public atom = (() => {// GET
 		const fn = (pid: N): N | UD  =>{
-			const i = CLOUD_OFFSET + pid;
-			return present[i] ? values[i] : undefined;
+			const i = this.CLOUD_OFFSET + pid;
+			return this.present[i] ? this.values[i] : undefined;
 		}
 		fn.set=(pid: N, value: N): V =>{
-			const i = CLOUD_OFFSET + pid;
-			values[i] = value;
-			present[i] = 1;
-		}
-	return fn
-})();
-	public sauron = (() => {
-		const fn = () => {}
-		fn.set=(pid: N, value: N): V =>{
-			const i = CLOUD_OFFSET + pid;
-			values[i] = value;
-			present[i] = 1;
+			const i = this.CLOUD_OFFSET + pid;
+			this.values[i] = value;
+			this.present[i] = 1;
 		}
 	return fn
 	})();
-	public drs = (() => {
+	public sauron = (() => {// GET
+		const fn = () => {}
+		fn.set=(pid: N, value: N): V =>{
+			const i = this.CLOUD_OFFSET + pid;
+			this.values[i] = value;
+			this.present[i] = 1;
+		}
+	return fn
+	})();
+	public drs = (() => {// GET
 		const fn =() =>{}
 		return fn
 
 	})();
-	public sauron = (() => {
+	public db_cache = (() => {// GET
 		const fn =() =>{}
 
 	return fn
-})();
-	public db_cache = (() => {
-		const fn =() =>{}
+	})();
 
-	return fn
-})();
+
+	public _channels(s: A = this.root.s, m: A = this.root.m, r: A = this.root.r) {
+       let root = this.STATE_CONTEXT === "sauron" ? (globalThis as A)[r] : null;
+        //let root = (globalThis as A)[r];
+        if (!root) {
+            root = new Map<A, Map<A, Map<A, A>>>();
+            (globalThis as A)[r] = root;
+        }
+
+        let masterMap = root.get(m);
+        if (!masterMap) {
+            masterMap = new Map<A, Map<A, A>>();
+            root.set(m, masterMap);
+        }
+
+        let metaMap = masterMap.get(`${s}_CHANNELS`);
+        if (!metaMap) {
+            metaMap = {
+                channels: new Map<string, Set<A>>(),
+                sub_channels: new Map<string, Map<string, Set<A>>>(),
+                trip_channels: new Map<string, Map<string, Set<A>>>(),
+                quad_channels: new Map<string, Map<string, Set<A>>>(),
+            };
+            masterMap.set(`${s}_CHANNELS`, metaMap);
+        }
+        return metaMap;
+    }
+	public _listeners(s = this.root.s, m = this.root.m, r = this.root.r) {
+		return this._channels(s, m, r).channels as Map<string, Set<A>>;
+	}
+	public getMetadata(s = this.root.s, m = this.root.m, r = this.root.r) {
+		let root = this.STATE_CONTEXT === "sauron" ? (globalThis as A)[r] : null;
+		if (!root) {
+			root = new Map<A, Map<A, Map<A, A>>>();
+			(globalThis as A)[r] = root;
+		}
+
+		let masterMap = root.get(m);
+		if (!masterMap) {
+			masterMap = new Map<A, Map<A, A>>();
+			root.set(m, masterMap);
+		}
+
+		let metaMap = masterMap.get(`${s}_SIGNALS`);
+		if (!metaMap) {
+			metaMap = {
+				_initial: new Map<string, A>(),
+				_sys: new Map<string, SysEntry>(),
+				_keyContracts: new Map<string, Set<string>>(),
+				_causal: new Map<string, CausalEntry[]>(),
+				_conflicts: new Map<string, ConflictPolicy>(),      
+				_contracts: new Map<string, A>(),      
+				_scopes: new Map<string, SignalScope>(),
+				_msgHandlers: new Map<string, Set<(p: A) => void>>(),
+				_mainMap: new Map<A, string>(),
+				_tupleCache: new Map<string, string>(),
+				_weakMap: new WeakMap<object, string>(),
+			};
+			masterMap.set(`${s}_SIGNALS`, metaMap);
+		}
+		return metaMap;
+	}
+	public MODULE_CACHE(s = this.root.s, m = this.root.m, r = this.root.r) {
+		const meta = this.getMetadata(s, m, r);
+		let module_cache = meta.get(this.root.mc);
+		if (!module_cache) {
+			module_cache = new Map<A, Map<A, Map<A, A>>>();
+			this.root.create(this.root.mc, module_cache, undefined, s, m, r);
+		}
+		return module_cache;
+	}
+
+	public store = {
+		get: <T = A,>(key: A, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): T | undefined => {
+			const { s, ms_reg, r } = opts;
+			const _state = this.state.getMap<A, A>(s, ms_reg, r);
+			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
+			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
+
+			// recordDependency(key)
+			if (_state.has(key)) return MaybePromise(_state.get(key));
+			if (_persistKeys.has(key) && _persistent.has(key)) {
+				const v = _persistent.get(key);
+				_state.set(key, v);
+				return MaybePromise(v);
+			}
+			return undefined;
+		},
+		set: <T = A,>(key: A, value: T | ((prev: T | undefined) => T), opts: { triggerRender?: boolean; cap?: number } & ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r, triggerRender: true, cap: 200 }) => {
+			const { triggerRender = true, s, ms_reg, r, cap } = opts;
+			const _state = this.state.getMap<A, A>(s, ms_reg, r);
+			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
+			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
+			const _listeners = this.state.getMap<A, Set<(value: A) => void>>(`${s}_LISTENERS`, ms_reg, r);
+			const prev = _state.get(key);
+			const next = typeof value === "function" ? (value as (prev: T | undefined) => T)(prev) : value;
+			if (Object.is(prev, next)) return;
+			// TIME TRAVEL
+
+			if (!this.root._time_travel_reverting) {
+				const meta = this.state.getMetadata(s, ms_reg, r);
+				let hist = meta._history.get(key);
+				if (!hist) {
+					hist = [];
+					meta._history.set(key, hist);
+				}
+				const lastActive = hist.findLastIndex((e: HistoryEntry) => !e.undone) ?? -1;
+				if (lastActive < hist.length - 1) hist.length = lastActive + 1; // truncate redo tail
+				hist.push({ k: (hist[hist.length - 1]?.k ?? 0) + 1, prev, next, ts: Date.now(), undone: false });
+				const cap_val = cap ?? 200;
+				while (hist.length > cap_val) hist.shift();
+			}
+			_state.set(key, next);
+			if (_persistKeys.has(key)) _persistent.set(key, next);
+			if (triggerRender) this.state.scheduleGlobalNotify(key, this.state.getMetadata(s, ms_reg, r), opts);
+			if (triggerRender) this.state.scheduleNotify(key, _listeners, _state);
+			return MaybePromise(next as T);
+		},
+		subscribe: <T = A,>(key: A, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): (() => void) => {
+			const { s, ms_reg, r } = opts;
+			const _listeners = this.state.getMap<A, Set<(value: A) => void>>(`${s}_LISTENERS`, ms_reg, r);
+
+			if (!_listeners.has(key)) _listeners.set(key, new Set());
+			_listeners.get(key)!.add(listener);
+			return () => {
+				_listeners.get(key)?.delete(listener);
+				if (_listeners.get(key)?.size === 0) _listeners.delete(key);
+			};
+		},
+		delete: (key: A, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): boolean => {
+			const { s, ms_reg, r } = opts;
+			const _state = this.state.getMap<A, A>(s, ms_reg, r);
+			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
+			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
+			const _listeners = this.state.getMap<A, Set<(value: A) => void>>(`${s}_LISTENERS`, ms_reg, r);
+
+			const existed = _state.delete(key);
+			if (_persistKeys.has(key)) {
+				_persistKeys.delete(key);
+				_persistent.delete(key);
+			}
+			_listeners.get(key)?.forEach((l) => l(undefined));
+			_listeners.delete(key);
+			return MaybePromise(existed);
+		},
+		entries: <T = A,>(opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): [A, T][] => {
+			const { s, ms_reg, r } = opts;
+			const _state = this.state.getMap<A, A>(s, ms_reg, r);
+			return MaybePromise(Array.from(_state.entries()));
+		},
+		persist: (key: A, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
+			const { s, ms_reg, r } = opts;
+			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
+_persistKeys.set(key, true);
+		},
+		unpersist: (key: A, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
+			const { s, ms_reg, r } = opts;
+			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
+			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
+			_persistKeys.delete(key);
+			_persistent.delete(key);
+		},
+		has: (key: A, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): boolean => {
+			const { s, ms_reg, r } = opts;
+			const _state = this.state.getMap<A, A>(s, ms_reg, r);
+			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
+			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
+
+			return _state.has(key) || (_persistKeys.has(key) && _persistent.has(key));
+		},
+		clear: (opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
+			const { s, ms_reg, r } = opts;
+			const _state = this.state.getMap<A, A>(s, ms_reg, r);
+			const _listeners = this.state.getMap<A, Set<(value: A) => void>>(`${s}_LISTENERS`, ms_reg, r);
+			_state.clear();
+			_listeners.clear();
+		},
+		clearPersistent: (opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
+			const { s, ms_reg, r } = opts;
+			const _persistent = this.state.getMap<A, A>(`${s}_PERSISTENT`, ms_reg, r);
+			const _persistKeys = this.state.getMap<A, boolean>(`${s}_PERSIST_KEYS`, ms_reg, r);
+			_persistent.clear();
+			_persistKeys.clear();
+		},
+		_emit: (key: string | symbol, s = this.s, ms_reg = this.m, r = this.r): void => {
+			const opts = { s, ms_reg, r };
+			const _state = this.state.getMap(s, ms_reg, r);
+			const _listeners = this.state.getMap<A, Set<(value: A) => void>>(`${s}_LISTENERS`, ms_reg, r);
+			const meta = this.state.getMetadata(s, ms_reg, r);
+			this.state.scheduleNotify(key, _listeners, _state);
+			this.state.scheduleGlobalNotify(key, meta, opts);
+		},
+	};
+	public state = {
+		getMap: <K, V>(slave: A = this.s, master: A = this.m, rk: A = this.r): M2<K, V> => {
+			let root = this.#context.get(rk); // (globalThis as any)[rk]  //  ; (globalThis as any)[rk] = root;
+			if (!root) {
+				root = new M2<A, M2I<A, M2I<A, A>>>();
+				this.#context.set(rk, root);
+			}
 	
+			let masterMap = root.get(master);
+			if (!masterMap) {
+				masterMap = new M2<A, M2I<A, A>>();
+				root.set(master, masterMap);
+			}
+	
+			let slaveMap = masterMap.get(slave);
+			if (!slaveMap) {
+				slaveMap = new M2<K, V>();
+				masterMap.set(slave, slaveMap);
+			}
+			return slaveMap;
+		},
+		getMetadata:(s = this.s, m = this.m, r = this.r) => {
+			let root = this.#meta.get(r); //  (globalThis as A)[r]; // STATE_CONTEXT === "sauron" ?  : null;
+			if (!root) {
+				root = new M2<A, M2I<A, M2I<A, A>>>();
+				this.#meta.set(r, root);
+			}
+	
+			let masterMap = root.get(m);
+			if (!masterMap) {
+				masterMap = new M2<A, M2I<A, A>>();
+				root.set(m, masterMap);
+			}
+	
+			let metaMap = masterMap.get(s);
+			if (!metaMap) {
+				metaMap = {
+					_batches: new Set<S | SY>(),
+					_batchQueue: new Map<S | SY, A>(),
+					_batchOpts: new Map<S | SY, { triggerRender?: B }>(),
+					_history: new Map<S | SY, A[]>(),
+					_timeTravel: new Map<S | SY, N>(),
+					_globalListeners: new Set<(key: S | SY, value: A) => V>(),
+					_global_subscribers: new Map<S, Set<() => V>>(),
+					_waiters: new Map<S | SY, Set<(value: A) => V>>(),
+					_sys: new Map<S, A>(),
+					_sealed: new Set<S>(),
+					_frozen: new Set<S>(),
+					_keyContracts: new Map<S, Set<S>>(),
+					_conflicts: new Map<S, A>(),
+					_conflictStrategies: new Map<S, "latest" | "fail" | "accumulate">(),
+					_causal: new Map<S, A[]>(),
+					_scopes: new Map<S, A>(),
+					_msgHandlers: new Map<S, Set<(p: A) => V>>(),
+					_lastWriteSource: new Map<S, S>(),
+					_mainMap: new Map<A, S>(),
+					_tupleCache: new Map<S, S>(),
+					_weakMap: new WeakMap<O, S>(),
+					_boundaries: new WeakMap<O, S>(),
+				};
+				masterMap.set(s, metaMap);
+			}
+			return metaMap;
+		},
+		get: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): T | undefined => {
+			return MaybePromise(this.store.get<T>(key, opts) as T);
+		},
+		set: <T = A,>(key: string | symbol, value: T | ((prev: T | undefined) => T), opts: { triggerRender?: boolean } & ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
+			const { s, ms_reg, r, triggerRender = true } = opts;
+			this.store.set(key, value, { triggerRender, s, ms_reg, r });
+			return MaybePromise(value as T);
+		},
+		delete: (key: string | symbol, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): boolean => {
+			const { s, ms_reg, r } = opts;
+			const meta = this.state.getMetadata(s, ms_reg, r);
+			const deleted = this.store.delete(key, opts);
+			if (deleted) {
+				for (const listener of meta._globalListeners) {
+					try {
+						listener(key, undefined);
+					} catch (err) {
+						console.error(`[Sauron Global Listener Error]:`, err);
+					}
+				}
+			}
+			return deleted;
+		},
+		getByPrefix: <T = A,>(prefix: string, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): { key: string; value: T }[] => {
+			return this.store
+				.entries<T>(opts)
+				.filter(([key]) => typeof key === "string" && key.startsWith(prefix))
+				.map(([key, value]) => ({ key: key as string, value }));
+		},
+		getAll: <T = A,>(opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): Record<string | symbol, T> => {
+			const result: Record<string | symbol, T> = {};
+			for (const [key, value] of this.store.entries<T>(opts)) {
+				result[key] = value;
+			}
+			return result;
+		},
+		subscribe: <T = A,>(key: string | symbol, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): (() => void) => {
+			return this.store.subscribe<T>(key, listener, opts);
+		},
+		subscribeAll: (listener: (key: string | symbol, value: A) => void, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): (() => void) => {
+			const { s, ms_reg, r } = opts;
+			const meta = this.state.getMetadata(s, ms_reg, r);
+			meta._globalListeners.add(listener);
+			return () => {
+				meta._globalListeners.delete(listener);
+			};
+		},
+		clear: (opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): void => {
+			const { s, ms_reg, r } = opts;
+			const meta = this.state.getMetadata(s, ms_reg, r);
+			this.store.clear(opts);
+			meta._waiters.clear();
+			meta._globalListeners.clear();
+		},
+		waitFor: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, ms_reg: this.m, r: this.r }): Promise<T> => {
+			const { s, ms_reg, r } = opts;
+			const meta = this.state.getMetadata(s, ms_reg, r);
+
+			// If it already exists, resolve immediately
+			const existing = this.state.get<T>(key, opts);
+			if (existing !== undefined) return Promise.resolve(existing);
+
+			return new Promise<T>((resolve) => {
+				if (!meta._waiters.has(key)) meta._waiters.set(key, new Set());
+				meta._waiters.get(key)!.add(resolve as A);
+			});
+		},
+		scheduleNotify: (key: A, _listeners: Map<A, Set<(value: A) => V>>, _state: Map<A, A>): V =>{
+			let cache = this._notifyCache.get(_listeners);
+			if (!cache) {
+				cache = new Map();
+				this._notifyCache.set(_listeners, cache);
+			}
+			let fn = cache.get(key);
+			if (!fn) {
+				fn = () => {
+					cache!.delete(key);
+					const val = _state.get(key);
+					_listeners.get(key)?.forEach((l) => l(val));
+				};
+				cache.set(key, fn);
+			}
+			this.state.onFlush(fn);
+		},
+		scheduleGlobalNotify :(key: S | SY, meta: A, opts: A): V => {
+			let cache = this._globalNotifyCache.get(meta);
+			if (!cache) {
+				cache = new Map();
+				this._globalNotifyCache.set(meta, cache);
+			}
+			let fn = cache.get(key);
+			if (!fn) {
+				fn = () => {
+					cache!.delete(key);
+					const finalVal = this.state.get(key, opts);
+					const waiters = meta._waiters.get(key);
+					if (waiters) {
+						for (const resolveFn of waiters) {
+							try {
+								resolveFn(finalVal);
+							} catch (err) {
+								console.error(`[Sauron Waiter Error]:`, err);
+							}
+						}
+						meta._waiters.delete(key);
+					}
+					for (const listener of meta._globalListeners) {
+						try {
+							listener(key, finalVal);
+						} catch (err) {
+							console.error(`[Sauron Global Listener Error]:`, err);
+						}
+					}
+				};
+				cache.set(key, fn);
+			}
+			this.state.onFlush(fn);
+		},
+		onFlush: (cb: FlushCallback): void =>{
+			this.dirty.add(cb);
+			this.state.scheduleDrain();
+		},
+		scheduleDrain: (): void =>{
+			if (this._flushScheduled) return;
+			this._flushScheduled = true;
+			queueMicrotask(this.state.drain);
+		},
+		drain: (): void =>{
+			this._flushScheduled = false;
+			if (this.dirty.size === 0) return;
+	
+			// An explicit openBatch() scope is still open (deliberately spanning an await) —
+			// don't drop the pending callbacks, just wait for closeBatch() to let them through.
+			if (this.openScopes.size > 0) {
+				this.state.scheduleDrain();
+				return;
+			}
+	
+			const callbacks = this.dirty;
+			this.dirty = new Set();
+			for (const cb of callbacks) cb();
+		}
+	};
+	/**	public mesh_reg = (() => {
+	 const mt = <K, V>(s: S = this.root.s, m: S= this.root.m, r: S = this.root.r): Map<A, A> => {
+		 let root = (globalThis as A)[r] // this.STATE_CONTEXT === "sauron" ?  : null; // this.#reg.get(r); // 
+		 if (!root) {
+			 root = new Map<A, Map<A, Map<A, A>>>();
+			 (globalThis as A)[r] = root;// this.#reg.set(r, root)
+		 }
+
+		 let masterMap = root.get(m);
+		 if (!masterMap) {
+			 masterMap = new Map<A, Map<A, A>>();
+			 root.set(m, masterMap);
+		 }
+
+		 let slaveMap = masterMap.get(`${s}_SIGNALS_`);
+		 if (!slaveMap) {
+			 slaveMap = new Map<K, V>();
+			 masterMap.set(`${s}_SIGNALS_`, slaveMap);
+		 }
+		 return slaveMap as Map<A, A>;
+	 }; // get channels / root channels
+	 mt.gks = (r = this.root.r) => {
+		 // 1. Root Lookup via Module Cache (Fast path)
+		 let root = this.STATE_CONTEXT === "sauron" ? (globalThis as A)[r] : null;
+		 if (!root) {
+			 root = new Map<A, Map<A, Map<A, A>>>();
+			 (globalThis as A)[r] = root;
+		 }
+		 return root;
+	 }; // get sub_channel / master channels
+	 mt.mss = (m = this.root.m, r = this.root.r) => {
+		 let root = this.atom_reg.gks(r);
+		 let masterMap = root.get(m);
+		 if (!masterMap) {
+			 masterMap = new Map<A, Map<A, A>>();
+			 root.set(m, masterMap);
+		 }
+		 return masterMap;
+	 }; // get value
+	 mt.v = <T,>(k: A, t = this.root.s, s = this.root.m, c = this.root.r) => {
+		 const reg = this.atom_reg(t, s, c);
+		 return reg.get(k) as SIGNAL_CELL<T>;
+	 }; // get meta value
+	 mt.GET_META = (meta_key: string, s = this.root.s, m = this.root.m, r = this.root.r) => {
+		 const atom_reg = this.atom_reg(s, m, r);
+		 let meta_cache = atom_reg.get(meta_key);
+		 if (!meta_cache) {
+			 meta_cache = new Map<A, A>();
+			 this.root.create(meta_key, meta_cache, undefined, s, m, r);
+		 }
+		 return meta_cache;
+	 };
+	 mt.MODULE_CACHE = <T = A,>(s = this.root.s, m = this.root.m, r = this.root.r): T => {
+		 return this.atom_reg.GET_META(this.root.mc, s, m, r) as T;
+	 };
+	 return mt;
+ })(); */
 }
 // #endregion
-//                                                                                                                     RX SCHEDULER
+//                                          [VADER]  RX SCHEDULER / SIGNALS BACKEND / CODECS / SLAB / STATE/CONTEXT HOT PATH NGIN / 
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class VADER {
-	//                                                                                                                [COMBINED RX]
+	//                                                              [DARTH VADER] THE TRUE POWER OF THE REACTIVE SIDE [COMBINED RX]
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public root: SIGNALS;
+	get hub(): PROJECT_PLANET_KILLER {
+		return this.root.hub;
+	}
+	get disruptor(): GALEN_MAREK {
+		return this.root.bus;
+	}
+
 	public FNV_OFFSET_BASIS_64 = 0xcbf29ce484222325n;
 	public FNV_PRIME_64 = 0x100000001b3n;
 	public U64_MAX = (1n << 64n) - 1n;
@@ -2482,12 +2688,20 @@ class VADER {
 	private readonly freePids: I32;
 	private freeTail = 0;
 	private laneLen = 0;
-	public onDbPassGetByPid_soa(pid: Pid): V {
-		// this is where the collider passes values on when walked over, to dispatch who then sends the values to the subscribing call site
-		// const dbValue = this.h.binary.readSlabValue(pid) ?? this.val[pid];
-		// const scopeHash = this.h.notifications.getScopeHashForPid(pid);
-		//  signals.send( { scopeHash, pid, value: dbValue }, POST_OFFICE_CHANNEL, this.h.SAURON_SLAVE_REG, this.h.SAURON_MASTER_REG, this.h.THE_WIZARD_ROOT_REG    );
+	public getX(pid: N): number { return this.posX[pid]; }
+	public getY(pid: N): number { return this.posY[pid]; }  
+	public getPosition(pid: N): { x: number; y: number } {
+		return { x: this.posX[pid], y: this.posY[pid] };
 	}
+	public check_size_and_edit(x: N, y: N, pid: Pid, value: N) {
+		this.posX[pid] = x; 
+		this.posY[pid] = y;
+		this.val[pid] = value;
+		this.ops[pid] = OP.EDIT;
+		if (this.laneLen < this.capacity) {
+			this.lane[this.laneLen++] = pid;
+		}
+	} 
 	public admit(x: N, y: N, value: N, pid: Pid): V {
 		this.root.governor.wake();
 		this.posX[pid] = x;
@@ -2503,7 +2717,8 @@ class VADER {
 		this.posX[pid] = x;
 		this.posY[pid] = y;
 		this.val[pid] = value;
-		this.ops[pid] = OP.WRITE;
+		this.ops[pid] = OP.EDIT;
+		
 	}
 	public delete(x: N, y: N, value: N, pid: Pid): V {
 		this.root.governor.wake();
@@ -2512,13 +2727,283 @@ class VADER {
 		this.val[pid] = value;
 		this.ops[pid] = OP.DELETE;
 	}
-	public get() {}
-	public set() {}
+	public get(x: N, y: N, value: N, pid: Pid): V {
+		this.root.governor.wake();
+		this.posX[pid] = x;
+		this.posY[pid] = y;
+		this.val[pid] = value;
+		this.ops[pid] = OP.READ;
+	}
+	public set(x: N, y: N, value: N, pid: Pid): V {
+		this.root.governor.wake();
+		this.posX[pid] = x;
+		this.posY[pid] = y;
+		this.val[pid] = value;
+		this.ops[pid] = OP.WRITE;
+		this.storage[pid] = 0; // DISRUPTOR
+		const slot = this.laneLen++;
+		this.lane[slot] = pid;
+	}
+	public effect(x: N, y: N, value: N, pid: Pid): V {
+		this.root.governor.wake();
+		this.posX[pid] = x;
+		this.posY[pid] = y;
+		this.val[pid] = value;
+		this.ops[pid] = OP.EFFECT;
+		if (this.laneLen < this.capacity) {
+			this.lane[this.laneLen++] = pid;
+		}
+	}
+	public compact(x: N, y: N, value: N, pid: Pid): V {
+		this.root.governor.wake();
+		this.posX[pid] = x;
+		this.posY[pid] = y;
+		this.val[pid] = value;
+		this.ops[pid] = OP.COMPACT;
+		if (this.laneLen < this.capacity) {
+			this.lane[this.laneLen++] = pid;
+		}
+	}
+	public none(x: N, y: N, value: N, pid: Pid): V {
+		this.root.governor.wake();
+		this.posX[pid] = x;
+		this.posY[pid] = y;
+		this.val[pid] = value;
+		this.ops[pid] = OP.NONE;
+		if (this.laneLen < this.capacity) {
+			this.lane[this.laneLen++] = pid;
+		}
+	}
+	public drc(x: N, y: N, value: N, pid: Pid): V {
+		this.root.governor.wake();
+		this.posX[pid] = x;
+		this.posY[pid] = y;
+		this.val[pid] = value;
+		this.ops[pid] = OP.DRC;
+		if (this.laneLen < this.capacity) {
+			this.lane[this.laneLen++] = pid;
+		}
+	}
 	public getAll() {}
 	public getMany() {}
-	public sub() {}
 	public subAll() {}
 	public waitFor() {}
+	public pass1(): V {
+		const len = this.laneLen;
+		let writeIdx = 0;
+		let i = 0;
+		const unrolledLimit = len - (len % 4);
+
+		for (; i < unrolledLimit; i += 4) {
+			let pid = this.lane[i];
+			if (pid === TRACER_PID) { this.val[TRACER_PID]++; this.lane[writeIdx++] = pid; } 
+			else if (this.ops[pid] === OP.DELETE) { this.reclaim_pid(pid); } 
+			else if (this.ops[pid] === OP.SEND) { this.deliver(pid); this.ops[pid] = OP.NONE; this.lane[writeIdx++] = pid; } 
+			else { this.ops[pid] = OP.NONE; this.lane[writeIdx++] = pid; }
+
+			pid = this.lane[i + 1];
+			if (pid === TRACER_PID) { this.val[TRACER_PID]++; this.lane[writeIdx++] = pid; } 
+			else if (this.ops[pid] === OP.DELETE) { this.reclaim_pid(pid); } 
+			else if (this.ops[pid] === OP.SEND) { this.deliver(pid); this.ops[pid] = OP.NONE; this.lane[writeIdx++] = pid; } 
+			else { this.ops[pid] = OP.NONE; this.lane[writeIdx++] = pid; }
+
+			pid = this.lane[i + 2];
+			if (pid === TRACER_PID) { this.val[TRACER_PID]++; this.lane[writeIdx++] = pid; } 
+			else if (this.ops[pid] === OP.DELETE) { this.reclaim_pid(pid); } 
+			else if (this.ops[pid] === OP.SEND) { this.deliver(pid); this.ops[pid] = OP.NONE; this.lane[writeIdx++] = pid; }
+			else { this.ops[pid] = OP.NONE; this.lane[writeIdx++] = pid; }
+
+			pid = this.lane[i + 3];
+			if (pid === TRACER_PID) { this.val[TRACER_PID]++; this.lane[writeIdx++] = pid; } 
+			else if (this.ops[pid] === OP.DELETE) { this.reclaim_pid(pid); }
+			else if (this.ops[pid] === OP.SEND) { this.deliver(pid); this.ops[pid] = OP.NONE; this.lane[writeIdx++] = pid; } 
+			else { this.ops[pid] = OP.NONE; this.lane[writeIdx++] = pid; }
+		}
+
+		for (; i < len; i++) {
+			const pid = this.lane[i];
+			if (pid === TRACER_PID) { this.val[TRACER_PID]++; this.lane[writeIdx++] = pid; } 
+			else if (this.ops[pid] === OP.DELETE) { this.reclaim_pid(pid); } 
+			else if (this.ops[pid] === OP.SEND) { this.deliver(pid); this.ops[pid] = OP.NONE; this.lane[writeIdx++] = pid; } 
+			else { this.ops[pid] = OP.NONE; this.lane[writeIdx++] = pid; }
+		}
+
+		this.laneLen = writeIdx;
+	}
+	// ═══════════════════════════════════════════════════════════════════════════
+	// FULLY WIRED DISPATCHER (NO STUBS, CALLING REAL RX_S METHODS)
+	// ═══════════════════════════════════════════════════════════════════════════
+
+	public pass(): V {
+		const len = this.laneLen;
+		let writeIdx = 0;
+		let i = 0;
+		const unrolledLimit = len - (len % 4);
+
+		for (; i < unrolledLimit; i += 4) {
+			writeIdx = this._processReactivePid(this.lane[i], writeIdx);
+			writeIdx = this._processReactivePid(this.lane[i + 1], writeIdx);
+			writeIdx = this._processReactivePid(this.lane[i + 2], writeIdx);
+			writeIdx = this._processReactivePid(this.lane[i + 3], writeIdx);
+		}
+
+		for (; i < len; i++) {
+			writeIdx = this._processReactivePid(this.lane[i], writeIdx);
+		}
+
+		this.laneLen = writeIdx;
+	}
+
+	private _processReactivePid(pid: Pid, writeIdx: N): N {
+		if (pid === TRACER_PID) {
+			this.val[TRACER_PID]++;
+			this.lane[writeIdx++] = pid;
+			return writeIdx;
+		}
+
+		const op = this.ops[pid];
+
+		switch (op) {
+			case OP.READ:
+			case OP.NONE:
+				this.ops[pid] = OP.NONE;
+				this.lane[writeIdx++] = pid;
+				break;
+
+			case OP.WRITE:
+			case OP.EDIT: {
+				// Push SoA spatial update into your reactive registry/signal nodes if stored per-pid
+				// If you store node references in an array mapped by pid (e.g. this.nodeRegistry[pid]):
+				const node = this.nodeRegistry?.[pid];
+				if (node && "pendingValue" in node) {
+					node.pendingValue = this.val[pid];
+					node.flags = ReactiveFlags.MUTABLE | ReactiveFlags.DIRTY;
+					if (node.subs !== undefined) {
+						this.propagate(node.subs, !!this.runDepth);
+						if (!this.getBatchDepth()) {
+							this.flush();
+						}
+					}
+				}
+
+				this.ops[pid] = OP.NONE;
+				this.lane[writeIdx++] = pid;
+				break;
+			}
+
+			case OP.DELETE: {
+				const node = this.nodeRegistry?.[pid];
+				if (node) {
+					this.disposeAllDepsInReverse(node);
+					if (node.subs !== undefined) {
+						this.unlink(node.subs);
+					}
+					this.nodeRegistry[pid] = undefined;
+				}
+				this.reclaim_pid(pid);
+				break;
+			}
+
+			case OP.EFFECT: {
+				// Actually execute or run the effect node tied to this pid
+				const effectNode = this.effectRegistry?.[pid];
+				if (effectNode) {
+					this.run(effectNode);
+				} else {
+					// Fallback to flushing the active queue if managed globally
+					this.flush();
+				}
+
+				this.ops[pid] = OP.NONE;
+				this.lane[writeIdx++] = pid;
+				break;
+			}
+
+			case OP.COMPUTED: {
+				// Force actual re-evaluation of the computed node tied to this pid
+				const computedNode = this.computedRegistry?.[pid];
+				if (computedNode) {
+					this.updateComputed(computedNode);
+					const subs = computedNode.subs;
+					if (subs !== undefined) {
+						this.shallowPropagate(subs);
+					}
+				}
+
+				this.ops[pid] = OP.NONE;
+				this.lane[writeIdx++] = pid;
+				break;
+			}
+
+			case OP.EFFECTSCOPE: {
+				const scopeNode = this.scopeRegistry?.[pid];
+				if (scopeNode) {
+					this.effectScopeOper(scopeNode);
+				}
+				this.ops[pid] = OP.NONE;
+				this.lane[writeIdx++] = pid;
+				break;
+			}
+
+			case OP.EXTERNAL:
+			case OP.OBSERVER: {
+				if (!this.getBatchDepth()) {
+					this.flush();
+				}
+				this.ops[pid] = OP.NONE;
+				this.lane[writeIdx++] = pid;
+				break;
+			}
+
+			case OP.ASYNCEFFECT: {
+				queueMicrotask(() => {
+					if (this.ops[pid] !== OP.DELETE) {
+						const effectNode = this.effectRegistry?.[pid];
+						if (effectNode) {
+							this.run(effectNode);
+						} else {
+							this.flush();
+						}
+					}
+				});
+				this.ops[pid] = OP.NONE;
+				this.lane[writeIdx++] = pid;
+				break;
+			}
+
+			case OP.SEND:
+				this.deliver(pid);
+				this.ops[pid] = OP.NONE;
+				this.lane[writeIdx++] = pid;
+				break;
+
+			case OP.STREAM:
+			case OP.DUPLEX: {
+				const val = this.val[pid];
+				this.storage[pid] = val;
+				this.ops[pid] = OP.NONE;
+				this.lane[writeIdx++] = pid;
+				break;
+			}
+
+			case OP.DRC: {
+				if (this.val[pid] <= 0) {
+					this.reclaim_pid(pid);
+				} else {
+					this.ops[pid] = OP.NONE;
+					this.lane[writeIdx++] = pid;
+				}
+				break;
+			}
+
+			default:
+				this.ops[pid] = OP.NONE;
+				this.lane[writeIdx++] = pid;
+				break;
+		}
+
+		return writeIdx;
+	}
 	private reclaim_pid(pid: Pid): V {
 		this.root.governor.wake();
 		this.posX[pid] = 0;
@@ -2527,98 +3012,6 @@ class VADER {
 		this.ops[pid] = OP.NONE;
 		this.freePids[this.freeTail] = pid;
 		this.freeTail = (this.freeTail + 1) % this.capacity;
-	}
-	public pass(): V {
-		const len = this.laneLen;
-		let writeIdx = 0;
-		let i = 0;
-		const unrolledLimit = len - (len % 4);
-
-		for (; i < unrolledLimit; i += 4) {
-			let pid = this.lane[i];
-			if (pid === TRACER_PID) {
-				this.val[TRACER_PID]++;
-				this.lane[writeIdx++] = pid;
-			} else if (this.ops[pid] === OP.DELETE) {
-				this.reclaim_pid(pid);
-			} else if (this.ops[pid] === OP.SEND) {
-				this.deliver(pid);
-
-				this.ops[pid] = OP.NONE;
-				this.lane[writeIdx++] = pid;
-			} else {
-				this.ops[pid] = OP.NONE;
-				this.lane[writeIdx++] = pid;
-			}
-
-			pid = this.lane[i + 1];
-			if (pid === TRACER_PID) {
-				this.val[TRACER_PID]++;
-				this.lane[writeIdx++] = pid;
-			} else if (this.ops[pid] === OP.DELETE) {
-				this.reclaim_pid(pid);
-			} else if (this.ops[pid] === OP.SEND) {
-				this.deliver(pid);
-
-				this.ops[pid] = OP.NONE;
-				this.lane[writeIdx++] = pid;
-			} else {
-				this.ops[pid] = OP.NONE;
-				this.lane[writeIdx++] = pid;
-			}
-
-			pid = this.lane[i + 2];
-			if (pid === TRACER_PID) {
-				this.val[TRACER_PID]++;
-				this.lane[writeIdx++] = pid;
-			} else if (this.ops[pid] === OP.DELETE) {
-				this.reclaim_pid(pid);
-			} else if (this.ops[pid] === OP.SEND) {
-				this.deliver(pid);
-
-				this.ops[pid] = OP.NONE;
-				this.lane[writeIdx++] = pid;
-			} else {
-				this.ops[pid] = OP.NONE;
-				this.lane[writeIdx++] = pid;
-			}
-
-			pid = this.lane[i + 3];
-			if (pid === TRACER_PID) {
-				this.val[TRACER_PID]++;
-				this.lane[writeIdx++] = pid;
-			} else if (this.ops[pid] === OP.DELETE) {
-				this.reclaim_pid(pid);
-			} else if (this.ops[pid] === OP.SEND) {
-				this.deliver(pid);
-
-				this.ops[pid] = OP.NONE;
-				this.lane[writeIdx++] = pid;
-			} else {
-				this.ops[pid] = OP.NONE;
-				this.lane[writeIdx++] = pid;
-			}
-		}
-
-		for (; i < len; i++) {
-			const pid = this.lane[i];
-			if (pid === TRACER_PID) {
-				this.val[TRACER_PID]++;
-				this.lane[writeIdx++] = pid;
-			} else if (this.ops[pid] === OP.DELETE) {
-				this.reclaim_pid(pid);
-			} else if (this.ops[pid] === OP.SEND) {
-				this.deliver(pid);
-
-				this.ops[pid] = OP.NONE;
-				this.lane[writeIdx++] = pid;
-			} else {
-				this.ops[pid] = OP.NONE;
-				this.lane[writeIdx++] = pid;
-			}
-		}
-
-		this.laneLen = writeIdx;
 	}
 	get length(): N {
 		return this.laneLen;
@@ -2827,8 +3220,6 @@ class VADER {
 		return fn;
 	})();
 	// #endregion
-	//                                                                           [DARTH VADER] THE TRUE POWERE OF THE REACTIVE SIDE
-	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	//                                                                                                                       CONSTS
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -3008,7 +3399,6 @@ class VADER {
 		};
 		return fn;
 	})();
-
 	// #endregion
 	//                                                                                                     COLLIDER OUTPUT BOUNDARY
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -3656,7 +4046,12 @@ class VADER {
 	})();
 	// #endregion
 }
+// #endregion
+//                                                                                                               [GALEN_MAREK]  BUS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class GALEN_MAREK {
+	// #region INTERNALS
+	public root: SIGNALS;
 	readonly capacity: N;
 	readonly mask: N;
 	readonly pidCapacity: N;
@@ -3695,68 +4090,72 @@ class GALEN_MAREK {
 	private byteTail = 0;
 	private readonly maxBatch: N;
 	private readonly wait: WaitStrategy;
-	private handlers: AR< | ((ring: I32, from: N, to: N, epoch: N, d: HADRON_DISRUPTOR ) => V) | NU > = [];
-	constructor(options: HADRON_OPTIONS = {}) {
-	  const capacity = options.capacity ?? 1 << 18;
-	  const pidCapacity = options.pidCapacity ?? 1 << 20;
-  
-	  if (!pow2(capacity)) throw new Error("capacity must be a power of two");
-	  if (!pow2(pidCapacity)) throw new Error("pidCapacity must be a power of two");
-  
-	  this.capacity = capacity;
-	  this.mask = capacity - 1;
-	  this.pidCapacity = pidCapacity;
-  
-	  this.schedule = options.schedule ?? DEFAULT_SCHEDULE;
-	  this.shared = options.shared ?? typeof SharedArrayBuffer !== "undefined";
-  
-	  this.maxBatch = options.maxBatch ?? 8192;
-	  this.wait = options.wait ?? "yield";
-  
-	  const AB = this.shared ? SharedArrayBuffer : ArrayBuffer;
-  
-	  const laneCount = this.schedule.length;
-  
-	  this.rings = Array.from(
-		{ length: laneCount },
-		() => new Int32Array(new AB(capacity * REC * 4))
-	  );
-  
-	  this.ctrl = new Int32Array(new AB(laneCount * HADRON_DISRUPTOR.CTRL * 4));
-  
-	  // Availability buffer uses one Int32 per ring slot.
-	  this.available = Array.from(
-		{ length: laneCount },
-		() => new Int32Array(new AB(capacity * 4))
-	  );
-  
-	  this.clock = new Int32Array(new AB(4));
-	  this.phaseIndex = new Int32Array(new AB(4));
-	  this.running = new Int32Array(new AB(4));
-  
-	  this.pidToSlot = new Int32Array(new AB(pidCapacity * 4));
-	  this.pidToSlot.fill(-1);
-  
-	  this.dirty = new Uint32Array(new AB((pidCapacity >>> 5) * 4));
-  
-	  this.f64 = new Float64Array(new AB((options.f64Capacity ?? 1 << 18) * 8));
-	  this.u32 = new Uint32Array(new AB((options.u32Capacity ?? 1 << 18) * 4));
-	  this.i32 = new Int32Array(new AB((options.i32Capacity ?? 1 << 18) * 4));
-	  this.bytes = new Uint8Array(new AB(options.byteCapacity ?? 1 << 20));
+	private handlers: AR< | ((ring: I32, from: N, to: N, epoch: N, d: GALEN_MAREK ) => V) | NU > = [];
+	constructor(root: SIGNALS, options: HADRON_OPTIONS = {}) {
+		this.root = root
+	  	const capacity = options.capacity ?? 1 << 18;
+		const pidCapacity = options.pidCapacity ?? 1 << 20;
+	
+		if (!pow2(capacity)) throw new Error("capacity must be a power of two");
+		if (!pow2(pidCapacity)) throw new Error("pidCapacity must be a power of two");
+	
+		this.capacity = capacity;
+		this.mask = capacity - 1;
+		this.pidCapacity = pidCapacity;
+	
+		this.schedule = options.schedule ?? DEFAULT_SCHEDULE;
+		this.shared = options.shared ?? typeof SharedArrayBuffer !== "undefined";
+	
+		this.maxBatch = options.maxBatch ?? 8192;
+		this.wait = options.wait ?? "yield";
+	
+		const AB = this.shared ? SharedArrayBuffer : ArrayBuffer;
+	
+		const laneCount = this.schedule.length;
+	
+		this.rings = Array.from(
+			{ length: laneCount },
+			() => new Int32Array(new AB(capacity * REC * 4))
+		);
+	
+		this.ctrl = new Int32Array(new AB(laneCount * GALEN_MAREK.CTRL * 4));
+	
+		// Availability buffer uses one Int32 per ring slot.
+		this.available = Array.from(
+			{ length: laneCount },
+			() => new Int32Array(new AB(capacity * 4))
+		);
+	
+		this.clock = new Int32Array(new AB(4));
+		this.phaseIndex = new Int32Array(new AB(4));
+		this.running = new Int32Array(new AB(4));
+	
+		this.pidToSlot = new Int32Array(new AB(pidCapacity * 4));
+		this.pidToSlot.fill(-1);
+	
+		this.dirty = new Uint32Array(new AB((pidCapacity >>> 5) * 4));
+	
+		this.f64 = new Float64Array(new AB((options.f64Capacity ?? 1 << 18) * 8));
+		this.u32 = new Uint32Array(new AB((options.u32Capacity ?? 1 << 18) * 4));
+		this.i32 = new Int32Array(new AB((options.i32Capacity ?? 1 << 18) * 4));
+		this.bytes = new Uint8Array(new AB(options.byteCapacity ?? 1 << 20));
+		this.r = root.r
+		this.m = root.m
+		this.s = root.s
 	}
-  /*======================================================================
+/*  ======================================================================
 	 HANDLERS
 	====================================================================== */
-	sub( op: OpKind, handler: ( ring: I32, from: N, to: N, epoch: N, d: HADRON_DISRUPTOR ) => V  ): this {
+	public sub( op: OpKind, handler: ( ring: I32, from: N, to: N, epoch: N, d: GALEN_MAREK ) => V  ): this {
 	  this.handlers[op] = handler;
 	  return this;
 	}
-  /*======================================================================
+/*  ======================================================================
 	 MULTI-PRODUCER CLAIM / PUBLISH
 	 Claim the next sequence for a lane. This is a true multi-producer sequencer: - CAS reserves a unique sequence. - The availability buffer marks that exact sequence published. - Consumers never rely on a single global “highest published” value.
 	====================================================================== */
-	private ctrlAt(lane: N, field: number): number { return lane * HADRON_DISRUPTOR.CTRL + field;  }
-	claim(lane: number): number {
+	private ctrlAt(lane: N, field: number): number { return lane * GALEN_MAREK.CTRL + field;  }
+	public claim(lane: number): number {
 	  const next = this.ctrlAt(lane, 0);
 	  const stall = this.ctrlAt(lane, 4);
 	  const claimed = this.ctrlAt(lane, 5);
@@ -3791,9 +4190,8 @@ class GALEN_MAREK {
 		Atomics.wait(this.ctrl, next, seq, 1);
 		spin = 0;
 	  }
-	}
-	// Publish a claimed record. The record must be fully written BEFORE this call. The availability buffer is the publication barrier.
-	publish(lane: number, seq: number): void {
+	}// Publish a claimed record. The record must be fully written BEFORE this call. The availability buffer is the publication barrier.
+	public publish(lane: number, seq: number): void {
 	  const avail = this.available[lane];
 	  Atomics.store(avail, seq & this.mask, seq + 1);
   
@@ -3802,9 +4200,8 @@ class GALEN_MAREK {
   
 	  const waiting = this.ctrlAt(lane, 0);
 	  Atomics.notify(this.ctrl, waiting);
-	}
-	// One-shot enqueue. Returns: >= 0 — published sequence  -1  — nonblocking mode and lane was full
-	emit( op: OpKind, pid: N, slot: N, a = 0, b = 0, c = 0, ext = 0, block = true  ): N {
+	}// One-shot enqueue. Returns: >= 0 — published sequence  -1  — nonblocking mode and lane was full
+	public emit( op: OpKind, pid: N, slot: N, a = 0, b = 0, c = 0, ext = 0, block = true  ): N {
 	  const lane = this.laneFor(op);
 	  const ring = this.rings[lane];
   
@@ -3825,15 +4222,15 @@ class GALEN_MAREK {
 	  this.publish(lane, seq);
 	  return seq;
 	}
-  /*======================================================================
+/*  ======================================================================
 	 PID / SLOT / DIRTY
 	====================================================================== */
-	bind(pid: N, slot: N): V { this.pidToSlot[pid] = slot;  }
-	unbind(pid: N): V { this.pidToSlot[pid] = -1;  }
-	slot(pid: N): N { return this.pidToSlot[pid];  }
-	dirtyMark(pid: N): V { this.dirty[pid >>> 5] |= 1 << (pid & 31);  }
-	dirtyPeek(pid: N): B { return (this.dirty[pid >>> 5] & (1 << (pid & 31))) !== 0;  }
-	dirtyTake(pid: N): B {
+	public bind(pid: N, slot: N): V { this.pidToSlot[pid] = slot;  }
+	public unbind(pid: N): V { this.pidToSlot[pid] = -1;  }
+	public slot(pid: N): N { return this.pidToSlot[pid];  }
+	public dirtyMark(pid: N): V { this.dirty[pid >>> 5] |= 1 << (pid & 31);  }
+	public dirtyPeek(pid: N): B { return (this.dirty[pid >>> 5] & (1 << (pid & 31))) !== 0;  }
+	public dirtyTake(pid: N): B {
 	  const w = pid >>> 5;
 	  const bit = 1 << (pid & 31);
 	  const word = this.dirty[w];
@@ -3843,36 +4240,35 @@ class GALEN_MAREK {
 	  this.dirty[w] = word & ~bit;
 	  return true;
 	}
-  /*======================================================================
+/*  ======================================================================
 	 SOA ARENAS
 	====================================================================== */
-	allocF64(value: N): N {
+	public allocF64(value: N): N {
 	  const at = this.f64Tail++;
 	  this.f64[at] = value;
 	  return at;
 	}
-	allocU32(value: N): N {
+	public allocU32(value: N): N {
 	  const at = this.u32Tail++;
 	  this.u32[at] = value;
 	  return at;
 	}
-	allocI32(value: N): N {
+	public allocI32(value: N): N {
 	  const at = this.i32Tail++;
 	  this.i32[at] = value;
 	  return at;
 	}
-	allocBytes(data: U8): N {
+	public allocBytes(data: U8): N {
 	  const at = this.byteTail;
 	  this.bytes.set(data, at);
 	  this.byteTail += data.length;
 	  return at;
 	}
-	f64At(offset: N): N {    return this.f64[offset];  }
-	u32At(offset: N): N {    return this.u32[offset];  }
-	i32At(offset: N): N {    return this.i32[offset];  }
-	bytesAt(offset: N, length: N): U8 {    return this.bytes.subarray(offset, offset + length);  }
-  
-  /*======================================================================
+	public f64At(offset: N): N {    return this.f64[offset];  }
+	public u32At(offset: N): N {    return this.u32[offset];  }
+	public i32At(offset: N): N {    return this.i32[offset];  }
+	public bytesAt(offset: N, length: N): U8 {    return this.bytes.subarray(offset, offset + length);  }
+/*  ======================================================================
 	 CONSUMER BARRIER
 	 Return the highest contiguous available sequence for a lane. This scans only the availability window, then caches the result. It avoids the classic problem of a slow producer blocking visibility of later producers.
 	====================================================================== */
@@ -3907,7 +4303,7 @@ class GALEN_MAREK {
 	   PHASE-LOCKED EXECUTION
 	   Drain exactly one scheduled phase. A phase is homogeneous: READ only, WRITE only, DELETE only, etc.
 	   ====================================================================== */
-	drainPhase(limit = this.maxBatch): number {
+	public drainPhase(limit = this.maxBatch): number {
 	  const schedule = this.schedule;
 	  const lane = schedule[Atomics.load(this.phaseIndex, 0)];
 	  const handler = this.handlers[lane];
@@ -3953,7 +4349,7 @@ class GALEN_MAREK {
 	  this.nextPhase();
 	  return count;
 	}// Run one full revolution. The tracer particle advances only after every scheduled phase runs.
-	revolution(limit = this.maxBatch): number {
+	public revolution(limit = this.maxBatch): number {
 	  let total = 0;
   
 	  for (let i = 0; i < this.schedule.length; i++) {
@@ -3963,7 +4359,7 @@ class GALEN_MAREK {
 	  Atomics.add(this.clock, 0, 1);
 	  return total;
 	}// Run until all lanes are drained. Useful for shutdown, transaction boundaries, and tests.
-	drainAll(limit = this.maxBatch): number {
+	public drainAll(limit = this.maxBatch): number {
 	  let total = 0;
   
 	  for (;;) {
@@ -3974,22 +4370,22 @@ class GALEN_MAREK {
   
 	  return total;
 	}
-  /*======================================================================
+/*  ======================================================================
 	 CLOCK / CONTROL
 	====================================================================== */
-	tick(): number { return Atomics.load(this.clock, 0);  }
-	currentPhase(): OpKind { return this.schedule[Atomics.load(this.phaseIndex, 0)];  }
-	start(): void {    Atomics.store(this.running, 0, 1);  }
-	stop(): void {
+	public tick(): number { return Atomics.load(this.clock, 0);  }
+	public currentPhase(): OpKind { return this.schedule[Atomics.load(this.phaseIndex, 0)];  }
+	public start(): void {    Atomics.store(this.running, 0, 1);  }
+	public stop(): void {
 	  Atomics.store(this.running, 0, 0);
 	  Atomics.notify(this.running, 0);
 	}
-	isRunning(): boolean {    return Atomics.load(this.running, 0) === 1;  }
-  /*======================================================================
+	public isRunning(): boolean {    return Atomics.load(this.running, 0) === 1;  }
+/*  ======================================================================
 	 STATS
 	====================================================================== */
-	stats(lane: number): LANE_STATS {
-	  const b = lane * HADRON_DISRUPTOR.CTRL;
+	public stats(lane: number): LANE_STATS {
+	  const b = lane * GALEN_MAREK.CTRL;
   
 	  return {
 		claimed: Atomics.load(this.ctrl, b + 5),
@@ -4000,12 +4396,12 @@ class GALEN_MAREK {
 		fullStalls: Atomics.load(this.ctrl, b + 4),
 	  };
 	}
-	pending(lane: number): number {
+	public pending(lane: number): number {
 	  const published = Atomics.load(this.ctrl, this.ctrlAt(lane, 6));
 	  const consumed = Atomics.load(this.ctrl, this.ctrlAt(lane, 7));
 	  return published - consumed;
 	}
-  /*======================================================================
+/*  ======================================================================
 	 INTERNAL
 	====================================================================== */
 	private laneFor(op: OpKind): number {    return op;  }
@@ -4027,20 +4423,481 @@ class GALEN_MAREK {
 		setTimeout(() => {}, 0);
 	  }
 	}
+	// #endregion
+	// #region BUS FNS
+	public r: S = "THE_WIZARD_ROOT_REG";
+	public m: S = "SAURON_MASTER_REG";
+	public s: S = "_TC_SIGNALS_";
+	public k: A = "__SIGNALS__";
+	public send: DISRUPTOR_BUS_SEND = (() => {
+		const fn = <T = A,> (p: U, k: A, s:S = this.s, m:S = this.m, r:S = this.r, ttl?: N, chain?: CHAIN,  adapter = "disruptor") => {
+			const msg: SIG_BUS_Message = { id: this.root._id._byteid(), r: r, m: m, s: s, k: k, p: p, ts: Date.now(), _ack: false };
+
+			let v: A =  this.DISPATCH(msg, adapter);
+			if (v !== undefined && !(v instanceof Promise)) {
+				return MCR_Combo<T>(v, chain);
+			} else {
+				const timeoutMs = 5000;
+				return MaybePromise(
+					(() => {
+						return new Promise<T>((resolve, reject) => {
+							let timer: RET<typeof setTimeout> | UD;
+							if (v) {
+								if (timer) clearTimeout(timer);
+								resolve(v as T);
+								return;
+							}
+							if (timeoutMs) {
+								timer = setTimeout(() => {
+									reject(new Error(`[rift] wait() timed out after ${timeoutMs}ms`));
+								}, timeoutMs);
+							}
+						});
+					})(),
+				);
+			}
+		};
+		fn.broadcast = async (p: U, k: S, s = this.s, m = this.m, r = this.r, ttl?: N, binary = false, adapter = "http"): P<V> => {
+
+			const msg: SIG_BUS_Message = { id: this.root._id.b(), r: r, m: m, s: s, k: k, p: {p}, ttl, ts: Date.now(), _ack: false };
+			const a = SSR._adapters();
+			await Promise.all(
+				[...a].map(a => {
+					try {
+						return this.DISPATCH(msg, adapter);
+					} catch {
+						return Promise.resolve();
+					}
+				}),
+			);
+		};
+		fn.broadcastState = (state: A, k: S, s: S, m: S, r: S, chain?: "chain" | "rechain") => {
+			const v = this.send(state, k, s, m, r).catch((err: any) => {
+				console.error("Failed to broadcast state:", err);
+			});
+			return MCR_Combo(v, chain);
+		};
+		type Wildcard = "*";
+		type W = "*";
+		const isWildcard = (value: S | UD): value is Wildcard => value === "*";
+		fn.emit = (k: S | "*", p: U, s = this.s, m = this.m, r = this.r): V => {
+			const handlers = new Set<CSEHandler>();
+			const ch = this.root.ssr._channels(s, m, r).channels;
+			const sch = this.root.ssr._channels(s, m, r).sub_channels;
+			const tch = this.root.ssr._channels(s, m, r).trip_channels;
+			const qch = this.root.ssr._channels(s, m, r).quad_channels;
+
+			const add = (set?: Set<CSEHandler>) => {
+				if (set) for (const handler of set) handlers.add(handler);
+			};
+
+			const walkChannels = (channel: S | "*") => {
+				if (isWildcard(channel)) {
+					for (const set of ch.values()) add(set);
+				} else {
+					add(ch.get(channel));
+				}
+			};
+
+			const walkSubChannels = (sub: S | "*", channel: S | "*") => {
+				if (isWildcard(sub)) {
+					for (const [ch, set] of sch.values()) {
+						if (isWildcard(channel)) {
+							for (const handlersAtChannel of set.values()) add(handlersAtChannel);
+						} else {
+							add(set.get(channel));
+						}
+					}
+				} else {
+					const byChannel = sch.get(sub);
+					if (!byChannel) return;
+
+					if (isWildcard(channel)) {
+						for (const set of byChannel.values()) add(set);
+					} else {
+						add(byChannel.get(channel));
+					}
+				}
+			};
+
+			const walkTrips = (trip: S | "*", sub: S | "*", channel: S | "*") => {
+				if (isWildcard(trip)) {
+					for (const bySub of tch.values()) {
+						if (isWildcard(sub)) {
+							for (const byChannel of bySub.values()) {
+								if (isWildcard(channel)) {
+									for (const set of byChannel.values()) add(set);
+								} else {
+									add(byChannel.get(channel));
+								}
+							}
+						} else {
+							const byChannel = bySub.get(sub);
+							if (!byChannel) continue;
+
+							if (isWildcard(channel)) {
+								for (const set of byChannel.values()) add(set);
+							} else {
+								add(byChannel.get(channel));
+							}
+						}
+					}
+				} else {
+					const bySub = tch.get(trip);
+					if (!bySub) return;
+
+					if (isWildcard(sub)) {
+						for (const byChannel of bySub.values()) {
+							if (isWildcard(channel)) {
+								for (const set of byChannel.values()) add(set);
+							} else {
+								add(byChannel.get(channel));
+							}
+						}
+					} else {
+						const byChannel = bySub.get(sub);
+						if (!byChannel) return;
+
+						if (isWildcard(channel)) {
+							for (const set of byChannel.values()) add(set);
+						} else {
+							add(byChannel.get(channel));
+						}
+					}
+				}
+			};
+
+			const walkQuads = () => {
+				if (isWildcard(k)) {
+					for (const byTrip of qch.values()) {
+						if (isWildcard(s)) {
+							for (const bySub of byTrip.values()) {
+								if (isWildcard(m)) {
+									for (const byChannel of bySub.values()) {
+										if (isWildcard(r)) {
+											for (const set of byChannel.values()) add(set);
+										} else {
+											add(byChannel.get(r));
+										}
+									}
+								} else {
+									const byChannel = bySub.get(m);
+									if (!byChannel) continue;
+									if (isWildcard(r)) {
+										for (const set of byChannel.values()) add(set);
+									} else {
+										add(byChannel.get(r));
+									}
+								}
+							}
+						} else {
+							const bySub = byTrip.get(s);
+							if (!bySub) continue;
+							if (isWildcard(m)) {
+								for (const byChannel of bySub.values()) {
+									if (isWildcard(r)) {
+										for (const set of byChannel.values()) add(set);
+									} else {
+										add(byChannel.get(r));
+									}
+								}
+							} else {
+								const byChannel = bySub.get(m);
+								if (!byChannel) continue;
+								if (isWildcard(r)) {
+									for (const set of byChannel.values()) add(set);
+								} else {
+									add(byChannel.get(r));
+								}
+							}
+						}
+					}
+				} else {
+					const byTrip = qch.get(k);
+					if (!byTrip) return;
+					// Same descendant walk as above, starting at byTrip.
+				}
+			};
+
+			// Use the index at the broadest requested scope.
+			if (isWildcard(k)) {
+				walkQuads();
+			} else if (isWildcard(s)) {
+				// trip_channels is keyed by s, then m, then r.
+				walkTrips(s, m, r);
+			} else if (isWildcard(m)) {
+				// sub_channels is keyed by m, then r.
+				walkSubChannels(m, r);
+			} else if (isWildcard(r)) {
+				// channels is keyed by r.
+				walkChannels(r);
+			} else {
+				// Exact path: any one index can retrieve it.
+				add(qch.get(k)?.get(s)?.get(m)?.get(r));
+			}
+
+			for (const handler of handlers) handler(p);
+		};
+		return fn;
+	})();
+	public DISPATCH = (() => {
+		const fn = async (raw: A, adapter?: string) => {
+			let msg: A = raw;
+			//                                    DECODE DE-BINARY
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			// Decode first — mirrors encode running last on the send side.
+			if (msg instanceof Uint8Array || (typeof Buffer !== "undefined" && Buffer.isBuffer(msg))) {
+				msg = this.t.decode_msg(msg);
+				if (!msg) return {success: false, decodeFailed: true};
+			}
+			// #endregion
+			//                                    SECURE UNWRAP
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			if (this.root.se._auth_initialized) {
+				msg = await this.root.se.encryption.unwrap(msg);
+				if (!msg) return {success: false, unauthorized: true};
+			}
+			// #endregion
+			//                                    CHANNEL MAPPING
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			msg.r = msg.r ?? this.r;
+			msg.m = msg.m ?? this.m;
+			msg.s = msg.s ?? this.s;
+			msg.k = msg.k;
+			console.log(msg, "emitter.dispatch.msg");
+			// #endregion
+			//                                    REPLY
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			if (msg.r && msg.r.startsWith(":reply:")) {
+				const originalMsgId = msg.r.replace(":reply:", "");
+				const pendingTx = this.root.se.pending.get(originalMsgId);
+				if (pendingTx) {
+					clearTimeout(pendingTx.timer);
+					this.root.se.pending.delete(originalMsgId);
+					pendingTx.resolve(msg.p);
+					return {success: true, isReply: true};
+				}
+			}
+			// #endregion
+			//                                    ROUTING RULES
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			//   let targets = [...this.adapters].filter(a => a !== msg._adapter)
+			for (const rule of SE._routeRules()) {
+				if (!rule.match(msg)) continue;
+				//     if (rule.targetAdapters) { targets = targets.filter(a => rule.targetAdapters!.includes(a.id ?? '')) }
+				if (rule.targetrts) {
+					// if (this.DEVTOOLS_ACTIVE) this.emitDevtoolsEvent('route_rejected', msg.r, msg.m || undefined, msg.id, { rule: rule.name })
+					if (!rule.targetrts.includes(msg.r)) return {success: false, routed: false};
+				}
+			}
+	
+			// #endregion
+			//                                    SEND
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			Promise.resolve().then(() => {
+				const a = this._adapters();
+				switch (adapter) {
+					case "http":
+						this.DISPATCH.sendMessage(msg, a.http);
+						break;
+					case "cross_boundary":
+						this.DISPATCH.sendMessage(msg, a.cross_boundary);
+						break;
+					case "same_boundary":
+						this.DISPATCH.sendMessage(msg, a.same_boundary);
+						break;
+					case "atom_adapter":
+						this.DISPATCH.sendMessage(msg, a.atom_adapter);
+						break;
+					case "ws":
+						this.DISPATCH.sendMessage(msg, a.ws);
+						break;
+
+					case "reliableSocket":
+						this.DISPATCH.sendMessage(msg, a.reliableSocket);
+						break;
+					case "workerThreadAdapter":
+						this.DISPATCH.sendMessage(msg, a.workerThreadAdapter);
+						break;
+					case "webTransportDatagramsAdapter":
+						this.DISPATCH.sendMessage(msg, a.webTransportDatagramsAdapter);
+						break;
+					case "webTransportClientAdapter":
+						this.DISPATCH.sendMessage(msg, a.webTransportClientAdapter);
+						break;
+					case "webRtcDataChannelHostAdapter":
+						this.DISPATCH.sendMessage(msg, a.webRtcDataChannelHostAdapter);
+						break;
+					case "webRtcDataChannelClientAdapter":
+						this.DISPATCH.sendMessage(msg, a.webRtcDataChannelClientAdapter);
+						break;
+					case "dataChannelAdapter":
+						this.DISPATCH.sendMessage(msg, a.dataChannelAdapter);
+						break;
+					case "startWebTransportServer":
+						this.DISPATCH.sendMessage(msg, a.startWebTransportServer);
+						break;
+					case "webTransportAdapter":
+						this.DISPATCH.sendMessage(msg, a.webTransportAdapter);
+						break;
+					case "webRTCAdapter":
+						this.DISPATCH.sendMessage(msg, a.webRTCAdapter);
+						break;
+					case "sseAdapter":
+						this.DISPATCH.sendMessage(msg, a.sseAdapter);
+						break;
+					case "sharedArrayBufferAdapter":
+						this.DISPATCH.sendMessage(msg, a.sharedArrayBufferAdapter);
+						break;
+					case "sharedWorkerAdapter":
+						this.DISPATCH.sendMessage(msg, a.sharedWorkerAdapter);
+						break;
+					case "serviceWorkerAdapter":
+						this.DISPATCH.sendMessage(msg, a.serviceWorkerAdapter);
+						break;
+					case "postMessageAdapter":
+						this.DISPATCH.sendMessage(msg, a.postMessageAdapter);
+						break;
+					case "startNamedPipeBroker":
+						this.DISPATCH.sendMessage(msg, a.startNamedPipeBroker);
+						break;
+					case "startMQTTBroker":
+						this.DISPATCH.sendMessage(msg, a.startMQTTBroker);
+						break;
+					case "mqttAdapter":
+						this.DISPATCH.sendMessage(msg, a.mqttAdapter);
+						break;
+					case "messageChannelAdapter":
+						this.DISPATCH.sendMessage(msg, a.messageChannelAdapter);
+						break;
+					case "messageChannel":
+						this.DISPATCH.sendMessage(msg, a.messageChannel);
+						break;
+					case "http2ClientAdapter":
+						this.DISPATCH.sendMessage(msg, a.http2ClientAdapter);
+						break;
+					case "http2ServerAdapter":
+						this.DISPATCH.sendMessage(msg, a.http2ServerAdapter);
+						break;
+					case "httpAdapter":
+						this.DISPATCH.sendMessage(msg, a.httpAdapter);
+						break;
+					case "electronIPCMainAdapter":
+						this.DISPATCH.sendMessage(msg, a.electronIPCMainAdapter);
+						break;
+					case "electronIPCRendererAdapter":
+						this.DISPATCH.sendMessage(msg, a.electronIPCRendererAdapter);
+						break;
+					case "nativeMessagingHostAdapter":
+						this.DISPATCH.sendMessage(msg, a.nativeMessagingHostAdapter);
+						break;
+					case "nativeMessagingBrowserAdapter":
+						this.DISPATCH.sendMessage(msg, a.nativeMessagingBrowserAdapter);
+						break;
+					case "childProcessAdapter":
+						this.DISPATCH.sendMessage(msg, a.childProcessAdapter);
+						break;
+					case "broadcastChannelAdapter2":
+						this.DISPATCH.sendMessage(msg, a.broadcastChannelAdapter2);
+						break;
+					case "broadcastChannelAdapter":
+						this.DISPATCH.sendMessage(msg, a.broadcastChannelAdapter);
+						break;
+					case "broadcastChannelAdapter":
+						this.DISPATCH.sendMessage(msg, a.broadcastChannelAdapter);
+						break;
+
+					default:
+						console.log("http adapter");
+						this.DISPATCH.sendMessage(msg, a.broadcastChannelAdapter);
+					// this.sendMessage(msg, a.http);
+					// this.sendMessage(msg, a.same_boundary);
+				}
+			});
+			// #endregion
+			const result = await this.invokeHandlers(msg);
+			console.log(result, "emitter.dispatch.result");
+			return result;
+		};
+		fn.drain = async (): P<V> => {
+			const startTime = Date.now();
+			const msgs = [...this.root.se._queue()];
+			this.root.se._queue().set([]);
+			await this.root.JEDI.IDB_KV.delete(this.root.se.QUEUE_KEY);
+	
+			// Process each message through flood gates (round robin)
+			for (const msg of msgs) {
+				if (msg.ttl && msg.ts !== undefined && Date.now() - msg.ts > msg.ttl) continue;
+				await this.DISPATCH(msg);
+			}
+	
+			this.t.recordQueue("drain", Date.now() - startTime); // _metrics
+		};
+		fn.enqueue = async (msg: SIG_BUS_Message): P<V> => {
+			if (this.root.DEVTOOLS_ACTIVE) {
+				log(`[THE_WIZARD][SIGNALS][ENQUEUE]`, {msg: msg}, t.deep); //this.drop.t.error
+				// this.emitDevtoolsEvent('enqueue', msg.r, msg.m || undefined, msg.id, {          priority: msg.priority,          ttl: msg.ttl        });
+				this.t.recordFeature("floodGate"); // _metrics
+				this.t.traceStage(msg.id, String(msg.r), "enqueue", {priority: msg.priority, ttl: msg.ttl}); // _metrics
+				this.t.tracePayloadSize(msg.id, JSON.stringify(msg.p ?? "").length); // _metrics
+			}
+	
+			// Normal queue processing continues here...
+			if (this.root.DEVTOOLS_ACTIVE) {
+				this.t.recordQueue("enqueue");
+			}
+	
+			this.root.se._queue().push(msg);
+			this.root.se._queue().sort((a: A, b: A) => this.root.se.priorityWeight(b.priority) - this.root.se.priorityWeight(a.priority));
+	
+			if (this.root.se._backpressure().maxQueueSize && this.root.se._queue().length > this.root.se._backpressure().maxQueueSize) {
+				const dropped = this.root.se._queue().pop();
+				if (dropped) {
+					this.root.se._deadLetters().push(dropped);
+					if (this.root.DEVTOOLS_ACTIVE) this.t.recordQueue("drop"); // _metrics
+				}
+			}
+	
+			const PAYLOAD_SIZE_CAP = 524288;
+			const persistable = this.root.se._queue().map((m: A) => {
+				const size = JSON.stringify(m.p).length;
+				return size > PAYLOAD_SIZE_CAP ? {...m, p: null} : m;
+			});
+			await this.root.JEDI.IDB_KV?.set(this.root.se.QUEUE_KEY, persistable);
+	
+			if (this.root.DEVTOOLS_ACTIVE && this.root.se._queue().some((m: A) => m.id === msg.id)) {
+				this.t.finishTrace(msg.id, "queued");
+			} // _metrics
+		};
+		fn.sendMessage = (msg: SIG_BUS_Message, adapter: SIG_BUS_Adapter, boundary?: "same-app" | "same-node" | "cross-node") => {
+			// Prepare p - JSON serialize, strip functions
+			let finalizedPayload = {...msg};
+			if (finalizedPayload.p && typeof finalizedPayload.p === "object" && boundary === "cross-node") {
+				finalizedPayload.p = JSON.parse(
+					JSON.stringify(finalizedPayload.p, (key, value) => {
+						if (typeof value === "function") return undefined;
+						return value;
+					}),
+				);
+			}
+	
+			// Send through adapter
+			if (this.root._auth_initialized) {
+				const secured = this.root.se.encryption.wrap(finalizedPayload);
+				adapter.send(secured as A);
+			} else {
+				adapter.send(finalizedPayload);
+			}
+		};
+		return fn;
+	})();
+	// #endregion
 }
-class POWER_OF_TWO {// will take care of bus fucntionality
-	/*  =============================================================================
-	 power_of_two_disruptor.ts:
- 
-	 --- DisruptorSoA.editDirect ---
-	 Peak (Best Batch): 848.46 M ops/sec
-	 Average:           725.71 M ops/sec
- 
-	 0 pass
-	 0 fail
-	 Ran 0 tests across 1 file. [641.00ms]
-	=============================== ⇦✦──⇦✦──✦──✦──←'pew pew' 🧙 [POWER_OF_TWO] */
-	public hub: HUB
+// #endregion
+//                                                                                               [POWER_OF_TWO]  SPREADSHEET ENGINE
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+class POWER_OF_TWO {
+	public root: SIGNALS
 	public readonly capacity: number;
 	public readonly mask: number;
 	// ── Structure of Arrays (SoA) Event Lanes ──────────────────────────────
@@ -4050,9 +4907,9 @@ class POWER_OF_TWO {// will take care of bus fucntionality
 	// ── Cursors ────────────────────────────────────────────────────────────
 	public writeCursor = 0;
 	public readCursor = 0;
-	constructor(hub: HUB, capacity = 65536) {// Enforce power-of-two for bitwise masking
+	constructor(root: SIGNALS, capacity = 65536) {// Enforce power-of-two for bitwise masking
 		if ((capacity & (capacity - 1)) !== 0) { throw new Error("Disruptor capacity must be a power of two."); }
-		this.hub = hub
+		this.root = root
 		this.capacity = capacity;
 		this.mask = capacity - 1;
 		this.pids = new Int32Array(capacity); // Pre-allocate contiguous typed memory blocks (Zero GC churn)
@@ -4095,11 +4952,9 @@ class POWER_OF_TWO {// will take care of bus fucntionality
 		this.flags.fill(0);
 	}
 }
-
-
-
-
-
+// #endregion
+//                                                                                                                         GOVERNER
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class GOVERNOR {
 	/* ==========================================================================
 	   The disruptor runs hot on its own.
@@ -4146,7 +5001,7 @@ class GOVERNOR {
 		  }
 	
 		  // Drain one revolution at the current tier.
-		  this.root.collider.pass();
+		  this.root.RX_S.pass();
 	
 		  // Sample load and adjust tier.
 		  this.windowActions++;
@@ -4184,14 +5039,17 @@ class GOVERNOR {
 	  }
 }
 // #endregion 
-//                                                                                                                          [SCOPE]
+//                                                                                                                        [SIGNALS]
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class SIGNALS {
 	//                                                                                                                  [CONSTANTS]
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public RX_S: VADER;
-	public hub: SIGNALS_HUB;
+	public hub: PROJECT_PLANET_KILLER;
+	public bus: GALEN_MAREK;
+	public ss_engine: POWER_OF_TWO;
 	public governor: GOVERNOR
+	public _id: BYTE_ID = __sid
 	public RTRN_TO_SDR = "_RETURN_TO_SENDER";
 	public twm = "__THE_WARLOCK_MODULE_";
 	public mc = `__THE_WARLOCK_MODULE_CACHE__`;
@@ -4201,12 +5059,14 @@ class SIGNALS {
 	public s: S = "_TC_SIGNALS_";
 	public k: A = "__SIGNALS__";
 	public activeTracer: Map<SignalKey, SIGNAL_CELL> | null = null;
-	constructor(root: A = null) {
-		this.s = Store.get("SAURON_SLAVE_REG") ?? "_TC_ROOT_";
-		this.m = Store.get("SAURON_MASTER_REG") ?? "TW_MASTER_REG";
-		this.r = Store.get("THE_WIZARD_ROOT_REG") ?? "TW_ROOT_REG";
-		this.hub = new SIGNALS_HUB(this);
-		this.RX_S = new VADER(root);
+	constructor() {
+		this.s = Store.get("SAURON_SLAVE_REG") ?? "SAURON_SLAVE_REG";
+		this.m = Store.get("SAURON_MASTER_REG") ?? "SAURON_MASTER_REG";
+		this.r = Store.get("THE_WIZARD_ROOT_REG") ?? "THE_WIZARD_ROOT_REG";
+		this.hub = new PROJECT_PLANET_KILLER(this);
+		this.RX_S = new VADER(this);
+		this.ss_engine = new POWER_OF_TWO(this);
+		this.bus = new GALEN_MAREK(this);
 		this.governor = new GOVERNOR(this)
 	}
 	public sg(k: A) {
@@ -4253,7 +5113,7 @@ class SIGNALS {
 		};
 	}
 	public create<T = A>(k: SignalKey, v?: T | (() => T), options?: SignalOptions, s = this.s, m = this.m, r = this.r): SIGNAL_CELL<T> | T {
-		const registry = this.hub.atom_reg(s, m, r);
+		const registry = this.hub.getNestedMap(s, m, r);
 		let atom = registry.get(k);
 
 		if (atom || v === undefined) {
@@ -4303,7 +5163,7 @@ class SIGNALS {
 			subsTail: undefined,
 			deps: undefined,
 			depsTail: undefined,
-			flags: ReactiveFlags.None,
+			flags: ReactiveFlags.NONE,
 			getter: getter as (previousValue?: unknown) => unknown,
 		}) as () => T;
 		Object.defineProperty(v, this.RX_S.BRAND_COMPUTED, { value: true });
