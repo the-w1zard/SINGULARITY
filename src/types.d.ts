@@ -8,7 +8,14 @@ declare global {
 		s: S;
 		k: A;
 		value: T;
-	} /** The minimal contract between the builder and a master-atom constructor. */
+		initial?: T;
+		frozen?: boolean
+		peek: <T = A>() => T | UD
+		read: <T = A>() => T | UD
+		write: <T = A>(value: T | ((previous: T) => T)) => T 
+	} 
+	interface ATOM<T = U> extends CONTRACT_MASTER<T> {}
+	/** The minimal contract between the builder and a master-atom constructor. */
 	type ATOM_BINDABLE<M extends CONTRACT_MASTER = CONTRACT_MASTER, B extends object = Record<never, never>> = (context: ATOM_BINDABLE_CONTEXT<M>) => B; /** Creates one bound atom using only the address of its master. */
 	interface ATOM_BINDABLE_CONTEXT<M extends CONTRACT_MASTER = CONTRACT_MASTER> {
 		readonly self: M;
@@ -20,6 +27,7 @@ declare global {
 		mm?: S;
 		ss?: S;
 		kk?: A;
+		
 	}
 	interface ATOM_CONTRACT_SELF {
 		readonly atom: MASTER_ATOM_KEY;
@@ -27,10 +35,10 @@ declare global {
 	interface ATOM_CONTRACT_CONFIG<T = U, M extends CONTRACT_MASTER = CONTRACT_MASTER, B extends object = Record<never, never>> {
 		atom?: MASTER_ATOM_KEY; /** One of the twelve real master atoms. Defaults to `ATOM` for contracts. */
 		value?: T | (() => T); /** Initial value, or a factory evaluated once for each contract instance. */
-		r: S;
-		m: S;
-		s: S;
-		k: A; /** Optional stable address; otherwise a fresh symbol is used per instance. */
+		r?: S;
+		m?: S;
+		s?: S;
+		k?: A; /** Optional stable address; otherwise a fresh symbol is used per instance. */
 		bindables?: readonly ATOM_BINDABLE<M, B>[]; /** Bindable atom factories; each receives only the master's address and instance. */
 		[setting: S]: U; /** Additional reusable particle settings, such as `ttl`, `history`, or `snapshot`. */
 	} /** Backend seam: construction is delegated without adding storage to the contract. */
@@ -51,7 +59,19 @@ declare global {
 		readonly bindables: readonly B[]; /** The bindables created for this instance; no master-side registry is added. */
 		value: T;
 	};
-	type ATOM_CONTRACT<T = U, M extends CONTRACT_MASTER<T> = CONTRACT_MASTER<T>, O extends object = Record<S, never>> = ((value?: T, key?: ATOM_KEY) => ATOM_CONTRACT_INSTANCE<T, M, O>) & { readonly atom: MASTER_ATOM_KEY; readonly config: Readonly<ATOM_CONTRACT_CONFIG<T, M, O>> };
+	export type ATOM_CONTRACT<T = U, M extends CONTRACT_MASTER<T> = CONTRACT_MASTER<T>, O extends object = Record<S, never>> = ( (
+        value?: T,
+        k?: ATOM_KEY,
+        s?: S,
+        m?: S,
+        r?: S,
+		...settings: U[]
+    ) => ATOM_CONTRACT_INSTANCE<T, M, O>
+) & {
+    readonly atom: MASTER_ATOM_KEY;
+    readonly config: Readonly<ATOM_CONTRACT_CONFIG<T, M, O>>;
+};
+	
 	type MASTER_ATOM_KEYS =
 		| "ATOM" // ATOMS, SIGNALS
 		| "MODULE_ATOM" // NODE MODULES, LOCALLY SOURCED MODULES, NAMED IMPORTS, CLASSES, FNS, ETC...

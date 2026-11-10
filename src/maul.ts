@@ -46,7 +46,7 @@ const RX_Flags = {
 type Pid = number;
 type Lid = number;
 
-export class VADER {
+export class DARTH_MAUL {
     // ======================================================================
     // SOA / lane storage — Warlock lane semantics preserved
     // ======================================================================

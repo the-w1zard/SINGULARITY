@@ -4007,7 +4007,6 @@ class BINARY_CBOR {
 	   encodeJSONEnvelope(envelope: any): Uint8Array {
 		   return new TextEncoder().encode(JSON.stringify(envelope))
 	   }
-   
 	   decodeJSONEnvelope(bytes: Uint8Array): any {
 		   return JSON.parse(new TextDecoder().decode(bytes))
 	   }
