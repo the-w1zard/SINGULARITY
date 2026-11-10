@@ -3736,31 +3736,12 @@ const FLAG_HAS_BINDINGS = 1 << 3;
 // ============================================================================
 // SAURON_DISRUPTOR
 // ============================================================================
-/**
-	public dirty = new Set<FlushCallback>();
-	public openScopes = new Set<BatchScope>();
-	public GLOBAL_SCOPE = Symbol("global-scope");
-	public _subscribers = new Map<string, Set<() => void>>();
-	public _externalSubscribers = new Map<string, Map<string, Map<string, Map<SignalKey, Set<(value: A) => void>>>>>();
-	public _pendingNotifications = new Set<string>();
-	public externalSubscribers = new Set<() => void>();
-    hmrPreserve
-    hmrRestore
-    withRequestScope DEFINED BUT NOT USED ANYWHERE
-    yieldToScheduler DEFINED BUT NOT USED ANYWHERE
-    scheduleChunked DEFINED BUT NOT USED ANYWHERE
-    registerDevRecorder DEFINED BUT NOT USED ANYWHERE
-    rerender DEFINED BUT NOT USED ANYWHERE
-    unmountComponent DEFINED BUT NOT USED ANYWHERE
-    mountComponent DEFINED BUT NOT USED ANYWHERE
-    subscribeToHook CALLED 6 TIMES IN THE ORIGINAL... ONCE IN URS
-    notifyHook 18 -> 4
-    */
+ 
 export class RAVEN {
-    public root: A;
+    public hub: DEATH_STAR;
     public wr: RAVENS_WAR_ROOOM
-    constructor(root: A = null, capacity = 65_536) {
-        this.root = root;
+    constructor(root: DEATH_STAR = null, capacity = 65_536) {
+        this.hub = root;
         this.cap = capacity;
         this.mask = capacity - 1;
 
@@ -3769,49 +3750,52 @@ export class RAVEN {
     }
 
     public online = false;
-    public r: A = "THEWIZARDROOTREG";
-    public m: A = "SAURONMASTERREG";
-    public s: A = "SAURON";
-    public k: A = "SAURON";
+    public r: A = "THE_WIZARD_ROOT_REG";
+    public m: A = "SAURON_MASTER_REG";
+    public s: A = "SAURON_SLAVE_REG";
+    public k: A = "DARK_STATE";
     public u: A = undefined;
+    public GLOBAL_SCOPE = Symbol("global-scope");
+    public externalSubscribers = new Set<() => void>();
+    public _externalSubscribers = new Map<string, Map<string, Map<string, Map<SignalKey, Set<(value: A) => void>>>>>();
     // ========================================================================
     // Pool capacity
     // ========================================================================
-    private cap: number;
-    private mask: number;
+    private cap: N;
+    private mask: N;
     // ========================================================================
     // Component pool — id hash → pid, all state in columns
     // ========================================================================
-    private compSlotState: Uint8Array;
-    private compSlotHash: Int32Array;
-    private compSlotPid: Int32Array;
-    private compRender: (RenderFn | undefined)[];
-    private compFlags: Uint8Array;
-    private compParent: Int32Array;
-    private compDepth: Uint8Array;
-    private compUnmountHead: Int32Array;
-    private compUnmountTail: Int32Array;
-    private compContextHead: Int32Array;
-    private compContextTail: Int32Array;
+    private compSlotState: U8;
+    private compSlotHash: I32;
+    private compSlotPid: I32;
+    private compRender: (RenderFn | UD)[];
+    private compFlags: U8;
+    private compParent: I32;
+    private compDepth: U8;
+    private compUnmountHead: I32;
+    private compUnmountTail: I32;
+    private compContextHead: I32;
+    private compContextTail: I32;
     private compCount = 1;
     // ========================================================================
     // Hook pool — (componentPid, hookNameHash, sauronIdHash) → hookPid
     // ========================================================================
-    private hookSlotState: Uint8Array;
-    private hookSlotHash: Int32Array;
-    private hookSlotPid: Int32Array;
-    private hookKind: Uint8Array;
-    private hookValue: unknown[];
-    private hookPending: unknown[];
-    private hookVersion: Int32Array;
-    private hookComponent: Int32Array;
-    private hookSlot: Int32Array;
+    private hookSlotState: U8;
+    private hookSlotHash: I32;
+    private hookSlotPid: I32;
+    private hookKind: U8;
+    private hookValue: U[];
+    private hookPending: U[];
+    private hookVersion: I32;
+    private hookComponent: I32;
+    private hookSlot: I32;
     private hookFn: (A)[];
-    private hookCleanup: ((CleanupFn | undefined))[];
-    private hookBindingHead: Int32Array;
-    private hookBindingTail: Int32Array;
-    private hookDomRefHead: Int32Array;
-    private hookDomRefTail: Int32Array;
+    private hookCleanup: ((CleanupFn | UD))[];
+    private hookBindingHead: I32;
+    private hookBindingTail: I32;
+    private hookDomRefHead: I32;
+    private hookDomRefTail: I32;
     private hookDeps: (A[] | undefined)[];
     private hookCount = 1;
     // ========================================================================
@@ -3819,71 +3803,69 @@ export class RAVEN {
     // ========================================================================
     private bindNode: (Node | undefined)[];
     private bindUpdate: (((node: Node, value: A) => void) | undefined)[];
-    private bindActive: Uint8Array;
-    private bindHook: Int32Array;
-    private bindPrev: Int32Array;
-    private bindNext: Int32Array;
+    private bindActive: U8;
+    private bindHook: I32;
+    private bindPrev: I32;
+    private bindNext: I32;
     private bindCount = 1;
     // ========================================================================
     // DOM ref pool — per hook
     // ========================================================================
     private refName: string[];
     private refNode: (Node | undefined)[];
-    private refHook: Int32Array;
-    private refNext: Int32Array;
-    private refPrev: Int32Array;
+    private refHook: I32;
+    private refNext: I32;
+    private refPrev: I32;
     private refCount = 1;
     // ========================================================================
     // Cleanup (unmount) pool — intrusive list per component
     // ========================================================================
     private cleanupFn: ((() => void) | undefined)[];
-    private cleanupComponent: Int32Array;
-    private cleanupPrev: Int32Array;
-    private cleanupNext: Int32Array;
+    private cleanupComponent: I32;
+    private cleanupPrev: I32;
+    private cleanupNext: I32;
     private cleanupCount = 1;
     // ========================================================================
     // Hook subscriber pool — hookKeyHash → callback linked list
     // ========================================================================
     private hookSubFn: ((() => void) | undefined)[];
-    private hookSubKeyHash: Int32Array;
-    private hookSubPrev: Int32Array;
-    private hookSubNext: Int32Array;
-    private hookSubHead: Int32Array;
-    private hookSubTail: Int32Array;
+    private hookSubKeyHash: I32;
+    private hookSubPrev: I32;
+    private hookSubNext: I32;
+    private hookSubHead: I32;
+    private hookSubTail: I32;
     private hookSubCount = 1;
     // ========================================================================
     // State cell pool — (s, m, r, key) → cellId
     // ========================================================================
-    private cellSlotState: Uint8Array;
-    private cellSlotHash: Int32Array;
-    private cellSlotPid: Int32Array;
+    private cellSlotState: U8;
+    private cellSlotHash: I32;
+    private cellSlotPid: I32;
     private cellKey: (string | symbol)[];
     private cellValue: unknown[];
-    private cellVersion: Int32Array;
-    private cellPersisted: Uint8Array;
-    private cellHasWritten: Uint8Array;
+    private cellVersion: I32;
+    private cellPersisted: U8;
+    private cellHasWritten: U8;
     private cellHistory: (HistoryEntry[] | undefined)[];
-    private cellDirty: Uint8Array;
-    private cellGlobalDirty: Uint8Array;
+    private cellDirty: U8;
+    private cellGlobalDirty: U8;
     // Listener pool (per cell)
     private listenerFn: ((value: A) => void)[];
-    private listenerNext: Int32Array;
-    private listenerPrev: Int32Array;
-    private listenerCell: Int32Array;
-    private cellListenerHead: Int32Array;
-    private cellListenerTail: Int32Array;
-
+    private listenerNext: I32;
+    private listenerPrev: I32;
+    private listenerCell: I32;
+    private cellListenerHead: I32;
+    private cellListenerTail: I32;
     // Waiter pool (per cell)
     private waiterResolve: ((value: A) => void)[];
-    private waiterNext: Int32Array;
-    private waiterCell: Int32Array;
-    private cellWaiterHead: Int32Array;
-    private cellWaiterTail: Int32Array;
-
+    private waiterNext: I32;
+    private waiterCell: I32;
+    private cellWaiterHead: I32;
+    private cellWaiterTail: I32;
     // Global listener pool
     private globalFn: (((key: string | symbol, value: A) => void) | undefined)[];
-    private globalNext: Int32Array;
-    private globalPrev: Int32Array;
+    private globalNext: I32;
+    private globalPrev: I32;
     private globalHead = -1;
     private globalTail = -1;
     private cellCount = 1;
@@ -3894,92 +3876,99 @@ export class RAVEN {
     // State subscriber pool (4-tier: r, m, s, k) — for store2/state2
     // ========================================================================
     private stateSubFn: (((value: A) => void) | undefined)[];
-    private stateSubHash: Int32Array;
-    private stateSubPrev: Int32Array;
-    private stateSubNext: Int32Array;
-    private stateSubHead: Int32Array;
-    private stateSubTail: Int32Array;
+    private stateSubHash: I32;
+    private stateSubPrev: I32;
+    private stateSubNext: I32;
+    private stateSubHead: I32;
+    private stateSubTail: I32;
     private stateSubCount = 1;
     // ========================================================================
     // External subscriber pool (4-tier) — for store2 delete/clear
     // ========================================================================
     private extSubFn: (((value: A) => void) | undefined)[];
-    private extSubHash: Int32Array;
-    private extSubPrev: Int32Array;
-    private extSubNext: Int32Array;
-    private extSubHead: Int32Array;
-    private extSubTail: Int32Array;
+    private extSubHash: I32;
+    private extSubPrev: I32;
+    private extSubNext: I32;
+    private extSubHead: I32;
+    private extSubTail: I32;
     private extSubCount = 1;
     // Scheduler — pooled tasks, per-priority per-scope FIFO
     // ========================================================================
     private taskFn: (() => void)[];
-    private taskPriority: Uint8Array;
-    private taskScopeHash: Int32Array;
+    private taskPriority: U8;
+    private taskScopeHash: I32;
     private taskSignal: (AbortSignal | undefined)[];
-    private taskCancelled: Uint8Array;
-    private taskPrev: Int32Array;
-    private taskNext: Int32Array;
+    private taskCancelled: U8;
+    private taskPrev: I32;
+    private taskNext: I32;
     // Per-priority per-scope queue: head/tail/count indexed by [priority * cap + scopeSlot]
-    private queueHead: Int32Array;
-    private queueTail: Int32Array;
-    private queueCount: Int32Array;
-    private scopeSlotState: Uint8Array;
-    private scopeSlotHash: Int32Array;
-    private scopeSlotId: Int32Array;
+    private queueHead: I32;
+    private queueTail: I32;
+    private queueCount: U8;
+    private scopeSlotState: U8;
+    private scopeSlotHash: I32;
+    private scopeSlotId: I32;
     private scopeSlotCount = 1;
     private taskCount = 1;
     // Scope cursors for round-robin fairness
-    private scopeCursors: Int32Array = new Int32Array(PRIORITY_COUNT);
+    private scopeCursors: I32 = new I32(PRIORITY_COUNT);
     // ========================================================================
     // Batch scope pool — async-safe, spans awaits
     // ========================================================================
-    private batchScopeActive: Uint8Array;
+    private batchScopeActive: U8;
     private batchScopeCount = 1;
     // ========================================================================
     // Dirty callback pool — replaces dirty: Set<FlushCallback>
     // ========================================================================
     private dirtyCbFn: ((() => void) | undefined)[];
-    private dirtyCbPrev: Int32Array;
-    private dirtyCbNext: Int32Array;
+    private dirtyCbPrev: I32;
+    private dirtyCbNext: I32;
     private dirtyCbHead = -1;
     private dirtyCbTail = -1;
     private dirtyCbCount = 1;
     // Dirty lane — deduped cell notification queue
     // ========================================================================
-    private dirtyLane: Int32Array;
-    private inDirtyLane: Uint8Array;
+    private dirtyLane: I32;
+    private inDirtyLane: U8;
     private dirtyLaneLen = 0;
     // ========================================================================
     // Hook notification lane — replaces pendingNotifications: Set<string>
     // ========================================================================
-    private hookNotifyLane: Int32Array;
-    private inHookNotifyLane: Uint8Array;
+    private hookNotifyLane: I32;
+    private inHookNotifyLane: U8;
     private hookNotifyLaneLen = 0;
     // ========================================================================
     // Render lane — component re-render queue
     // ========================================================================
-    private renderLane: Int32Array;
-    private  inRenderLane: Uint8Array;
+    private renderLane: I32;
+    private  inRenderLane: U8;
     private renderLaneLen = 0;
     // ========================================================================
     // Effect queue
     // ========================================================================
-    private  effectQueue: Int32Array;
+    private  effectQueue: I32;
     private effectQueueLen = 0;
     // ========================================================================
     // Runtime state
     // ========================================================================
-
+    public compId: Array<S> = [];
+    public hookKey: Array<S> = [];
     public batchDepth = 0;
     public _flushScheduled = false;
-    public _adapter: A | null = null;
-    public _currentHookState: A | null = null;
-    public _currentComponent: A | null = null;
-    public currentScope: string | symbol = "global-scope";
+    public _adapter: A | NU = null;
+    public currentScope: S | SY = "global-scope";
     public loopScheduled = false;
-    public _reactHookCursor = 0;
     public _currentRenderInstanceCheck: A = null;
     public  instanceId = `instance_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    private compInstance: Array<ComponentInstance | undefined> = [];
+    private hookKeyToPid = new Map<string, number>();
+    private hookPidToKey = new Map<number, string>();
+    public _components = new Map<string, ComponentInstance>();
+    public _subscribers = new Map<string, Set<() => void>>();
+    public _pendingNotifications = new Set<string>();
+    public _currentHookState: HookState | null = null;
+    public _currentComponent: ComponentInstance | null = null;
+    public _reactHookCursor = 0;
     private scheduleRender(componentPid: Pid): void {
         if (this.inRenderLane[componentPid]) return;
 
@@ -3993,7 +3982,7 @@ export class RAVEN {
 
         this.scheduleDrain();
     }
-    public flushHookKey = (key: string): void => {
+    public flushHookKey = (key: S): V => {
         const keyHash = this.hashString(key);
         const slot = keyHash & this.mask;
 
@@ -4015,7 +4004,7 @@ export class RAVEN {
             return;
         }
 
-        const hookPid = this.findHookByStringKey(key);
+        const hookPid = this.findHookByKey(key);
 
         if (hookPid !== -1) {
             const componentPid = this.hookComponent[hookPid];
@@ -4061,9 +4050,8 @@ export class RAVEN {
 
             sid = next;
         }
-    };
-   
-    public flushHookKey1 = (key: string): void => {
+    };   
+    public flushHookKey1 = (key: S): V => {
         const keyHash = this.hashString(key);
         const slot = keyHash & this.mask;
 
@@ -4131,38 +4119,36 @@ export class RAVEN {
     public pass(): void {
         const len = this.renderLaneLen;
         let writeIdx = 0;
-
+    
         for (let i = 0; i < len; i++) {
             const componentPid = this.renderLane[i];
-
+    
             this.inRenderLane[componentPid] = 0;
             this.compFlags[componentPid] &= ~FLAG_RENDER_PENDING;
-
-            const render = this.compRender[componentPid];
-
-            if (render && !(this.compFlags[componentPid] & FLAG_DISPOSED)) {
-                this._reactHookCursor = 0; // reset hook cursor for this render
-                this._currentComponent = this.makeComponentFacade(
-                    componentPid,
-                    String(componentPid),
-                );
-
+    
+            const instance = this.compInstance[componentPid];
+            const render = instance?.render ?? this.compRender[componentPid];
+    
+            if (instance && render && !(this.compFlags[componentPid] & FLAG_DISPOSED)) {
+                this._reactHookCursor = 0;
+                this._currentComponent = instance;
+    
                 try {
                     render();
                 } finally {
                     this._currentComponent = null;
                 }
             }
-
+    
             this.renderLane[writeIdx++] = componentPid;
         }
-
+    
         this.renderLaneLen = writeIdx;
     }
     // ========================================================================
     // Pool initialization
     // ========================================================================
-    private _initPools(cap: number): void {
+    private _initPools(cap: N): V {
         // Component pool
         this.compSlotState = new Uint8Array(cap);
         this.compSlotHash = new Int32Array(cap);
@@ -4309,11 +4295,13 @@ export class RAVEN {
 
         // Effect queue
         this.effectQueue = new Int32Array(cap);
+        this.compId = new Array(cap);
+        this.hookKey = new Array(cap);
     }
     // ========================================================================
     // Hash helpers
     // ========================================================================
-    private hashString(s: string | symbol): number {
+    private hashString(s: S | SY): N {
         const str = typeof s === "string" ? s : String(s);
         let h = 0x811c9dc5;
 
@@ -4343,7 +4331,7 @@ export class RAVEN {
     // ========================================================================
     // Component pool
     // ========================================================================
-    private findComponent(id: string): Pid {
+    private findComponent(id: S): Pid {
         const hash = this.hashString(id);
         let slot = hash & this.mask;
 
@@ -4356,25 +4344,23 @@ export class RAVEN {
 
         return -1;
     }
-    private createComponentSlot(id: string, pid: Pid): void {
+    private createComponentSlot(id: S, pid: Pid): V {
         const hash = this.hashString(id);
         let slot = hash & this.mask;
 
-        while (this.compSlotState[slot] === 1) {
-            slot = (slot + 1) & this.mask;
-        }
-
+        while (this.compSlotState[slot] === 1) { slot = (slot + 1) & this.mask; }
+        this.compId[pid] = id;
         this.compSlotState[slot] = 1;
         this.compSlotHash[slot] = hash;
         this.compSlotPid[slot] = pid;
     }
-    public mountComponent(id: string, renderFn?: RenderFn): A {
+    public mountComponent(id: S, renderFn?: RenderFn): ComponentInstance {
         const pid = this.compCount++;
-
+    
         if (pid >= this.cap) {
             throw new Error("SAURON_DISRUPTOR: component capacity exhausted");
         }
-
+    
         this.compRender[pid] = renderFn;
         this.compFlags[pid] = FLAG_MOUNTED;
         this.compParent[pid] = -1;
@@ -4383,93 +4369,13 @@ export class RAVEN {
         this.compUnmountTail[pid] = -1;
         this.compContextHead[pid] = -1;
         this.compContextTail[pid] = -1;
-
+    
         this.createComponentSlot(id, pid);
-
-        // Return facade for API compat.
-        return this.makeComponentFacade(pid, id);
-    }
-    private makeComponentFacade(pid: Pid, id: string): A {
-        const self = this;
-
-        return {
-            id,
-            __pid: pid,
-            hooks: new Proxy({}, {
-                get: (_t, key: string) => {
-                    const hookPid = self.findHookByStringKey(key);
-                    return hookPid !== -1 ? self.makeHookFacade(hookPid) : undefined;
-                },
-                set: (_t, key: string, value: A) => {
-                    // Facade write — resolve hook pid and set value.
-                    const hookPid = self.findHookByStringKey(key);
-                    if (hookPid !== -1) {
-                        self.hookValue[hookPid] = value;
-                    }
-                    return true;
-                },
-                has: (_t, key: string) => {
-                    return self.findHookByStringKey(key) !== -1;
-                },
-                deleteProperty: (_t, key: string) => {
-                    const hookPid = self.findHookByStringKey(key);
-                    if (hookPid !== -1) {
-                        self.hookValue[hookPid] = undefined;
-                        self.hookCleanup[hookPid] = undefined;
-                    }
-                    return true;
-                },
-            }),
-            unmount: new Proxy({}, {
-                add: (fn: () => void) => {
-                    self.addCleanup(pid, fn);
-                },
-                delete: (fn: () => void) => {
-                    // Find and remove cleanup by fn identity — cold path.
-                },
-                clear: () => {
-                    self.compUnmountHead[pid] = -1;
-                    self.compUnmountTail[pid] = -1;
-                },
-                forEach: (cb: (fn: () => void) => void) => {
-                    let cid = self.compUnmountHead[pid];
-                    while (cid !== -1) {
-                        const fn = self.cleanupFn[cid];
-                        if (fn) cb(fn);
-                        cid = self.cleanupNext[cid];
-                    }
-                },
-            }),
-            render: renderFn,
-            parent: null,
-            contextProviders: new Map(), // cold path, acceptable
-        };
-    }
-    private makeHookFacade(pid: Pid): A {
-        const self = this;
-
-        return {
-            __pid: pid,
-            get value() {
-                return self.hookValue[pid];
-            },
-            set value(v: A) {
-                self.hookValue[pid] = v;
-            },
-            get bindings() {
-                return self.getBindingSetForHook(pid);
-            },
-            get cleanup() {
-                return self.hookCleanup[pid];
-            },
-            set cleanup(fn: CleanupFn | undefined) {
-                self.hookCleanup[pid] = fn;
-            },
-            get domRefs() {
-                return self.getDomRefMapForHook(pid);
-            },
-            deps: self.hookDeps[pid],
-        };
+    
+        const instance = this.makeComponentInstance(pid, id, renderFn);
+        this._components.set(id, instance);
+    
+        return instance;
     }
     private getBindingSetForHook(pid: Pid): Set<A> {
         const set = new Set<A>();
@@ -4486,7 +4392,7 @@ export class RAVEN {
 
         return set;
     }
-    private getDomRefMapForHook(pid: Pid): Map<string, Node> {
+    private getDomRefMapForHook(pid: Pid): Map<S, Node> {
         const map = new Map<string, Node>();
         let rid = this.hookDomRefHead[pid];
 
@@ -4497,49 +4403,84 @@ export class RAVEN {
 
         return map;
     }
-    public unmountComponent(id: string): void {
-        const pid = this.findComponent(id);
-        if (pid === -1) return;
-
-        // Run cleanups in order.
-        let cid = this.compUnmountHead[pid];
-
-        while (cid !== -1) {
-            const next = this.cleanupNext[cid];
-            const fn = this.cleanupFn[cid];
-
-            if (fn) {
-                try { fn(); }
-                catch (error) {
-                    console.error(`[THE_CLOUD][UNMOUNT] cleanup failed for "${id}":`, error);
-                }
-            }
-
-            this.cleanupFn[cid] = undefined;
-            cid = next;
-        }
-
-        this.compUnmountHead[pid] = -1;
-        this.compUnmountTail[pid] = -1;
-
-        // Run hook cleanups.
-        for (let i = 1; i < this.hookCount; i++) {
-            if (this.hookComponent[i] === pid && this.hookCleanup[i]) {
-                try { this.hookCleanup[i]?.(); }
-                catch (error) {
-                    console.error(`[THE_CLOUD][UNMOUNT] hook cleanup failed for "${id}":`, error);
-                }
-                this.hookCleanup[i] = undefined;
+    public unmountComponent(id: S): void {
+        const instance = this._components.get(id);
+        if (!instance) return;
+    
+        for (const dispose of instance.unmount) {
+            try {
+                dispose();
+            } catch (error) {
+                console.error(
+                    `[THE_CLOUD][UNMOUNT] cleanup failed for "${id}":`,
+                    error,
+                );
             }
         }
-
-        this.compFlags[pid] |= FLAG_DISPOSED;
-        this.compRender[pid] = undefined;
+    
+        instance.unmount.clear();
+    
+        for (const hook of instance.hooks.values()) {
+            try {
+                hook.cleanup?.();
+            } catch (error) {
+                console.error(
+                    `[THE_CLOUD][UNMOUNT] hook cleanup failed for "${id}":`,
+                    error,
+                );
+            }
+        }
+    
+        instance.hooks.clear();
+    
+        const pid = instance.__pid;
+    
+        if (pid !== undefined) {
+            this.compFlags[pid] |= FLAG_DISPOSED;
+            this.compRender[pid] = undefined;
+            this.compInstance[pid] = undefined;
+        }
+    
+        this._components.delete(id);
+    }
+    private makeComponentInstance(
+        pid: Pid,
+        id: S,
+        renderFn?: RenderFn,
+    ): ComponentInstance {
+        const instance: ComponentInstance = {
+            id,
+            __pid: pid,
+            hooks: new Map<string, HookState>(),
+            unmount: new Set<() => void>(),
+            render: renderFn,
+            parent: null,
+            contextProviders: new Map(),
+        };
+    
+        this.compInstance[pid] = instance;
+        return instance;
+    }
+    private registerHookKey(key: S, hookPid: Pid): void {
+        this.hookKeyToPid.set(key, hookPid);
+        this.hookPidToKey.set(hookPid, key);
+    }
+    private unregisterHookKey(key: S, hookPid: Pid): void {
+        if (this.hookKeyToPid.get(key) === hookPid) {
+            this.hookKeyToPid.delete(key);
+        }
+    
+        if (this.hookPidToKey.get(hookPid) === key) {
+            this.hookPidToKey.delete(hookPid);
+        }
+    }
+    private findHookByKey(key: S): Pid {
+        return this.hookKeyToPid.get(key) ?? -1;
     }
     // ========================================================================
     // Hook pool
     // ========================================================================
-    private findHook(componentPid: Pid, hookNameHash: number, sauronIdHash: number): Pid {
+    private findHook(componentPid: Pid, hookNameHash: N, sauronIdHash: N): Pid {
         const hash = this.hash4(
             String(componentPid),
             String(hookNameHash),
@@ -4558,12 +4499,7 @@ export class RAVEN {
 
         return -1;
     }
-    private createHookSlot(
-        componentPid: Pid,
-        hookNameHash: number,
-        sauronIdHash: number,
-        kind: number,
-    ): Pid {
+    private createHookSlot( componentPid: Pid, hookNameHash: N, sauronIdHash: N, kind: N,    ): Pid {
         const hash = this.hash4(
             String(componentPid),
             String(hookNameHash),
@@ -4603,7 +4539,7 @@ export class RAVEN {
 
         return pid;
     }
-    private findHookByStringKey(key: string): Pid {
+    private findHookByStringKey(key: S): Pid {
         // Reconstruct hook pid from key format "componentId:hookName:sauronId"
         const parts = key.split(":");
         if (parts.length < 3) return -1;
@@ -4684,7 +4620,7 @@ export class RAVEN {
     // ========================================================================
     // DOM ref pool
     // ========================================================================
-    public registerDOMRef(name: string, node: Node): void {
+    public registerDOMRef(name: S, node: Node): V {
         const hook = this._currentHookState;
         if (!hook) return;
 
@@ -4712,7 +4648,7 @@ export class RAVEN {
             this.hookDomRefTail[hookPid] = rid;
         }
     }
-    public getDOMRef(name: string): Node | undefined {
+    public getDOMRef(name: S): Node | UD {
         const hook = this._currentHookState;
         if (!hook) return undefined;
 
@@ -4733,7 +4669,7 @@ export class RAVEN {
     // ========================================================================
     // Cleanup pool
     // ========================================================================
-    private addCleanup(componentPid: Pid, fn: () => void): number {
+    private addCleanup(componentPid: Pid, fn: () => V): N {
         const cid = this.cleanupCount++;
 
         if (cid >= this.cap) {
@@ -4759,7 +4695,7 @@ export class RAVEN {
     // ========================================================================
     // Hook subscriber pool
     // ========================================================================
-    public subscribeToHook(key: string, cb: () => void): () => void {
+    public subscribeToHook(key: S, cb: () => V): () => V {
         const keyHash = this.hashString(key);
         let slot = keyHash & this.mask;
 
@@ -4807,7 +4743,7 @@ export class RAVEN {
     // ========================================================================
     // Hook notification lane — deduped, replaces pendingNotifications Set
     // ========================================================================
-    public notifyHook(key: string): void {
+    public notifyHook(key: S): V {
         const keyHash = this.hashString(key);
         const slot = keyHash & this.mask;
 
@@ -4825,7 +4761,7 @@ export class RAVEN {
             queueMicrotask(this._flushHookNotifications);
         }
     }
-    public _flushHookNotifications = (): void => {
+    public _flushHookNotifications = (): V => {
         this._flushScheduled = false;
 
         const len = this.hookNotifyLaneLen;
@@ -4905,7 +4841,7 @@ export class RAVEN {
 
         return lid;
     }
-    private removeListener(lid: N): void {
+    private removeListener(lid: N): V {
         const cellId = this.listenerCell[lid];
         const prev = this.listenerPrev[lid];
         const next = this.listenerNext[lid];
@@ -4919,7 +4855,7 @@ export class RAVEN {
         this.listenerFn[lid] = undefined;
         this.listenerCell[lid] = -1;
     }
-    private addWaiter(cellId: N, resolve: (value: A) => void): N {
+    private addWaiter(cellId: N, resolve: (value: A) => V): N {
         const wid = this.waiterCount++;
 
         if (wid >= this.cap) {
@@ -4941,7 +4877,7 @@ export class RAVEN {
 
         return wid;
     }
-    private addGlobalListener(fn: (key: S | SY, value: A) => void): N {
+    private addGlobalListener(fn: (key: S | SY, value: A) => V): N {
         const gid = this.globalCount++;
 
         if (gid >= this.cap) {
@@ -5166,6 +5102,14 @@ export class RAVEN {
         this.flushSync();
         return result;
     }
+
+
+
+
+
+
+
+
     // ========================================================================
     // Scheduler — fully pooled, per-priority per-scope FIFO
     // ========================================================================
@@ -5447,8 +5391,7 @@ export class RAVEN {
         this.inDirtyLane[cellId] = 1;
         this.dirtyLane[this.dirtyLaneLen++] = cellId;
         this.scheduleDrain();
-    }
-    // Inside SAURON_DISRUPTOR — NOT inside RAVEN
+    } 
     private findCell(slReg: S | SY, msReg: S | SY, globalKey: S | SY, key: S | SY,): N {
         const hash = this.hash4(slReg, msReg, globalKey, key);
         let slot = hash & this.mask;
@@ -5465,642 +5408,6 @@ export class RAVEN {
     public beginHookDependencyCapture(hook: A): void { this._currentHookState = hook;    }
     public endHookDependencyCapture(): void {this._currentHookState = null;    }
     // ========================================================================
-    // Store — SoA-backed, same API
-    // ========================================================================
-    public store = { 
-        get: <T = A>( key: S | SY, opts: A = { s: this.s, m: this.m, r: this.r, }, ): T | UD => {
-            const { s, m, r } = opts;
-            const cellId = this.getOrCreateCell(s, m, r, key);
-
-            if (this.cellHasWritten[cellId]) { return MaybePromise(this.cellValue[cellId] as T); }
-
-            return MaybePromise(undefined);
-        },
-        set: <T = A>( key: S | SY, value: T | ((prev: T | UD) => T), opts: A = { s: this.s, m: this.m, r: this.r, triggerRender: true, cap: 200, },  ) => {
-            const {triggerRender = true, s, m, r, cap, } = opts;
-            const cellId = this.getOrCreateCell(s, m, r, key);
-            const prev = this.cellValue[cellId] as T | undefined;
-            const next =   typeof value === "function"   ? (value as (p: T | undefined) => T)(prev)   : value;
-            if (Object.is(prev, next)) return MaybePromise(prev);
-            if (!this.root.DRSTime._time_travel_reverting) {// Time travel — preserved.
-                let hist = this.cellHistory[cellId];
-
-                if (!hist) {hist = [];this.cellHistory[cellId] = hist; }
-
-                const lastActive =  hist.findLastIndex((e: HistoryEntry) => !e.undone) ?? -1;
-
-                if (lastActive < hist.length - 1) {  hist.length = lastActive + 1; }
-
-                hist.push({    k: (hist[hist.length - 1]?.k ?? 0) + 1,  prev, next, ts: Date.now(), undone: false,  });
-                const capVal = cap ?? 200;
-                while (hist.length > capVal) hist.shift();
-            }
-            this.cellValue[cellId] = next;
-            this.cellVersion[cellId]++;
-            this.cellHasWritten[cellId] = 1;
-            if (this.cellPersisted[cellId]) {} // In real port: write to persistent store.// Persistence sync — preserved.
-            if (triggerRender) {// Notify pipeline — deduped via lane.
-                this.scheduleGlobalNotify(key, null, opts);
-                this.scheduleNotify(key, null, null, cellId);
-            }
-
-            return MaybePromise(next as T);
-        },
-        subscribe: <T = A>( key: S | SY, listener: (value: T) => V, opts: A = { s: this.s, m: this.m, r: this.r, }, ): (() => V) => {
-            const { s, m, r } = opts;
-            const cellId = this.getOrCreateCell(s, m, r, key);
-            const lid = this.addListener(cellId, listener as (value: A) => void);
-
-            return () => {
-                this.removeListener(lid);
-            };
-        },
-        delete: (key: S | SY, opts: A = { s: this.s, m: this.m, r: this.r }): B => {
-            const { s, m, r } = opts;
-            const cellId = this.getOrCreateCell(s, m, r, key);
-
-            const existed = this.cellHasWritten[cellId] === 1;
-
-            // Notify listeners with undefined.
-            let lid = this.cellListenerHead[cellId];
-            while (lid !== -1) {
-                const next = this.listenerNext[lid];
-                const fn = this.listenerFn[lid];
-
-                if (fn) {
-                    try { fn(undefined); }
-                    catch (err) { console.error(`[Sauron Listener Error]:`, err); }
-                }
-
-                lid = next;
-            }
-
-            // Clear cell.
-            this.cellValue[cellId] = undefined;
-            this.cellHasWritten[cellId] = 0;
-            this.cellPersisted[cellId] = 0;
-            this.cellHistory[cellId] = undefined;
-
-            return MaybePromise(existed);
-        },
-        entries: <T = A>(opts: A = { s: this.s, m: this.m, r: this.r }): [S | SY, T][] => {
-            const result: [string | symbol, T][] = [];
-
-            for (let i = 1; i < this.cellCount; i++) {
-                if (this.cellHasWritten[i]) {
-                    result.push([this.cellKey[i], this.cellValue[i] as T]);
-                }
-            }
-
-            return MaybePromise(result);
-        },
-        persist: (key: S | SY, opts: A = { s: this.s, m: this.m, r: this.r  }): V => {
-            const { s, m, r } = opts;
-            const cellId = this.getOrCreateCell(s, m, r, key);
-            this.cellPersisted[cellId] = 1;
-        },
-        unpersist: (key: S | SY, opts: A = {s: this.s, m: this.m, r: this.r }): V => {
-            const { s, m, r } = opts;
-            const cellId = this.getOrCreateCell(s, m, r, key);
-            this.cellPersisted[cellId] = 0;
-        },
-        has: (key: S | SY, opts: A = {s: this.s, m: this.m, r: this.r }): B => {
-            const { s, m, r } = opts;
-            const cellId = this.getOrCreateCell(s, m, r, key);
-            return this.cellHasWritten[cellId] === 1 || this.cellPersisted[cellId] === 1;
-        },
-        clear: (opts: A = {s: this.s, m: this.m, r: this.r  }): V => {
-            for (let i = 1; i < this.cellCount; i++) {
-                this.cellValue[i] = undefined;
-                this.cellHasWritten[i] = 0;
-                this.cellDirty[i] = 0;
-                this.cellGlobalDirty[i] = 0;
-                this.cellListenerHead[i] = -1;
-                this.cellListenerTail[i] = -1;
-                this.cellWaiterHead[i] = -1;
-                this.cellWaiterTail[i] = -1;
-            }
-        },
-        clearPersistent: (opts: A = {s: this.s, m: this.m, r: this.r }): V => {
-            for (let i = 1; i < this.cellCount; i++) {
-                if (this.cellPersisted[i]) {
-                    this.cellPersisted[i] = 0;
-                }
-            }
-        },
-        _emit: (key: S | SY, opts: A = {s: this.s, m: this.m, r: this.r }): V => {
-            const { s, m, r } = opts;
-            const cellId = this.getOrCreateCell(s, m, r, key);
-
-            this.scheduleNotify(key, null, null, cellId);
-            this.scheduleGlobalNotify(key, null, opts);
-        },
-    };
-    public state = {
-        get: <T = A>(key: string | symbol, opts?: A): T | undefined => {
-            return MaybePromise(this.store.get<T>(key, opts) as T);
-        },
-        set: <T = A>(key: string | symbol, value: T | ((prev: T | undefined) => T), opts?: A): void => {
-            this.store.set(key, value, opts);
-            return MaybePromise(value as T);
-        },
-        delete: (key: string | symbol, opts?: A): boolean => {
-            return this.store.delete(key, opts) as boolean;
-        },
-        getByPrefix: <T = A>(prefix: string, opts?: A): { key: string; value: T }[] => {
-            return (this.store.entries<T>(opts) as [string | symbol, T][])
-                .filter(([key]) => typeof key === "string" && (key as string).startsWith(prefix))
-                .map(([key, value]) => ({ key: key as string, value }));
-        },
-        getAll: <T = A>(opts?: A): Record<string | symbol, T> => {
-            const result: Record<string | symbol, T> = {};
-
-            for (const [key, value] of this.store.entries<T>(opts) as [string | symbol, T][]) {
-                result[key] = value;
-            }
-
-            return result;
-        },
-        subscribe: <T = A>(key: string | symbol, listener: (value: T) => void, opts?: A): (() => void) => {
-            return this.store.subscribe<T>(key, listener, opts);
-        },
-        subscribeAll: (listener: (key: string | symbol, value: A) => void, opts?: A): (() => void) => {
-            const gid = this.addGlobalListener(listener);
-
-            return () => {
-                this.globalFn[gid] = undefined;
-            };
-        },
-        clear: (opts?: A): void => {
-            this.store.clear(opts);
-        },
-        waitFor: <T = A>(key: string | symbol, opts?: A): Promise<T> => {
-            const { s, m, r } = opts ?? {};
-            const cellId = this.getOrCreateCell(s, m, r, key);
-
-            if (this.cellHasWritten[cellId]) {
-                return Promise.resolve(this.cellValue[cellId] as T);
-            }
-
-            return new Promise<T>((resolve) => {
-                this.addWaiter(cellId, resolve as (value: A) => void);
-                this.markCellDirty(cellId, true);
-            });
-        },
-    };
-    // ========================================================================
-    // store2 — SIGNAL_CELL-backed (preserved; integrates with SIGNALS)
-    // ========================================================================
-    public signals_store = {
-        get: <T = A>(key: string | symbol, opts?: A): T | undefined => {
-            const { s, m, r } = opts ?? {};
-            const atom = this.root.SIGNALS.create<T>(key, undefined, undefined, s, m, r) as A;
-            return atom ? atom.node : undefined;
-        },
-        subscribe: <T = A>(    key: string | symbol,    listener: (value: T) => void,    opts?: A,): (() => void) => {
-            const { r, m, s } = opts ?? {};
-            const slot = this.stateSubSlot(r, m, s, key as string);
-
-            const sid = this.stateSubCount++;
-
-            if (sid >= this.cap) {
-                throw new Error("SAURON_DISRUPTOR: state subscriber capacity exhausted");
-            }
-
-            this.stateSubFn[sid] = listener as (value: A) => void;
-            this.stateSubHash[sid] = this.hash4(r, m, s, key as string);
-
-            const tail = this.stateSubTail[slot];
-
-            if (tail !== -1) {
-                this.stateSubNext[tail] = sid;
-                this.stateSubPrev[sid] = tail;
-                this.stateSubTail[slot] = sid;
-            } else {
-                this.stateSubHead[slot] = sid;
-                this.stateSubTail[slot] = sid;
-            }
-
-            return () => {
-                const prev = this.stateSubPrev[sid];
-                const next = this.stateSubNext[sid];
-
-                if (prev !== -1) this.stateSubNext[prev] = next;
-                else this.stateSubHead[slot] = next;
-
-                if (next !== -1) this.stateSubPrev[next] = prev;
-                else this.stateSubTail[slot] = prev;
-
-                this.stateSubFn[sid] = undefined;
-            };
-        },
-        set: <T = A>(    key: string | symbol,    value: A,    opts: A = {},): T | undefined => {
-                const {
-                triggerRender = true,
-                cap = 200,
-                source = "state.set",
-                s, m, r,
-            } = opts;
-
-            const atom = this.root.SIGNALS.create(
-                key,
-                typeof value === "function" ? value() : value,
-                opts, s, m, r,
-            ) as A;
-
-            atom.historyMax = cap;
-
-            const next = atom.write(
-                (previous: A) =>
-                    typeof value === "function"
-                        ? (value as (p: T | undefined) => T)(previous)
-                        : value,
-                { source, triggerRender },
-            );
-
-            // Notify pooled 4-tier subscribers — replaces nested Map walk.
-            const slot = this.stateSubSlot(r, m, s, key as string);
-            let sid = this.stateSubHead[slot];
-
-            while (sid !== -1) {
-                const nextSid = this.stateSubNext[sid];
-                const fn = this.stateSubFn[sid];
-
-                if (fn) {
-                    try { fn(next); }
-                    catch (error) {
-                        console.error(
-                            `[Sauron:state.subscribeAll] listener failed for "${String(atom.key)}":`,
-                            error,
-                        );
-                    }
-                }
-
-                sid = nextSid;
-            }
-
-            return MaybePromise(next);
-        },
-        delete: (key: string | symbol, opts?: A): boolean => {
-            const { s, m, r } = opts ?? {};
-            const registry = this.root.SIGNALS.atom_reg(s, m, r);
-            const atom = this.root.SIGNALS.get(key, s, m, r);
-
-            if (!atom) return false;
-
-            const previous = atom.peek();
-            const resolvedKey = this.root.SIGNALS.resolveKey(key, s, m, r);
-
-            // Pooled state subscribers.
-            const slot = this.stateSubSlot(r, m, s, key as string);
-            let sid = this.stateSubHead[slot];
-
-            while (sid !== -1) {
-                const nextSid = this.stateSubNext[sid];
-                const fn = this.stateSubFn[sid];
-
-                if (fn) {
-                    try {
-                        fn({
-                            key: atom.key,
-                            previous,
-                            current: undefined,
-                            version: atom.version + 1,
-                            timestamp: Date.now(),
-                            source: "state.delete",
-                        });
-                    } catch (error) {
-                        console.error(
-                            `[Sauron:state.delete] listener failed for "${String(key)}":`,
-                            error,
-                        );
-                    }
-                }
-
-                sid = nextSid;
-            }
-
-            // Pooled external subscribers.
-            const extHash = this.hash4(r, m, s, key as string);
-            let extSlot = extHash & this.mask;
-
-            while (this.extSubHead[extSlot] !== -1 || this.extSubTail[extSlot] !== -1) {
-                if (this.extSubHash[this.extSubHead[extSlot]] === extHash) {
-                    break;
-                }
-                extSlot = (extSlot + 1) & this.mask;
-            }
-
-            let eid = this.extSubHead[extSlot];
-
-            while (eid !== -1) {
-                const nextEid = this.extSubNext[eid];
-                const fn = this.extSubFn[eid];
-
-                if (fn) {
-                    try { fn(undefined); }
-                    catch (error) {
-                        console.error(
-                            `[Sauron:state.delete] external subscriber failed for "${String(key)}":`,
-                            error,
-                        );
-                    }
-                }
-
-                eid = nextEid;
-            }
-
-            registry.delete(resolvedKey);
-            return MaybePromise(true);
-        },
-        set1: <T = A>( key: string | symbol, value: A, opts: A = {}, ): T | undefined => {
-            const {
-                triggerRender = true,
-                cap = 200,
-                source = "state.set",
-                s, m, r,
-            } = opts;
-
-            const atom = this.root.SIGNALS.create(
-                key,
-                typeof value === "function" ? value() : value,
-                opts, s, m, r,
-            ) as A;
-
-            atom.historyMax = cap;
-
-            const next = atom.write(
-                (previous: A) =>
-                    typeof value === "function"
-                        ? (value as (p: T | undefined) => T)(previous)
-                        : value,
-                { source, triggerRender },
-            );
-
-            const listeners = this.__subscribers.get(r)?.get(m)?.get(s)?.get(key as string);
-
-            if (listeners) {
-                for (const listener of listeners) {
-                    try { listener(next); }
-                    catch (error) {
-                        console.error(
-                            `[Sauron:state.subscribeAll] listener failed for "${String(atom.key)}":`,
-                            error,
-                        );
-                    }
-                }
-            }
-
-            return MaybePromise(next);
-        },
-        subscribe1: <T = A>(
-            key: string | symbol,
-            listener: (value: T) => void,
-            opts?: A,
-        ): (() => void) => {
-            const { r, m, s } = opts ?? {};
-
-            let msMap = this.__subscribers.get(r);
-            if (!msMap) {
-                msMap = new Map();
-                this.__subscribers.set(r, msMap);
-            }
-
-            let slMap = msMap.get(m);
-            if (!slMap) {
-                slMap = new Map();
-                msMap.set(m, slMap);
-            }
-
-            let keyMap = slMap.get(s);
-            if (!keyMap) {
-                keyMap = new Map();
-                slMap.set(s, keyMap);
-            }
-
-            let listeners = keyMap.get(key as string);
-            if (!listeners) {
-                listeners = new Set();
-                keyMap.set(key as string, listeners);
-            }
-
-            listeners.add(listener);
-
-            return () => {
-                listeners!.delete(listener);
-                if (listeners!.size === 0) keyMap!.delete(key as string);
-                if (keyMap!.size === 0) slMap!.delete(s);
-                if (slMap!.size === 0) msMap!.delete(m);
-                if (msMap!.size === 0) this.__subscribers.delete(r);
-            };
-        },
-        delete1: (key: string | symbol, opts?: A): boolean => {
-            const { s, m, r } = opts ?? {};
-            const registry = this.root.SIGNALS.atom_reg(s, m, r);
-            const atom = this.root.SIGNALS.get(key, s, m, r);
-
-            if (!atom) return false;
-
-            const previous = atom.peek();
-            const resolvedKey = this.root.SIGNALS.resolveKey(key, s, m, r);
-
-            const listeners = this.__subscribers.get(r)?.get(m)?.get(s)?.get(key as string);
-
-            if (listeners) {
-                for (const listener of listeners) {
-                    try {
-                        listener({
-                            key: atom.key,
-                            previous,
-                            current: undefined,
-                            version: atom.version + 1,
-                            timestamp: Date.now(),
-                            source: "state.delete",
-                        });
-                    } catch (error) {
-                        console.error(
-                            `[Sauron:state.delete] listener failed for "${String(key)}":`,
-                            error,
-                        );
-                    }
-                }
-            }
-
-            const subscribers = this._externalSubscribers.get(r)?.get(m)?.get(s)?.get(key as string);
-
-            if (subscribers) {
-                for (const notify of subscribers) {
-                    try { notify(undefined); }
-                    catch (error) {
-                        console.error(
-                            `[Sauron:state.delete] external subscriber failed for "${String(key)}":`,
-                            error,
-                        );
-                    }
-                }
-            }
-
-            registry.delete(resolvedKey);
-            return MaybePromise(true);
-        },
-        entries: <T = A>(opts?: A): [string | symbol, T][] => {
-            const { s, m, r } = opts ?? {};
-            const registry = this.root.SIGNALS.atom_reg(s, m, r);
-
-            return MaybePromise(
-                [...registry.entries()].map(([key, atom]: A) => [key, atom.read() as T]),
-            );
-        },
-        persist: (key: string | symbol, opts?: A): void => {
-            const { s, m, r } = opts ?? {};
-            const atom = this.root.SIGNALS.atom_reg(s, m, r).get(key);
-
-            if (!atom) return;
-
-            atom.persisted = true;
-            setSS(String(atom.key), atom.peek());
-        },
-        unpersist: (key: string | symbol, opts?: A): void => {
-            const { s, m, r } = opts ?? {};
-            const atom = this.root.SIGNALS.get(key, s, m, r);
-
-            if (!atom) return;
-
-            atom.persisted = false;
-            deleteSS(String(atom.key));
-        },
-        has: (key: string | symbol, opts?: A): boolean => {
-            const { s, m, r } = opts ?? {};
-            const registry = this.root.SIGNALS.atom_reg(s, m, r);
-            const resolvedKey = this.root.SIGNALS.resolveKey(key, s, m, r);
-            return registry.has(resolvedKey);
-        },
-        clear: (opts?: A): void => {
-            const { s, m, r } = opts ?? {};
-            const registry = this.root.SIGNALS.atom_reg(s, m, r);
-
-            for (const atom of registry.values() as Iterable<A>) {
-                for (const notify of atom.externalSubscribers) {
-                    try { notify(); }
-                    catch (error) {
-                        console.error(`[Sauron:state.clear] external subscriber failed:`, error);
-                    }
-                }
-
-                atom.listeners.clear();
-                atom.externalSubscribers.clear();
-                atom.waiters.clear();
-            }
-
-            registry.clear();
-        },
-        clearPersistent: (opts?: A): void => {
-            const { s, m, r } = opts ?? {};
-            const registry = this.root.SIGNALS.atom_reg(s, m, r);
-
-            for (const atom of registry.values() as Iterable<A>) {
-                if (!atom.persisted) continue;
-                atom.persisted = false;
-                deleteSS(String(atom.key));
-            }
-        },
-        _emit: (key: string | symbol, opts?: A): void => {
-            const { s, m, r } = opts ?? {};
-            const atom = this.root.SIGNALS.atom_reg(s, m, r).get("_LISTENERS").get(key);
-
-            if (!atom) return;
-
-            const value = atom.peek();
-
-            for (const listener of atom.listeners) {
-                listener({
-                    key: atom.key,
-                    previous: value,
-                    current: value,
-                    version: atom.version,
-                    timestamp: Date.now(),
-                    source: "state.emit",
-                });
-            }
-
-            for (const notify of atom.externalSubscribers) {
-                notify();
-            }
-        },
-    };
-    public signals_state = {
-        get: <T = A>(key: string | symbol, opts?: A): T | undefined => {
-            return MaybePromise(this.store.get<T>(key, opts) as T);
-        },
-        set: <T = A>(key: string | symbol, value: T | ((prev: T | undefined) => T), opts?: A) => {
-            this.store.set(key, value, {
-                triggerRender: opts?.triggerRender ?? true,
-                s: opts?.s, m: opts?.m, r: opts?.r,
-                source: "state.set",
-            });
-            return MaybePromise(value as T);
-        },
-        delete: (key: string | symbol, opts?: A): boolean => {
-            return this.store.delete(key, opts) as boolean;
-        },
-        getByPrefix: <T = A>(prefix: string, opts?: A) => {
-            return (this.store.entries<T>(opts) as [string | symbol, T][])
-                .filter(([key]) => typeof key === "string" && (key as string).startsWith(prefix))
-                .map(([key, value]) => ({ key: key as string, value }));
-        },
-        getAll: <T = A>(opts?: A): Record<string | symbol, T> => {
-            const result: Record<string | symbol, T> = {};
-
-            for (const [key, value] of this.store.entries<T>(opts) as [string | symbol, T][]) {
-                result[key] = value;
-            }
-
-            return result;
-        },
-        subscribe: <T = A>(key: string | symbol, listener: (value: T) => void, opts?: A): (() => void) => {
-            return this.store.subscribe<T>(key, listener, opts);
-        },
-        subscribeAll: (listener: (key: string | symbol, value: unknown) => void, opts?: A): (() => void) => {
-            const { s, m, r } = opts ?? {};
-            const scope = this.root.SIGNALS.get(s, m, r);
-            return () => { scope.listeners.delete(listener); };
-        },
-        clear: (opts?: A): void => {
-            this.store.clear(opts);
-        },
-        waitFor: <T = A>(key: string | symbol, opts?: A): Promise<T> => {
-            const { s, m, r } = opts ?? {};
-            const atom = this.root.SIGNALS.get(s, m, r);
-
-            if (!atom) {
-                return new Promise<T>(() => {});
-            }
-
-            if (atom.hasWritten) {
-                return Promise.resolve(atom.read());
-            }
-
-            return atom.waitForNext();
-        },
-    };
-    // ── helper: resolve or create the 4-tier subscriber slot ──
-    private stateSubSlot(r: A, m: A, s: A, key: string | symbol): number {
-        const hash = this.hash4(r, m, s, key);
-        let slot = hash & this.mask;
-    
-        while (this.stateSubHead[slot] !== -1 || this.stateSubTail[slot] !== -1) {
-            if (this.stateSubHash[this.stateSubHead[slot]] === hash) {
-                return slot;
-            }
-            slot = (slot + 1) & this.mask;
-        }
-    
-        // Initialize empty slot.
-        this.stateSubHead[slot] = -1;
-        this.stateSubTail[slot] = -1;
-        return slot;
-    }
-    // ========================================================================
     // Dev / HMR / adapter — preserved
     // ========================================================================
     public _devRecord:  ((componentId: S, hookName: S, sauronId: S, key: S, value: A) => V) | NU = null;
@@ -6116,16 +5423,16 @@ export class RAVEN {
     public getCurrentComponent = (): A => {
         if ((isReact as A) === true && (IS_THE_WIZARD as A) === false) {
             if (this._currentComponent) return this._currentComponent;
-            return this.root;
+            return this.hub;
         } else {
             if (!(init_hooks_context as A)) {
-                (this as A).set("_root", this.root, true, "SAURON_SLAVE_REG", "SAURON_MASTER_REG", "SAURON_ROOT_REG");
+                (this as A).set("_root", this.hub, true, "SAURON_SLAVE_REG", "SAURON_MASTER_REG", "SAURON_ROOT_REG");
                 init_hooks_context = true;
             }
             const updatedCtx = (this as A).get( "_root", "SAURON_SLAVE_REG", "SAURON_MASTER_REG", "SAURON_ROOT_REG", );
             if (updatedCtx && updatedCtx.id === "SAURON_ROOT_REG") { return updatedCtx; }
 
-            return this.root;
+            return this.hub;
         }
     };
     public setCurrentComponent(instance: A | NU): V { this._currentComponent = instance;    }
@@ -6210,12 +5517,9 @@ export class RAVEN {
             }
         }
     }
-
     // ========================================================================
     // Broadcast / chains — thin wrappers, preserved
-    // ========================================================================
-    // ── priorityIndex — use constants, not indexOf ──
-
+    // ======================================================================== 
     private runEffect(pid: Pid): void {
         if (this.compFlags[this.hookComponent[pid]] & FLAG_DISPOSED) return;
 
@@ -6234,6 +5538,35 @@ export class RAVEN {
 
         this.hookCleanup[pid] =
             typeof cleanup === "function" ? (cleanup as CleanupFn) : undefined;
+    }
+    public hmrPreserve(): Map<string, Map<string, A>> {
+        const snapshot = new Map<string, Map<string, A>>();
+        for (let pid = 0; pid < this.compCount; pid++) {
+            if (this.compFlags[pid] & FLAG_DISPOSED) continue;
+            const id = this.compId[pid];
+            if (!id) continue;
+            const hooks = new Map<string, A>();
+            for (let hid = 0; hid < this.hookCount; hid++) {
+                if (this.hookComponent[hid] !== pid) continue;
+                const key = this.hookKey[hid];
+                if (!key) continue;
+                hooks.set(key, this.hookValue[hid]);
+            }
+            snapshot.set(id, hooks);
+        }
+        return snapshot;
+    }
+    public hmrRestore(snapshot: Map<string, Map<string, A>>): void {
+        snapshot.forEach((hooks, id) => {
+            const pid = this.findComponent(id);
+            if (pid === -1) return;
+            hooks.forEach((value, key) => {
+                const hid = this.findHookByStringKey(key);
+                if (hid === -1) return;
+                if (this.hookComponent[hid] !== pid) return;
+                this.hookValue[hid] = value;
+            });
+        });
     }
     public dark = (() => {
         const fn = <T = A>(key: A, s?: A, m?: A, r?: A) => {
@@ -6401,7 +5734,7 @@ export class RAVEN {
                 set current(v: T) { this.hookValue[pid] = v; },
             };
         }
-       fn.memo=<T>(factory: () => T, deps: A[]): T=>{
+        fn.memo=<T>(factory: () => T, deps: A[]): T=>{
             const component = this._currentComponent;
             const componentPid = component?.__pid ?? -1;
         
@@ -6419,12 +5752,844 @@ export class RAVEN {
         
             return value;
         }
-
-
         return fn
 	})();
+
+    // ========================================================================
+    // Store — SoA-backed, same API
+    // ========================================================================
+    public store = { 
+        get: <T = A>( key: S | SY, opts: A = { s: this.s, m: this.m, r: this.r, }, ): T | UD => {
+            const { s, m, r } = opts;
+            const cellId = this.getOrCreateCell(s, m, r, key);
+
+            if (this.cellHasWritten[cellId]) { return MaybePromise(this.cellValue[cellId] as T); }
+
+            return MaybePromise(undefined);
+        },
+        set: <T = A>( key: S | SY, value: T | ((prev: T | UD) => T), opts: A = { s: this.s, m: this.m, r: this.r, triggerRender: true, cap: 200, },  ) => {
+            const {triggerRender = true, s, m, r, cap, } = opts;
+            const cellId = this.getOrCreateCell(s, m, r, key);
+            const prev = this.cellValue[cellId] as T | undefined;
+            const next =   typeof value === "function"   ? (value as (p: T | undefined) => T)(prev)   : value;
+            if (Object.is(prev, next)) return MaybePromise(prev);
+          /**
+           *   if (!this.hub.DRSTime._time_travel_reverting) {// Time travel — preserved.
+          let hist = this.cellHistory[cellId];
+
+          if (!hist) {hist = [];this.cellHistory[cellId] = hist; }
+
+          const lastActive =  hist.findLastIndex((e: HistoryEntry) => !e.undone) ?? -1;
+
+          if (lastActive < hist.length - 1) {  hist.length = lastActive + 1; }
+
+          hist.push({    k: (hist[hist.length - 1]?.k ?? 0) + 1,  prev, next, ts: Date.now(), undone: false,  });
+          const capVal = cap ?? 200;
+          while (hist.length > capVal) hist.shift();
+      }
+           */
+            this.cellValue[cellId] = next;
+            this.cellVersion[cellId]++;
+            this.cellHasWritten[cellId] = 1;
+            if (this.cellPersisted[cellId]) {} // In real port: write to persistent store.// Persistence sync — preserved.
+            if (triggerRender) {// Notify pipeline — deduped via lane.
+                this.scheduleGlobalNotify(key, null, opts);
+                this.scheduleNotify(key, null, null, cellId);
+            }
+
+            return MaybePromise(next as T);
+        },
+        subscribe: <T = A>( key: S | SY, listener: (value: T) => V, opts: A = { s: this.s, m: this.m, r: this.r, }, ): (() => V) => {
+            const { s, m, r } = opts;
+            const cellId = this.getOrCreateCell(s, m, r, key);
+            const lid = this.addListener(cellId, listener as (value: A) => void);
+
+            return () => {
+                this.removeListener(lid);
+            };
+        },
+        delete: (key: S | SY, opts: A = { s: this.s, m: this.m, r: this.r }): B => {
+            const { s, m, r } = opts;
+            const cellId = this.getOrCreateCell(s, m, r, key);
+
+            const existed = this.cellHasWritten[cellId] === 1;
+
+            // Notify listeners with undefined.
+            let lid = this.cellListenerHead[cellId];
+            while (lid !== -1) {
+                const next = this.listenerNext[lid];
+                const fn = this.listenerFn[lid];
+
+                if (fn) {
+                    try { fn(undefined); }
+                    catch (err) { console.error(`[Sauron Listener Error]:`, err); }
+                }
+
+                lid = next;
+            }
+
+            // Clear cell.
+            this.cellValue[cellId] = undefined;
+            this.cellHasWritten[cellId] = 0;
+            this.cellPersisted[cellId] = 0;
+            this.cellHistory[cellId] = undefined;
+
+            return MaybePromise(existed);
+        },
+        entries: <T = A>(opts: A = { s: this.s, m: this.m, r: this.r }): [S | SY, T][] => {
+            const result: [string | symbol, T][] = [];
+
+            for (let i = 1; i < this.cellCount; i++) {
+                if (this.cellHasWritten[i]) {
+                    result.push([this.cellKey[i], this.cellValue[i] as T]);
+                }
+            }
+
+            return MaybePromise(result);
+        },
+        persist: (key: S | SY, opts: A = { s: this.s, m: this.m, r: this.r  }): V => {
+            const { s, m, r } = opts;
+            const cellId = this.getOrCreateCell(s, m, r, key);
+            this.cellPersisted[cellId] = 1;
+        },
+        unpersist: (key: S | SY, opts: A = {s: this.s, m: this.m, r: this.r }): V => {
+            const { s, m, r } = opts;
+            const cellId = this.getOrCreateCell(s, m, r, key);
+            this.cellPersisted[cellId] = 0;
+        },
+        has: (key: S | SY, opts: A = {s: this.s, m: this.m, r: this.r }): B => {
+            const { s, m, r } = opts;
+            const cellId = this.getOrCreateCell(s, m, r, key);
+            return this.cellHasWritten[cellId] === 1 || this.cellPersisted[cellId] === 1;
+        },
+        clear: (opts: A = {s: this.s, m: this.m, r: this.r  }): V => {
+            for (let i = 1; i < this.cellCount; i++) {
+                this.cellValue[i] = undefined;
+                this.cellHasWritten[i] = 0;
+                this.cellDirty[i] = 0;
+                this.cellGlobalDirty[i] = 0;
+                this.cellListenerHead[i] = -1;
+                this.cellListenerTail[i] = -1;
+                this.cellWaiterHead[i] = -1;
+                this.cellWaiterTail[i] = -1;
+            }
+        },
+        clearPersistent: (opts: A = {s: this.s, m: this.m, r: this.r }): V => {
+            for (let i = 1; i < this.cellCount; i++) {
+                if (this.cellPersisted[i]) {
+                    this.cellPersisted[i] = 0;
+                }
+            }
+        },
+        _emit1: (key: S | SY, opts: A = {s: this.s, m: this.m, r: this.r }): V => {
+            const { s, m, r } = opts;
+            const cellId = this.getOrCreateCell(s, m, r, key);
+
+            this.scheduleNotify(key, null, null, cellId);
+            this.scheduleGlobalNotify(key, null, opts);
+        },
+        _emit: (key: string | symbol, opts?: A): void => {
+            const { s, m, r } = opts ?? {};
+            const cellId = this.findCell(s, m, r, key);
+        
+            // Match original semantics: no cell → no subscribers → early return.
+            if (cellId === -1) return;
+        
+            const value = this.cellValue[cellId];
+            const version = this.cellVersion[cellId];
+        
+            // ── 1. Per-key listeners (pooled stateSub linked list) ──────────────────
+            const subSlot = this.stateSubSlot(r, m, s, key as string);
+            let sid = this.stateSubHead[subSlot];
+        
+            while (sid !== -1) {
+                const next = this.stateSubNext[sid];
+                const fn = this.stateSubFn[sid];
+        
+                if (fn) {
+                    try {
+                        fn({
+                            key,
+                            previous: value,
+                            current: value,
+                            version,
+                            timestamp: Date.now(),
+                            source: "state.emit",
+                        });
+                    } catch (error) {
+                        console.error(
+                            `[Sauronstate._emit] listener failed for "${String(key)}":`,
+                            error,
+                        );
+                    }
+                }
+        
+                sid = next;
+            }
+        
+            // ── 2. External subscribers (pooled extSub list, open-addressed hash) ───
+            const extHash = this.hash4(r, m, s, key as string);
+            let extSlot = extHash & this.mask;
+        
+            while (
+                this.extSubHead[extSlot] !== -1 &&
+                this.extSubTail[extSlot] !== -1
+            ) {
+                if (this.extSubHash[this.extSubHead[extSlot]] === extHash) break;
+                extSlot = (extSlot + 1) & this.mask;
+            }
+        
+            let eid = this.extSubHead[extSlot];
+        
+            while (eid !== -1) {
+                const nextEid = this.extSubNext[eid];
+                const fn = this.extSubFn[eid];
+        
+                if (fn) {
+                    try {
+                        fn(eid);
+                    } catch (error) {
+                        console.error(
+                            `[Sauronstate._emit] external subscriber failed for "${String(key)}":`,
+                            error,
+                        );
+                    }
+                }
+        
+                eid = nextEid;
+            }
+        },
+
+    };
+    public state = {
+        get: <T = A>(key: string | symbol, opts?: A): T | undefined => {
+            return MaybePromise(this.store.get<T>(key, opts) as T);
+        },
+        set: <T = A>(key: string | symbol, value: T | ((prev: T | undefined) => T), opts?: A): void => {
+            this.store.set(key, value, opts);
+            return MaybePromise(value as T);
+        },
+        delete: (key: string | symbol, opts?: A): boolean => {
+            return this.store.delete(key, opts) as boolean;
+        },
+        getByPrefix: <T = A>(prefix: string, opts?: A): { key: string; value: T }[] => {
+            return (this.store.entries<T>(opts) as [string | symbol, T][])
+                .filter(([key]) => typeof key === "string" && (key as string).startsWith(prefix))
+                .map(([key, value]) => ({ key: key as string, value }));
+        },
+        getAll: <T = A>(opts?: A): Record<string | symbol, T> => {
+            const result: Record<string | symbol, T> = {};
+
+            for (const [key, value] of this.store.entries<T>(opts) as [string | symbol, T][]) {
+                result[key] = value;
+            }
+
+            return result;
+        },
+        subscribe: <T = A>(key: string | symbol, listener: (value: T) => void, opts?: A): (() => void) => {
+            return this.store.subscribe<T>(key, listener, opts);
+        },
+        subscribeAll: (listener: (key: string | symbol, value: A) => void, opts?: A): (() => void) => {
+            const gid = this.addGlobalListener(listener);
+
+            return () => {
+                this.globalFn[gid] = undefined;
+            };
+        },
+        clear: (opts?: A): void => {
+            this.store.clear(opts);
+        },
+        waitFor: <T = A>(key: string | symbol, opts?: A): Promise<T> => {
+            const { s, m, r } = opts ?? {};
+            const cellId = this.getOrCreateCell(s, m, r, key);
+
+            if (this.cellHasWritten[cellId]) {
+                return Promise.resolve(this.cellValue[cellId] as T);
+            }
+
+            return new Promise<T>((resolve) => {
+                this.addWaiter(cellId, resolve as (value: A) => void);
+                this.markCellDirty(cellId, true);
+            });
+        },
+    };
+    // ========================================================================
+    // store2 — SIGNAL_CELL-backed (preserved; integrates with SIGNALS)
+    // ========================================================================
+    public signals_store = {
+        get: <T = A>(key: string | symbol, opts?: A): T | undefined => {
+            const { s, m, r } = opts ?? {};
+            const atom = this.hub.signals.create<T>(key, undefined, undefined, s, m, r) as A;
+            return atom ? atom.node : undefined;
+        },
+        subscribe: <T = A>(    key: string | symbol,    listener: (value: T) => void,    opts?: A,): (() => void) => {
+            const { r, m, s } = opts ?? {};
+            const slot = this.stateSubSlot(r, m, s, key as string);
+
+            const sid = this.stateSubCount++;
+
+            if (sid >= this.cap) { throw new Error("SAURON_DISRUPTOR: state subscriber capacity exhausted"); }
+
+            this.stateSubFn[sid] = listener as (value: A) => void;
+            this.stateSubHash[sid] = this.hash4(r, m, s, key as string);
+
+            const tail = this.stateSubTail[slot];
+
+            if (tail !== -1) {
+                this.stateSubNext[tail] = sid;
+                this.stateSubPrev[sid] = tail;
+                this.stateSubTail[slot] = sid;
+            } else {
+                this.stateSubHead[slot] = sid;
+                this.stateSubTail[slot] = sid;
+            }
+
+            return () => {
+                const prev = this.stateSubPrev[sid];
+                const next = this.stateSubNext[sid];
+
+                if (prev !== -1) this.stateSubNext[prev] = next;
+                else this.stateSubHead[slot] = next;
+
+                if (next !== -1) this.stateSubPrev[next] = prev;
+                else this.stateSubTail[slot] = prev;
+
+                this.stateSubFn[sid] = undefined;
+            };
+        },
+        set: <T = A>(key: S | SY, value: A, opts: A = {},): T | UD => {
+                const {
+                triggerRender = true,
+                cap = 200,
+                source = "state.set",
+                s, m, r,
+            } = opts;
+
+            const atom = this.hub.signals.create(
+                key,
+                typeof value === "function" ? value() : value,
+                opts, s, m, r,
+            ) as A;
+
+            atom.historyMax = cap;
+
+            const next = atom.write(
+                (previous: A) =>
+                    typeof value === "function"
+                        ? (value as (p: T | undefined) => T)(previous)
+                        : value,
+                { source, triggerRender },
+            );
+
+            // Notify pooled 4-tier subscribers — replaces nested Map walk.
+            const slot = this.stateSubSlot(r, m, s, key as string);
+            let sid = this.stateSubHead[slot];
+
+            while (sid !== -1) {
+                const nextSid = this.stateSubNext[sid];
+                const fn = this.stateSubFn[sid];
+
+                if (fn) {
+                    try { fn(next); }
+                    catch (error) {
+                        console.error(
+                            `[Sauron:state.subscribeAll] listener failed for "${String(atom.key)}":`,
+                            error,
+                        );
+                    }
+                }
+
+                sid = nextSid;
+            }
+
+            return MaybePromise(next);
+        },
+        delete: (key: string | symbol, opts?: A): boolean => {
+            const { s, m, r } = opts ?? {};
+            const registry = this.hub.state.wr._signals
+            const atom = registry.get(key);
+
+            if (!atom) return false;
+
+            const previous = atom.peek();
+            const resolvedKey = key
+
+            // Pooled state subscribers.
+            const slot = this.stateSubSlot(r, m, s, key as string);
+            let sid = this.stateSubHead[slot];
+
+            while (sid !== -1) {
+                const nextSid = this.stateSubNext[sid];
+                const fn = this.stateSubFn[sid];
+
+                if (fn) {
+                    try {
+                        fn({
+                            key: atom.key,
+                            previous,
+                            current: undefined,
+                            version: atom.version + 1,
+                            timestamp: Date.now(),
+                            source: "state.delete",
+                        });
+                    } catch (error) {
+                        console.error(
+                            `[Sauron:state.delete] listener failed for "${String(key)}":`,
+                            error,
+                        );
+                    }
+                }
+
+                sid = nextSid;
+            }
+
+            // Pooled external subscribers.
+            const extHash = this.hash4(r, m, s, key as string);
+            let extSlot = extHash & this.mask;
+
+            while (this.extSubHead[extSlot] !== -1 || this.extSubTail[extSlot] !== -1) {
+                if (this.extSubHash[this.extSubHead[extSlot]] === extHash) {
+                    break;
+                }
+                extSlot = (extSlot + 1) & this.mask;
+            }
+
+            let eid = this.extSubHead[extSlot];
+
+            while (eid !== -1) {
+                const nextEid = this.extSubNext[eid];
+                const fn = this.extSubFn[eid];
+
+                if (fn) {
+                    try { fn(undefined); }
+                    catch (error) {
+                        console.error(
+                            `[Sauron:state.delete] external subscriber failed for "${String(key)}":`,
+                            error,
+                        );
+                    }
+                }
+
+                eid = nextEid;
+            }
+
+            registry.delete(resolvedKey);
+            return MaybePromise(true);
+        },
+        set1: <T = A>( key: string | symbol, value: A, opts: A = {}, ): T | undefined => {
+            const {
+                triggerRender = true,
+                cap = 200,
+                source = "state.set",
+                s, m, r,
+            } = opts;
+
+            const atom = this.hub.signals.create( key, typeof value === "function" ? value() : value, opts, s, m, r, ) as A;
+            atom.historyMax = cap;
+
+            const next = atom.write(
+                (previous: A) =>
+                    typeof value === "function"  ? (value as (p: T | undefined) => T)(previous)  : value,
+                { source, triggerRender },
+            );
+
+            const listeners = this.hub.state.wr._subscribersMaul.get(r)?.get(m)?.get(s)?.get(key as string);
+
+            if (listeners) {
+                for (const listener of listeners) {
+                    try { listener(next); }
+                    catch (error) {
+                        console.error(
+                            `[Sauron:state.subscribeAll] listener failed for "${String(atom.key)}":`,
+                            error,
+                        );
+                    }
+                }
+            }
+
+            return MaybePromise(next);
+        },
+        subscribe1: <T = A>(  key: string | symbol,  listener: (value: T) => void,   opts?: A,  ): (() => void) => {
+            const { r, m, s } = opts ?? {};
+
+            let msMap = this.hub.state.wr._subscribersMaul.get(r);
+            if (!msMap) {
+                msMap = new Map();
+                this.hub.state.wr._subscribersMaul.set(r, msMap);
+            }
+
+            let slMap = msMap.get(m);
+            if (!slMap) {
+                slMap = new Map();
+                msMap.set(m, slMap);
+            }
+
+            let keyMap = slMap.get(s);
+            if (!keyMap) {
+                keyMap = new Map();
+                slMap.set(s, keyMap);
+            }
+
+            let listeners = keyMap.get(key as string);
+            if (!listeners) {
+                listeners = new Set();
+                keyMap.set(key as string, listeners);
+            }
+
+            listeners.add(listener);
+
+            return () => {
+                listeners!.delete(listener);
+                if (listeners!.size === 0) keyMap!.delete(key as string);
+                if (keyMap!.size === 0) slMap!.delete(s);
+                if (slMap!.size === 0) msMap!.delete(m);
+                if (msMap!.size === 0)this.hub.state.wr._subscribersMaul.delete(r);
+            };
+        },
+        delete1: (key: string | symbol, opts?: A): boolean => {
+            const { s, m, r } = opts ?? {};
+            const registry = this.hub.state.wr._signals
+            const atom = registry.get(key);
+
+            if (!atom) return false;
+
+            const previous = atom.peek();
+
+            const listeners =this.hub.state.wr._subscribersMaul.get(r)?.get(m)?.get(s)?.get(key as string);
+
+            if (listeners) {
+                for (const listener of listeners) {
+                    try {
+                        listener({
+                            key: atom.key,
+                            previous,
+                            current: undefined,
+                            version: atom.version + 1,
+                            timestamp: Date.now(),
+                            source: "state.delete",
+                        });
+                    } catch (error) {
+                        console.error(
+                            `[Sauron:state.delete] listener failed for "${String(key)}":`,
+                            error,
+                        );
+                    }
+                }
+            }
+
+            const subscribers = this._externalSubscribers.get(r)?.get(m)?.get(s)?.get(key as string);
+
+
+            if (subscribers) {
+                for (const notify of subscribers) {
+                    try { notify(undefined); }
+                    catch (error) {
+                        console.error(
+                            `[Sauron:state.delete] external subscriber failed for "${String(key)}":`,
+                            error,
+                        );
+                    }
+                }
+            }
+
+            registry.delete(key);
+            return MaybePromise(true);
+        },
+        entries: <T = A>(opts?: A): [string | symbol, T][] => { 
+            const registry = this.hub.state.wr._signals
+            return MaybePromise([...registry.entries()].map(([key, atom]: A) => [key, atom.read() as T]),  );
+        },
+        persist: (key: string | symbol, opts?: A): void => {
+            const atom = this.hub.state.wr._signals.get(key)
+            if (!atom) return;
+            atom.persisted = true;
+            setSS(String(atom.key), atom.peek());
+        },
+        unpersist: (key: string | symbol, opts?: A): void => { 
+            const atom = this.hub.state.wr._signals.get(key)
+            if (!atom) return;
+            atom.persisted = false;
+            deleteSS(String(atom.key));
+        },
+        has: (key: string | symbol, opts?: A): boolean => { 
+            const registry = this.hub.state.wr._signals
+            return registry.has(key);
+        },
+        clear: (opts?: A): void => { 
+            const registry =this.hub.state.wr._signals
+
+            for (const atom of registry.values() as Iterable<A>) {
+                for (const notify of atom.externalSubscribers) {
+                    try { notify(); }
+                    catch (error) { console.error(`[Sauron:state.clear] external subscriber failed:`, error); }
+                }
+                atom.listeners.clear();
+                atom.externalSubscribers.clear();
+                atom.waiters.clear();
+            }
+            registry.clear();
+        },
+        clearPersistent: (opts?: A): void => { 
+            const registry = this.hub.state.wr._signals
+            for (const atom of registry.values() as Iterable<A>) {
+                if (!atom.persisted) continue;
+                atom.persisted = false;
+                deleteSS(String(atom.key));
+            }
+        },
+        _emit: (key: string | symbol, opts?: A): void => {
+            const { s, m, r } = opts ?? {};
+            const atom = this.hub.state.wr._listenersMaul.get(key);
+
+            if (!atom) return;
+
+            const value = atom.peek();
+
+            for (const listener of atom.listeners) {
+                listener({
+                    key: atom.key,
+                    previous: value,
+                    current: value,
+                    version: atom.version,
+                    timestamp: Date.now(),
+                    source: "state.emit",
+                });
+            }
+
+            for (const notify of atom.externalSubscribers) {
+                notify();
+            }
+        },
+    };
+    public signals_state = {
+        get: <T = A>(key: string | symbol, opts?: A): T | undefined => {
+            return MaybePromise(this.store.get<T>(key, opts) as T);
+        },
+        set: <T = A>(key: string | symbol, value: T | ((prev: T | undefined) => T), opts?: A) => {
+            this.store.set(key, value, {
+                triggerRender: opts?.triggerRender ?? true,
+                s: opts?.s, m: opts?.m, r: opts?.r,
+                source: "state.set",
+            });
+            return MaybePromise(value as T);
+        },
+        delete: (key: string | symbol, opts?: A): boolean => {
+            return this.store.delete(key, opts) as boolean;
+        },
+        getByPrefix: <T = A>(prefix: string, opts?: A) => {
+            return (this.store.entries<T>(opts) as [string | symbol, T][])
+                .filter(([key]) => typeof key === "string" && (key as string).startsWith(prefix))
+                .map(([key, value]) => ({ key: key as string, value }));
+        },
+        getAll: <T = A>(opts?: A): Record<string | symbol, T> => {
+            const result: Record<string | symbol, T> = {};
+
+            for (const [key, value] of this.store.entries<T>(opts) as [string | symbol, T][]) {
+                result[key] = value;
+            }
+
+            return result;
+        },
+        subscribe: <T = A>(key: string | symbol, listener: (value: T) => void, opts?: A): (() => void) => {
+            return this.store.subscribe<T>(key, listener, opts);
+        },
+        subscribeAll: (listener: (key: string | symbol, value: unknown) => void, opts?: A): (() => void) => {
+            const { s, m, r } = opts ?? {};
+            const scope = this.hub.signals.get(s, m, r);
+            return () => { scope.listeners.delete(listener); };
+        },
+        clear: (opts?: A): void => {
+            this.store.clear(opts);
+        },
+        waitFor: <T = A>(key: string | symbol, opts?: A): Promise<T> => {
+            const { s, m, r } = opts ?? {};
+            const atom = this.hub.signals.get(s, m, r);
+
+            if (!atom) {
+                return new Promise<T>(() => {});
+            }
+
+            if (atom.hasWritten) {
+                return Promise.resolve(atom.read());
+            }
+
+            return atom.waitForNext();
+        },
+    };
+    // ── helper: resolve or create the 4-tier subscriber slot ──
+    private stateSubSlot(r: A, m: A, s: A, key: string | symbol): number {
+        const hash = this.hash4(r, m, s, key);
+        let slot = hash & this.mask;
+    
+        while (this.stateSubHead[slot] !== -1 || this.stateSubTail[slot] !== -1) {
+            if (this.stateSubHash[this.stateSubHead[slot]] === hash) {
+                return slot;
+            }
+            slot = (slot + 1) & this.mask;
+        }
+    
+        // Initialize empty slot.
+        this.stateSubHead[slot] = -1;
+        this.stateSubTail[slot] = -1;
+        return slot;
+    }
+}
+// ============================================================================
+// SAURON DISRUPTOR RUNTIME
+// ============================================================================
+
+type SauronDisruptorEventKind = "FLUSH" | "HOOK_NOTIFY" | "TASK_TICK";
+
+interface SauronDisruptorEvent {
+    kind: SauronDisruptorEventKind;
+    hookKey: string | null;
+    ready: boolean;
 }
 
+class SauronRingBuffer {
+    public readonly size: number;
+    public readonly mask: number;
+
+    private readonly slots: SauronDisruptorEvent[];
+    private nextSequence: number = 0;
+    private publishedSequence: number = -1;
+    private consumedSequence: number = -1;
+    private congestionHandler: () => void = () => {};
+
+    constructor(size: number = 4096) {
+        if ((size & (size - 1)) !== 0) {
+            throw new Error("[SAURON_DISRUPTOR] Ring buffer size must be a power of two.");
+        }
+
+        this.size = size;
+        this.mask = size - 1;
+        this.slots = new Array<SauronDisruptorEvent>(size);
+
+        for (let i = 0; i < size; i++) {
+            this.slots[i] = {
+                kind: "FLUSH",
+                hookKey: null,
+                ready: false
+            };
+        }
+    }
+
+    public setCongestionHandler(handler: () => void): void {
+        this.congestionHandler = handler;
+    }
+
+    public claim(): SauronDisruptorEvent {
+        while (this.nextSequence - this.consumedSequence >= this.size) {
+            this.congestionHandler();
+
+            if (this.nextSequence - this.consumedSequence < this.size) {
+                break;
+            }
+        }
+
+        const slot = this.slots[this.nextSequence & this.mask];
+        slot.ready = false;
+
+        return slot;
+    }
+
+    public publish(slot: SauronDisruptorEvent): void {
+        slot.ready = true;
+        this.publishedSequence = this.nextSequence++;
+    }
+
+    public hasAvailable(): boolean {
+        return this.consumedSequence < this.publishedSequence;
+    }
+
+    public peek(): SauronDisruptorEvent | null {
+        if (!this.hasAvailable()) return null;
+
+        const sequence = this.consumedSequence + 1;
+        const event = this.slots[sequence & this.mask];
+
+        if (!event.ready) return null;
+
+        return event;
+    }
+
+    public consume(): void {
+        if (!this.hasAvailable()) return;
+        this.consumedSequence++;
+    }
+
+    public pending(): number {
+        return this.publishedSequence - this.consumedSequence;
+    }
+}
+
+class SauronDisruptorProcessor {
+    private scheduled: boolean = false;
+    private running: boolean = false;
+
+    constructor(
+        private readonly buffer: SauronRingBuffer,
+        private readonly trigger: (fn: () => void) => void,
+        private readonly canProcess: (event: SauronDisruptorEvent) => boolean,
+        private readonly onEvent: (event: SauronDisruptorEvent) => void,
+        private readonly onBatchComplete: () => void
+    ) {
+        this.buffer.setCongestionHandler(() => {
+            this.run();
+        });
+    }
+
+    public publish(kind: SauronDisruptorEventKind, hookKey: string | null = null): void {
+        const slot = this.buffer.claim();
+
+        slot.kind = kind;
+        slot.hookKey = hookKey;
+
+        this.buffer.publish(slot);
+        this.schedule();
+    }
+
+    public schedule(): void {
+        if (this.scheduled) return;
+
+        this.scheduled = true;
+        this.trigger(() => {
+            this.run();
+        });
+    }
+
+    public run(): void {
+        if (this.running) return;
+
+        this.running = true;
+        this.scheduled = false;
+
+        let processed = false;
+
+        while (true) {
+            const event = this.buffer.peek();
+
+            if (!event) break;
+
+            if (!this.canProcess(event)) break;
+
+            this.buffer.consume();
+            processed = true;
+
+            this.onEvent(event);
+        }
+
+        if (processed) {
+            this.onBatchComplete();
+        }
+
+        this.running = false;
+
+        if (this.buffer.hasAvailable()) {
+            this.schedule();
+        }
+    }
+}
 // #region ══════════════════════════════════════════════════════════════════════════════════════════════════════
 export const _SS_MEMORY = new Map<string, A>()
 export let memoryTimer: ReturnType<typeof setTimeout> | undefined
@@ -6464,7 +6629,9 @@ export async function setSS(key: string, value: A) {
         _SS_MEMORY.set(key, serialized)
     }); return value
 }
-export function getSS(key: string) {
+function ser(value: U): S { return typeof value === 'string' ? value : JSON.stringify(value) }
+function deser(raw: S | NU): A { if (raw === null) return null; try { return JSON.parse(raw) } catch { return raw }; }
+export function getSS(key: S) {
     if (typeof window === 'undefined') return;
     const raw = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(key) : null
     const v = deser(raw)
@@ -6572,6 +6739,14 @@ if (typeof (globalThis as A).Bun !== 'undefined') { Bun = (globalThis as A).Bun;
     WS_ID = id
     return id;
 }
+async function deleteSS(key: string) {
+    if (typeof window === 'undefined') return
+    if (ttl_active) touchMemory()
+    await _withLock(key, () => {
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(key)
+        _SS_MEMORY.delete(key)
+    })
+  }
 // #endregion
 
 
@@ -6582,9 +6757,26 @@ export class RAVENS_WAR_ROOOM {
     public s: S
     public k: S
     public raven : RAVEN
+    // #endregion
+    //                                                                                                                  MAIN CACHES
+    // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     #META = new M2<A, M2<A, M2<A, A>>>();
+    _meta: M2<A, A>
+    #SIGNALS = new M2<A, M2<A, M2<A, A>>>();
+    _signals: M2<A, A>
     #CONTEXT = new M2<A, M2<A, M2<A, A>>>();
-    #COMPONENTS = new M2<S, ComponentInstance>();
+    _context: M2<A, A>
+    #ATOMS = new M2<A, M2<A, M2<A, A>>>();
+    _atoms: M2<A, A>
+    #SAURON = new M2<A, M2<A, M2<A, A>>>();
+    _sauron: M2<A, A>
+    #BUS = new M2<A, M2<A, M2<A, A>>>();
+    _bus: M2<A, A>
+
+    COMPONENTS = new M2<S, ComponentInstance>();
+    // #endregion
+    //                                                                                                                    THE CLOUD
+    // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     _components: M2<A, A>
     _batches: M<S | SY>
     _batchQueue: M<S | SY, A>
@@ -6607,15 +6799,27 @@ export class RAVENS_WAR_ROOOM {
     _tupleCache: M<S, S>
     _weakMap: WM<O, S>
     _boundaries: WM<O, S>
-
+    // #endregion
+    //                                                                                                                    SIGNALS
+    // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     _timeTravelMaul: M2<A, A>
     _historyMaul: M2<A, A>
+    _subscribersMaul: M2<A, A>
+    _listenersMaul: M2<A, A>
+    // #endregion
     constructor(raven: RAVEN) {
         this.raven=raven
         this.r = raven.r ?? 'THE_WIZARD_ROOT_REG'
         this.m = raven.m ?? 'SAURON_MASTER_REG'
         this.s = raven.s ?? 'SAURON_SLAVE_REG'
         this.k = raven.k ?? 'THE_K_KEY'
+        this._meta = this.map('_meta', this.m, this.r, '#META')
+        this._signals = this.map('_signals', this.m, this.r, '#SIGNALS')
+        this._context = this.map('_context', this.m, this.r, '#CONTEXT')
+        this._atoms = this.map('_atoms', this.m, this.r, '#ATOMS')
+        this._sauron = this.map('_sauron', this.m, this.r, '#SAURON')
+        this._bus = this.map('_bus', this.m, this.r, '#BUS')
+
 
         this._components = this.map('_components_raven', this.m, this.r)
         this._batches = this.map('_batches_raven', this.m, this.r)
@@ -6642,25 +6846,39 @@ export class RAVENS_WAR_ROOOM {
 
         this._timeTravelMaul = this.map<WM<O, S>>('_timeTravel_maul', this.m, this.r)
         this._historyMaul = this.map<WM<O, S>>('_history_maul', this.m, this.r)
+        this._subscribersMaul = this.map<WM<O, S>>(' _subscribers_maul', this.m, this.r)
+        this._listenersMaul = this.map<WM<O, S>>(' _listeners_maul', this.m, this.r)
     }
-    map<K = A, V=A>(s = this.s, m = this.m, r = this.r): M2<K, V> | K | V {
-        let root = this.#CONTEXT.get(r); // (globalThis as A)[r] //  STATE_CONTEXT === "sauron" ? : null;
+    map<K = A, V=A>(s = this.s, m = this.m, r = this.r, c = '#CONTEXT'): M2<K, V> | K | V {
+        let root
+        switch (c) {
+            case '#CONTEXT': { root = this.#CONTEXT.get(r); break; }
+            case '#META': { root = this.#META.get(r); break; }
+            case '#SIGNALS': { root = this.#SIGNALS.get(r); break; }
+            case '#ATOMS': { root = this.#ATOMS.get(r); break; }
+            case '#SAURON': { root = this.#SAURON.get(r); break; }
+            case '#BUS': { root = this.#BUS.get(r); break; }
+        }
         if (!root) {
             root = new M2<A, M2<A, M2<A, A>>>();
-            this.#CONTEXT.set(r, root);// (globalThis as A)[r] = root;
+            switch (c) {
+                case '#CONTEXT': { root = this.#CONTEXT.set(r, root); break; }
+                case '#META': { root = this.#META.set(r, root); break; }
+                case '#SIGNALS': { root = this.#SIGNALS.set(r, root); break; }
+                case '#ATOMS': { root = this.#ATOMS.set(r, root); break; }
+                case '#SAURON': { root = this.#SAURON.set(r, root); break; }
+                case '#BUS': { root = this.#BUS.set(r, root); break; }
+            }
+            this.#CONTEXT.set(r, root);
         }
         let masterMap = root.get(m);
-        if (!masterMap) {
-            masterMap = new M2<A, M2<A, A>>();
-            root.set(m, masterMap);
-        }
+        if (!masterMap) { masterMap = new M2<A, M2<A, A>>(); root.set(m, masterMap); }
         let slaveMap = masterMap.get(s);
-        if (!slaveMap) {
-            slaveMap = new M2<K, V>();
-            masterMap.set(s, slaveMap);
-        }
+        if (!slaveMap) { slaveMap = new M2<K, V>(); masterMap.set(s, slaveMap); }
         return slaveMap;
     }
+    // (globalThis as A)[r] //  STATE_CONTEXT === "sauron" ? : null;
+    // (globalThis as A)[r] = root;
 }
 
 // #endregion
