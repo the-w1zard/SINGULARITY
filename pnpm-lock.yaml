@@ -21,15 +21,15 @@ importers:
         specifier: ^1.0.4
         version: 1.0.4
       '@the-w1zard/the-registry':
-        specifier: ^1.0.6
-        version: 1.0.6
+        specifier: ^1.0.7
+        version: 1.0.7
     devDependencies:
       '@the-w1zard/alias_types':
-        specifier: ^1.0.5
-        version: 1.0.5
+        specifier: ^1.0.6
+        version: 1.0.6
       '@the-w1zard/types':
-        specifier: ^1.0.10
-        version: 1.0.10
+        specifier: ^1.0.11
+        version: 1.0.11
       '@tsconfig/node-lts':
         specifier: ^24.0.0
         version: 24.0.1
@@ -92,8 +92,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@the-w1zard/alias_types@1.0.5':
-    resolution: {integrity: sha512-1TgX3o5Vc1Frne9EY3d3PuoPK7WiRtDU661sqHsyEB+BKDPW8g+lSky+OeqYNEWI45uRvIJLaA+4sx23N8Qf6Q==}
+  '@the-w1zard/alias_types@1.0.6':
+    resolution: {integrity: sha512-KtpT1KIIpZo42pJuqpwCUEJcjQea5O1aQh9rys9rfgFQZE8DCmX58Y4L3cwRrUZ/qd78j87iBuGbXKUq7dtdYQ==}
 
   '@the-w1zard/dx@1.0.18':
     resolution: {integrity: sha512-D2Cx3kXnB/busPba+N8OIkqlXZWPhLlR4wrg5pRbYFxKhv6UCeqNwFSYLmH/5mrJboGEHZ7d9lwjT72HFk95GA==}
@@ -110,11 +110,11 @@ packages:
   '@the-w1zard/the-cloud@1.0.4':
     resolution: {integrity: sha512-Yyk0vODK23Uu7tHfJ+vG3ejI7LqfzeaE2u4DiO/oXlOQRNfAxHd5MvX39HB4BbXJl9T2R1f/DtkQvElng+hTSw==}
 
-  '@the-w1zard/the-registry@1.0.6':
-    resolution: {integrity: sha512-LVIKu+vvNJ1mvkmhx4fa0F8fNpZE4tyUuycAId6tzBv2A4g1/SYg9dk7CBN9nzmd+fcCkCNOROZ2G2ZmTOCN/A==}
+  '@the-w1zard/the-registry@1.0.7':
+    resolution: {integrity: sha512-DpwuAw1KQoEu/eIorfgVIXfLV+uswnnJaTX0NjTTmeNwTae3tpYF1CJZm45dLXntXMQKxRa5/irSuJdPoIk8Kw==}
 
-  '@the-w1zard/types@1.0.10':
-    resolution: {integrity: sha512-MmwyP7EXiL74j51jZO4He+Mqhu0fbYQbiwY09sBzLaj7XoK9mLIeg08KRWDybVXJrGC0j+1b+N13NhmhZv6jrA==}
+  '@the-w1zard/types@1.0.11':
+    resolution: {integrity: sha512-CWU5zsuw1kzweE7t5fNWyYbyA68JirB/0+nxXUqCm4ozv3rmLFshQvz3DhUOsV3PvFRjPm1xIF0SVwoprMEm8A==}
 
   '@tsconfig/node-lts@24.0.1':
     resolution: {integrity: sha512-xo+1KtV5zVb90fyyeglG1n5cqg3cQXLlCkEpLptYlZUNk28xmwhuD5GmxoXwmrVtUTvaMyclun9kAd0TK7H+Pg==}
@@ -206,7 +206,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@the-w1zard/alias_types@1.0.5': {}
+  '@the-w1zard/alias_types@1.0.6': {}
 
   '@the-w1zard/dx@1.0.18':
     dependencies:
@@ -216,9 +216,9 @@ snapshots:
 
   '@the-w1zard/prims@1.0.1':
     dependencies:
-      '@the-w1zard/alias_types': 1.0.5
+      '@the-w1zard/alias_types': 1.0.6
       '@the-w1zard/store': 1.0.8
-      '@the-w1zard/types': 1.0.10
+      '@the-w1zard/types': 1.0.11
 
   '@the-w1zard/resolvers@1.0.3':
     dependencies:
@@ -226,7 +226,7 @@ snapshots:
 
   '@the-w1zard/store@1.0.8':
     dependencies:
-      '@the-w1zard/alias_types': 1.0.5
+      '@the-w1zard/alias_types': 1.0.6
       '@the-w1zard/dx': 1.0.18
 
   '@the-w1zard/the-cloud@1.0.4':
@@ -236,13 +236,13 @@ snapshots:
       '@the-w1zard/resolvers': 1.0.3
       '@the-w1zard/store': 1.0.8
 
-  '@the-w1zard/the-registry@1.0.6':
+  '@the-w1zard/the-registry@1.0.7':
     dependencies:
       '@the-w1zard/dx': 1.0.18
 
-  '@the-w1zard/types@1.0.10':
+  '@the-w1zard/types@1.0.11':
     dependencies:
-      '@the-w1zard/alias_types': 1.0.5
+      '@the-w1zard/alias_types': 1.0.6
 
   '@tsconfig/node-lts@24.0.1': {}
 

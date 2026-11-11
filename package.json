@@ -12,20 +12,22 @@
   "files": [
     "dist"
   ],
-  "scripts": {
-    "1": "git add .",
-    "2": "git commit -m 'first commit'",
-    "3": "git push",
-    "4": "npm version patch",
-    "5": "git push --tags",
-    "6": "npm publish --access public",
+  "scripts": { 
     "build": "tsc",
     "check": "tsc --noEmit",
-    "*": "npm run 1 && npm run 2 && npm run 3 && npm run 4 && npm run 5 && npm run 6 && npm run *"
+    "1": "git add .",
+		"2": "git commit -m \"first commit\"",
+		"3": "git pull",
+		"4": "git push",
+		"5": "npm version patch",
+		"6": "git push",
+		"7": "git push --tags",
+		"8": "npm publish --access public",
+		"*": "npm run 1 && npm run 2 && npm run 3 && npm run 4 && npm run 5 && npm run 6 && npm run 7 && npm run 8"
   },
   "devDependencies": {
-    "@the-w1zard/alias_types": "^1.0.5",
-    "@the-w1zard/types": "^1.0.10",
+    "@the-w1zard/alias_types": "^1.0.6",
+    "@the-w1zard/types": "^1.0.11",
     "@tsconfig/node-lts": "^24.0.0",
     "@types/node": "^24.0.0",
     "typescript": "^6.0.0"
@@ -35,7 +37,7 @@
     "@the-w1zard/resolvers": "^1.0.3",
     "@the-w1zard/store": "^1.0.8",
     "@the-w1zard/the-cloud": "^1.0.4",
-    "@the-w1zard/the-registry": "^1.0.6"
+    "@the-w1zard/the-registry": "^1.0.7"
   },
   "imports": {
     "#dx": "@the-w1zard/dx",

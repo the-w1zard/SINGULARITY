@@ -1816,18 +1816,16 @@ class DARTH_MAUL {
 		// Defines a reusable atom contract. Defining it creates no atom and performs no registration. Calling the returned function creates one master and its declared bindables; the master itself remains owned by the supplied runtime.
 		const selected = definition({ self: { atom: "ATOM" } });
 		const kind = selected.atom ?? "ATOM";
-		if (!def.MASTER_ATOM_KEYS.includes(kind)) {
-			throw new TypeError(`Unknown master atom: ${String(kind)}`);
-		}
+		if (!def.MASTER_ATOM_KEYS.includes(kind)) { throw new TypeError(`Unknown master atom: ${String(kind)}`); }
 
 		const config: ATOM_CONTRACT_CONFIG<T, M, B> = { ...selected, atom: kind };
 		const masterRuntime = runtime ?? (def.BARE_MASTER_RUNTIME as ATOM_CONTRACT_RUNTIME<M>);
 
 		const contract = ((initialValue?: T, k?: A, s?: S, m?: S, r?: S) => {
-			const rr = r ?? this.r; // Store.get("this.r") ?? "this.r"
-			const mm = m ?? this.m; // Store.get("this.r") ?? 'this.m'
-			const ss = s ?? this.s; // Store.get("this.r") ?? 'this.s'
-			const kk = k ?? this.k; // Store.get("k") ?? 'the_NOT_fast_path'
+			const rr = r ?? this.r;
+			const mm = m ?? this.m; 
+			const ss = s ?? this.s; 
+			const kk = k ?? this.k;
 			const configuredValue = config.value;
 			const value = initialValue !== undefined ? initialValue : typeof configuredValue === "function" ? (configuredValue as () => T)() : (configuredValue as T);
 			const master = masterRuntime.createMaster(kind, kk, ss, mm, rr, value);
@@ -1836,10 +1834,7 @@ class DARTH_MAUL {
 			const operations: B = {} as B;
 
 			for (const createBindable of config.bindables ?? []) {
-				if (!config.bindables!.includes(createBindable)) {
-					throw new TypeError(`Unknown bindable: ${String(createBindable)}`);
-				}
-
+				//if (!config.bindables!.includes(createBindable)) { throw new TypeError(`Unknown bindable: ${String(createBindable)}`); }
 				const bound = createBindable({ self: master, kk, ss, mm, rr });
 				bindables.push(bound);
 				Object.assign(operations, bound);
@@ -1853,23 +1848,16 @@ class DARTH_MAUL {
 				rr,
 				master,
 				bindables,
-				get value() {
-					return master.value;
-				},
-				set value(next: T) {
-					master.value = next;
-				},
+				get value() { return master.value; },
+				set value(next: T) { master.value = next; },
 			});
 
 			return instance;
 		}) as ATOM_CONTRACT<T, M, B>;
 
-		Object.defineProperties(contract, {
-			atom: { value: kind, enumerable: true },
-			config: { value: config, enumerable: true },
-		});
+		Object.defineProperties(contract, { atom: { value: kind, enumerable: true }, config: { value: config, enumerable: true }, });
 		return contract;
-	} /** Marks a reusable bindable factory for inclusion in an atom contract. */
+	}/** Marks a reusable bindable factory for inclusion in an atom contract. */
 
 	public atom_bindable<M extends CONTRACT_MASTER = CONTRACT_MASTER, B extends object = Record<never, never>>(factory: ATOM_BINDABLE<M, B>): ATOM_BINDABLE<M, B> {
 		return factory;
@@ -1916,7 +1904,7 @@ class DARTH_MAUL {
 	// #endregion
 	//                                                                                                                          API
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	public atom<T = any>(v: A, key: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid.b()}`, s = this.s, m = this.m, r = this.r, options?: SignalOptions) {
+	public atom<T = any>(v: A, key: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid()}`, s = this.s, m = this.m, r = this.r, options?: SignalOptions) {
 		const rk = this.create(key, v, options, s, m, r);
 		const self = this;
 		return {
@@ -2083,13 +2071,11 @@ class DARTH_MAUL {
 		};
 		return fn;
 	})();
-
 	// #endregion
 	//                                                                                                                   SEND / SUB
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     #defBucket?: M2<A, A>;
     #bufs = new WM<O, A[]>(); // open batch buffers, touched only inside batches
-
     private bucket(s: S, m: S, r: S): M2<A, A> {
         if (s === this.s && m === this.m && r === this.r) {
             return (this.#defBucket ??= this.hub.wr.map(s, m, r, "#NAKED_SIGNALS") as M2<A, A>);
@@ -2106,14 +2092,63 @@ class DARTH_MAUL {
         return sig;
     }
 	public sub = (() => {
-		const fn = <T = A,>(listener: (value: T, previous: T) => V, k: A, s = this.s, m = this.m, r = this.r) => {};
-		fn.naked = () => {};
-		return fn;
-	})();
-	public send = (() => {
-		const fn = (p: A, k: S, s = this.s, m = this.m, r = this.r): V => {};
-		return fn;
-	})();
+        const fn = <T = A,>(listener: (value: T, previous: T) => A, k: A, s = this.s, m = this.m, r = this.r) => {
+            const eng = this.DARTH_MAUL_ENGINE;
+            const sig = this.channel(k, s, m, r, true);
+            let prev: T | UD;
+            let first = true;
+            let live = true;
+    
+            const pid = eng.effectSignal(() => {
+                const env = sig();
+                if (first) { first = false; return; }
+                if (!env) return;
+                eng.untrack(() => {
+                    if (env.b !== undefined) {
+                        // batched delivery: replies can't make it back, ignore return values
+                        if (this.#bufs.get(sig) === env.b) this.#bufs.delete(sig);
+                        for (const p of env.b) {
+                            try { listener(p, prev as T); } catch (e) { console.error("[bus]", e); }
+                            prev = p;
+                        }
+                    } else {
+                        try {
+                            const v = listener(env.p, prev as T);
+                            if (v !== undefined) (env.r ??= []).push(v); // array only allocated if someone replies
+                        } catch (e) { console.error("[bus]", e); }
+                        prev = env.p;
+                    }
+                });
+                // effect body returns nothing on purpose: a returned function would be treated as cleanup
+            });
+    
+            return () => { if (live) { live = false; eng.dispose(pid); } };
+        };
+        fn.naked = (k: A, s = this.s, m = this.m, r = this.r) => this.channel(k, s, m, r, true);
+        return fn;
+    })();    
+    public send = (() => {
+        const dispatch = (p: A, k: S, s: S, m: S, r: S): A[] | UD => {
+            const sig = this.channel(k, s, m, r, false);
+            if (!sig) return;
+    
+            if (this.DARTH_MAUL_ENGINE.batchDepth > 0) {
+                const buf = this.#bufs.get(sig);
+                if (buf) { buf.push(p); return; }
+                const b = [p];
+                this.#bufs.set(sig, b);
+                sig({ b });
+                return; // flush is deferred, so there are no replies yet
+            }
+    
+            const env: A = { p, r: undefined };
+            sig(env);       // synchronous commit + flush: listeners have already run
+            return env.r;
+        };
+        const fn = (p: A, k: S, s = this.s, m = this.m, r = this.r): A => dispatch(p, k, s, m, r)?.[0];
+        fn.all = (p: A, k: S, s = this.s, m = this.m, r = this.r): A[] => dispatch(p, k, s, m, r) ?? [];
+        return fn;
+    })();
 	public delete = (k: A, s = this.s, m = this.m, r = this.r): V => {
 		this.hub.wr._signals.delete(k);
 		this._getMetadata(s, m, r)._sys.delete(k);
@@ -2377,7 +2412,7 @@ class DARTH_MAUL {
 				} else if (type === "object" || type === "function") {
 					let refId = weakMap.get(item);
 					if (!refId) {
-						refId = `ref:${this.hub.REGISTRY._sid.b()}`;
+						refId = `ref:${this.hub.REGISTRY._sid()}`;
 						weakMap.set(item, refId);
 					}
 					parts[i] = refId;
@@ -2500,110 +2535,52 @@ class DARTH_MAUL {
 		return t;
 	}
 	public naked = (() => {
-		const fn = <T = A,>(k: SignalKey, v?: T | (() => T), s = this.s, m = this.m, r = this.r) => {
+		const fn = <T = A,>(k: SignalKey, v?: T | (() => T)) => {
 			const registry = this.hub.wr._naked_signals;
 			let atom = registry.get(k);
 
-			if (atom || v === undefined) {
-				return atom;
-			}
+			if (atom && v === undefined) { return atom; }
+			if (atom && v) { 
+                const t = UF(v)
+                atom = registry.set(k, t)
+                return atom;
+             }
 
-			const initialValue = typeof v === "function" ? (v as () => T)() : v;
+			const initialValue = UF(v)
 			atom = this.signal<T>(initialValue);
 			registry.set(k, atom);
 			return atom;
 		};
+        fn.atom =<T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid()}`, s = this.s, m = this.m, r = this.r, ) =>{
+            return {
+                get value(): T { return this.naked(k); },
+                get current(): T { return this.naked(k); },
+                peek(): T { return this.naked(k); },
+                set value(v: T) { this.naked(k, v); },
+                set current(v: T) { this.naked(k, v); },
+                set crt(v: T) { this.naked(k, v); },
+                set set(v: T) { this.naked(k, v); },
+            };
+        }
 		return fn;
 	})();
-	public useCell = (() => {
-		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
 
-			const senderTokenRef = this.atom(this.hub.REGISTRY._sid.b());
-
-			this.hub.bus.sub(
-				(i: A) => {
-					const incoming = i.p;
-					if (incoming?.from === senderTokenRef.value) return;
-					this.hub.state.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
-					// set(k, incoming.value, false, s, m, r);
-					setState(incoming.value);
-				},
-				k,
-				s,
-				m,
-				r,
-			); // stay in sync with local writes too (including our own setLive below)
-			this.hub.state.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
-			// sub(k, (newValue: any) => setState(newValue), s, m, r);
-
-			const setLive = (next: any) => {
-				const newValue = typeof next === "function" ? next(this.hub.state.state.get(k, { s: s, m: m, r: r })) : next;
-				setState(newValue);
-				this.hub.state.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
-				// set(k, newValue, true, s, m, r); // local write
-				this.hub.bus.send({ value: newValue, from: senderTokenRef.value }, k, s, m, r); // broadcast to the bus
-			};
-
-			return [state, setLive] as const;
-		};
-		fn.mailbox = (v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
-
-			const senderTokenRef = this.atom(this.hub.REGISTRY._sid.b());
-			const queueRef = this.atom<Queue | null>(null);
-
-			if (!queueRef.current) {
-				queueRef.current = new Queue(1);
-			}
-
-			// mailbox — replace the whole useEffect block:
-			this.hub.bus.sub( (i: A) => {
-			    const incoming = i.p;
-			    if (incoming?.from === senderTokenRef.value) return;
-			    queueRef.current!.run(async () => {
-						const current = this.hub.state.state.get(k, { s: s, m: m, r: r });
-						const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-						this.hub.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
-						return next;
-			    });
-			}, k, s, m, r, );
-
-			this.hub.state.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
-
-			const setLive = (next: any) => {
-				const t = typeof next === "function" ? next() : next;
-				this.hub.bus.send({ value: t, from: senderTokenRef.value }, k, s, m, r);
-			};
-
-			return [state, setLive] as const;
-		};
-		return fn;
-	})();
 	// #endregion
 	//                                                                                                           ANTI MESSAGE QUEUE
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public useAntiMsgQ = (() => {
 		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => {
-				return this.state_setter(v, k, s, m, r);
-			});
+			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
 
-			const senderTokenRef = this.atom(this.hub.REGISTRY._sid.b()); // this.j.root._id.b();
+			const senderTokenRef = this.naked.atom(this.hub.REGISTRY._sid()); // this.j.root._id.b();
 
-			this.hub.bus.sub(
-				(i: A) => {
+			this.hub.bus.sub( (i: A) => {
 					const incoming = i.p;
 					if (incoming?.from === senderTokenRef.value) return;
 					this.hub.state.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
 					// set(k, incoming.value, false, s, m, r);
 					setState(incoming.value);
-				},
-				k,
-				s,
-				m,
-				r,
-			); // stay in sync with local writes too (including our own setLive below)
+			}, k, s, m, r); // stay in sync with local writes too (including our own setLive below)
 			this.hub.state.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
 			// sub(k, (newValue: any) => setState(newValue), s, m, r);
 
@@ -2622,8 +2599,8 @@ class DARTH_MAUL {
 				return this.state_setter(v, k, s, m, r);
 			});
 
-			const senderTokenRef = this.atom(this.hub.REGISTRY._sid.b());
-			const queueRef = this.atom<Queue | null>(null);
+			const senderTokenRef = this.naked.atom(this.hub.REGISTRY._sid());
+			const queueRef = this.naked.atom<Queue | null>(null);
 
 			if (!queueRef.current) {
 				queueRef.current = new Queue(1);
@@ -3214,33 +3191,33 @@ class DARTH_VADER {
 	public m: A = "SAURON_MASTER_REG";
 	public s: A = "SAURON_SLAVE_REG";
 	public k: A = "__SAURON__";
-	private readonly capacity: number;
+	private capacity: number;
 	private hub: DEATH_STAR;
 	// ======================================================================
 	// Channel table: open-addressed hash of (r, m, s, k)
 	// ======================================================================
-	private readonly channelMask: number;
-	private readonly channelKey: Int32Array; // hash bucket -> channel id or -1
-	private readonly channelState: Uint8Array; // 0 = empty, 1 = used, 2 = deleted
-	private readonly channelHash: Int32Array; // stored hash to speed probing
+	private channelMask: number;
+	private channelKey: Int32Array; // hash bucket -> channel id or -1
+	private channelState: Uint8Array; // 0 = empty, 1 = used, 2 = deleted
+	private channelHash: Int32Array; // stored hash to speed probing
 	private channelCount = 1; // 0 reserved
 	// Per-channel subscriber list (intrusive linked list)
-	private readonly channelSubHead: Int32Array;
-	private readonly channelSubTail: Int32Array;
+	private channelSubHead: Int32Array;
+	private channelSubTail: Int32Array;
 	// ======================================================================
 	// Subscriber pool
 	// ======================================================================
-	private readonly subHandler: (Handler | undefined)[];
-	private readonly subNext: Int32Array; // next subscriber in channel
-	private readonly subPrev: Int32Array; // prev subscriber in channel
-	private readonly subChannel: Int32Array; // owning channel
+	private subHandler: (Handler | undefined)[];
+	private subNext: Int32Array; // next subscriber in channel
+	private subPrev: Int32Array; // prev subscriber in channel
+	private subChannel: Int32Array; // owning channel
 	private subCount = 1; // 0 reserved
 	// ======================================================================
 	// Message ring buffer
 	// ======================================================================
-	private readonly msgChannel: Int32Array;
-	private readonly msgPayload: unknown[];
-	private readonly msgDeferred: (Deferred | undefined)[];
+	private msgChannel: Int32Array;
+	private msgPayload: unknown[];
+	private msgDeferred: (Deferred | undefined)[];
 	private msgHead = 0; // next message to consume
 	private msgTail = 0; // next free slot
 	private msgCount = 0;
@@ -3281,8 +3258,8 @@ class DARTH_VADER {
 	// #endregion
 	//                                                                                                            [ADDRESS HASHING]
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	private hashAddress(k: S | N, s: S | N, m: S | N, r: S | N): N {
-		// FNV-1a style; cheap, stable, and allocation-free for primitives.
+	private hashAddress(k: S | N, s: S | N, m: S | N, r: S | N): N {// FNV-1a style; cheap, stable, and allocation-free for primitives.
+		
 		let h = 0x811c9dc5;
 
 		const parts = [r, m, s, k];
@@ -3303,6 +3280,30 @@ class DARTH_VADER {
 
 		return h | 0;
 	}
+    private subFreeList: N[] = [];
+    private allocateSubscriber(): N {
+        const reused = this.subFreeList.pop();
+
+        if (reused !== undefined) {
+            return reused;
+        }
+
+        const subId = this.allocateSubscriber();
+
+        if (subId >= this.capacity) {
+            throw new Error("MESSAGE_BUS_DISRUPTOR: subscriber capacity exhausted");
+        }
+
+        return subId;
+    }
+    private releaseSubscriber(subId: N): V {
+        this.subHandler[subId] = undefined;
+        this.subChannel[subId] = -1;
+        this.subNext[subId] = NO_SUB;
+        this.subPrev[subId] = NO_SUB;
+
+        this.subFreeList.push(subId);
+    }
 	// #endregion
 	//                                                                                                                   [CHANNELS]
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -3323,7 +3324,7 @@ class DARTH_VADER {
 	}
 	private createChannel(hash: N): N {
 		if (this.channelCount >= this.capacity) {
-			throw new Error("MESSAGE_BUS_DISRUPTOR: channel table full");
+			this.grow();
 		}
 
 		let slot = hash & this.channelMask;
@@ -3353,16 +3354,13 @@ class DARTH_VADER {
 	//                                                                                                                        [SUB]
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public sub(handler: Handler, k: S | N, s: S | N, m: S | N, r: S | N): () => V {
-		if (typeof handler !== "function") {
-			throw new TypeError("handler must be a function");
-		}
-
+		if (typeof handler !== "function") { throw new TypeError("handler must be a function"); }
+        if (this.subCount >= this.capacity) { this.grow();  }
+        
 		const channelId = this.getOrCreateChannel(r, m, s, k);
-		const subId = this.subCount++;
+		const subId = this.allocateSubscriber();
 
-		if (subId >= this.capacity) {
-			throw new Error("MESSAGE_BUS_DISRUPTOR: subscriber capacity exhausted");
-		}
+		if (subId >= this.capacity) { throw new Error("MESSAGE_BUS_DISRUPTOR: subscriber capacity exhausted"); }
 
 		this.subHandler[subId] = handler;
 		this.subChannel[subId] = channelId;
@@ -3407,44 +3405,79 @@ class DARTH_VADER {
 		this.subChannel[subId] = -1;
 		this.subNext[subId] = NO_SUB;
 		this.subPrev[subId] = NO_SUB;
+        this.releaseSubscriber(subId);
 	}
 	// #endregion
 	//                                                                                                                       [SEND]
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	/** Fire-and-forget enqueue. Never awaits handler results. */
-	public post(payload: U, k: A, s: S | N, m: S | N, r: S | N): V {
+	public post(payload: U, k: A, s: S | N, m: S | N, r: S | N): V {/** Fire-and-forget enqueue. Never awaits handler results. */
 		const channelId = this.getOrCreateChannel(r, m, s, k);
 		this.enqueue(channelId, payload, undefined);
 	}
-	/** Enqueue and await subscriber result(s). */
-	public async send(payload: U, k: A, s: S | N, m: S | N, r: S | N): P<U> {
-		const channelId = this.getOrCreateChannel(r, m, s, k);
+    public send = (() => {
+		const fn =  <T = A> (payload: U, k: A, s: S | N, m: S | N, r: S | N) => {
+            const channelId = this.getOrCreateChannel(r, m, s, k);
+            while (this.msgCount >= this.capacity) { this.grow(); }
+            let resolve!: (value: U) => V;
+            let reject!: (reason?: U) => V;
+            const deferred: Deferred = { resolve: (v) => resolve(v), reject: (e) => reject(e), };
+            deferred.resolve = resolve;
+            deferred.reject = reject;
+    
+            let v: A = this.enqueue(channelId, payload, deferred);
+            if (v !== undefined && !(v instanceof Promise)) {
+				return MaybePromise<T>(v);
+			} else {
+                const promise = new Promise<U>((res, rej) => { resolve = res; reject = rej; });
+                return MaybePromise<T>(promise);
+			}
+        }
+        fn.switch = <T = A> (p: U, k: A, s: S = this.s, m: S = this.m, r: S = this.r,  adapter = "ws") => {
+            const msg: SIG_BUS_Message = { id: this.hub.REGISTRY._sid(), r: r, m: m, s: s, k: k, p: { p }, ts: Date.now(), _ack: false };
 
-		// Backpressure: wait for ring space instead of dropping messages.
-		while (this.msgCount >= this.capacity) {
-			await this.waitForCapacity();
-		}
+			let v: A = this.DISPATCH(msg, adapter);
+			if (v !== undefined && !(v instanceof Promise)) {
+				return MaybePromise<T>(v);
+			} else {
+				const timeoutMs = 5000;
+				return MaybePromise(
+					(() => {
+						return new Promise<T>((resolve, reject) => {
+							let timer: RET<typeof setTimeout> | UD;
+							if (v) {
+								if (timer) clearTimeout(timer);
+								resolve(v as T);
+								return;
+							}
+							if (timeoutMs) {
+								timer = setTimeout(() => { reject(new Error(`[rift] wait() timed out after ${timeoutMs}ms`)); }, timeoutMs);
+							}
+						});
+					})(),
+				);
+			}
+        }
+        fn.original_send = async (payload: U, k: A, s: S | N, m: S | N, r: S | N): P<U> => {
+            const channelId = this.getOrCreateChannel(r, m, s, k);
 
-		let resolve!: (value: unknown) => void;
-		let reject!: (reason?: unknown) => void;
-
-		const deferred: Deferred = {
-			resolve: (v) => resolve(v),
-			reject: (e) => reject(e),
-		};
-
-		const promise = new Promise<unknown>((res, rej) => {
-			resolve = res;
-			reject = rej;
-		});
-
-		deferred.resolve = resolve;
-		deferred.reject = reject;
-
-		this.enqueue(channelId, payload, deferred);
-
-		return promise;
-	}
+            while (this.msgCount >= this.capacity) { this.grow(); }
+    
+            let resolve!: (value: U) => V;
+            let reject!: (reason?: U) => V;
+    
+            const deferred: Deferred = { resolve: (v) => resolve(v), reject: (e) => reject(e), };
+    
+            const promise = new Promise<unknown>((res, rej) => { resolve = res; reject = rej; });
+    
+            deferred.resolve = resolve;
+            deferred.reject = reject;
+    
+            this.enqueue(channelId, payload, deferred);
+    
+            return promise;
+        }
+	return fn;
+	})();
 	private async waitForCapacity(): P<V> {
 		let resolve!: () => V;
 		let reject!: (reason?: U) => V;
@@ -3467,9 +3500,7 @@ class DARTH_VADER {
 		await promise;
 	}
 	private enqueue(channelId: N, payload: U, deferred: Deferred | UD): V {
-		if (this.msgCount >= this.capacity) {
-			throw new Error("MESSAGE_BUS_DISRUPTOR: ring full");
-		}
+		if (this.msgCount >= this.capacity) { this.grow();	}
 
 		const slot = this.msgTail;
 
@@ -3485,13 +3516,7 @@ class DARTH_VADER {
 	// #endregion
 	//                                                                                                            [Stream / Duplex]
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	/**
-	 * One-way continuous stream.
-	 *
-	 * Returns a sender function. Every call pushes a message to every
-	 * subscriber handler attached to the same address.
-	 */
-	public stream(r: S | N, m: S | N, s: S | N, k: S | N, handler: (payload: U) => V | P<V>): (payload?: U) => V {
+	public stream(r: S | N, m: S | N, s: S | N, k: S | N, handler: (payload: U) => V | P<V>): (payload?: U) => V {// One-way continuous stream. Returns a sender function. Every call pushes a message to every subscriber handler attached to the same address.
 		const channelId = this.getOrCreateChannel(r, m, s, k);
 
 		// Register consumer handler as a normal subscriber.
@@ -3523,13 +3548,7 @@ class DARTH_VADER {
 
 		return { send, close };
 	}
-	/**
-	 * Constant two-way stream.
-	 *
-	 * Each endpoint can send and receive simultaneously.
-	 * The handler receives inbound messages; `send()` pushes outbound messages.
-	 */
-	public duplex(r: S | N, m: S | N, s: S | N, k: S | N, handler: (payload: U) => V | P<V>): { send: (payload?: U) => V; close: () => V } {
+ 	public duplex(r: S | N, m: S | N, s: S | N, k: S | N, handler: (payload: U) => V | P<V>): { send: (payload?: U) => V; close: () => V } {// Constant two-way stream. Each endpoint can send and receive simultaneously. The handler receives inbound messages; `send()` pushes outbound messages.
 		// Create two directional channels:
 		//   outbound: this endpoint -> peer
 		//   inbound:  peer -> this endpoint
@@ -3562,12 +3581,9 @@ class DARTH_VADER {
 	//                                                                                                           [Internal helpers]
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	private subscribeRaw(channelId: N, handler: (payload: U) => U | P<U>): N {
-		const subId = this.subCount++;
-
-		if (subId >= this.capacity) {
-			throw new Error("MESSAGE_BUS_DISRUPTOR: subscriber capacity exhausted");
-		}
-
+        if (this.subCount >= this.capacity) {  this.grow();  }
+		const subId = this.allocateSubscriber();
+		if (subId >= this.capacity) { throw new Error("MESSAGE_BUS_DISRUPTOR: subscriber capacity exhausted"); }
 		this.subHandler[subId] = handler;
 		this.subChannel[subId] = channelId;
 		this.subNext[subId] = NO_SUB;
@@ -3652,22 +3668,15 @@ class DARTH_VADER {
 				const channelId = this.msgChannel[slot];
 				const payload = this.msgPayload[slot];
 				const deferred = this.msgDeferred[slot];
-
 				// Advance ring before handler execution so a handler that
 				// sends again cannot deadlock the ring.
 				this.msgHead = (this.msgHead + 1) % this.capacity;
 				this.msgCount--;
-
 				this.msgChannel[slot] = -1;
 				this.msgPayload[slot] = undefined;
 				this.msgDeferred[slot] = undefined;
-
 				const result = await this.dispatch(channelId, payload);
-
-				if (deferred) {
-					deferred.resolve(result);
-				}
-
+				if (deferred) { deferred.resolve(result); }
 				this.notifyCapacityWaiters();
 			}
 		} finally {
@@ -3681,29 +3690,19 @@ class DARTH_VADER {
 	}
 	private async dispatch(channelId: N, payload: U): P<U> {
 		let sub = this.channelSubHead[channelId];
-
 		if (sub === NO_SUB) return undefined;
-
-		// Fast path: exactly one subscriber.
-		if (this.subNext[sub] === NO_SUB) {
+		if (this.subNext[sub] === NO_SUB) {// Fast path: exactly one subscriber.
 			const handler = this.subHandler[sub];
-
 			if (!handler) return undefined;
-
 			return await handler(payload);
 		}
-
-		// Multiple subscribers: preserve subscription order.
-		const results: unknown[] = [];
+		const results: unknown[] = [];// Multiple subscribers: preserve subscription order.
 		const promises: Promise<unknown>[] = [];
 		let hasAsync = false;
-
 		while (sub !== NO_SUB) {
 			const handler = this.subHandler[sub];
-
 			if (handler) {
 				const result = handler(payload);
-
 				if (result && typeof (result as PromiseLike<unknown>).then === "function") {
 					hasAsync = true;
 					promises.push(result as Promise<unknown>);
@@ -3712,16 +3711,12 @@ class DARTH_VADER {
 					results.push(result);
 				}
 			}
-
 			sub = this.subNext[sub];
 		}
 
 		if (hasAsync) {
 			const settled = await Promise.all(promises);
-
-			// Merge async results back into their original slots.
-			let promiseIndex = 0;
-
+			let promiseIndex = 0;// Merge async results back into their original slots.
 			for (let i = 0; i < results.length; i++) {
 				if (results[i] === undefined && promiseIndex < settled.length) {
 					results[i] = settled[promiseIndex++];
@@ -3733,14 +3728,90 @@ class DARTH_VADER {
 	}
 	private notifyCapacityWaiters(): V {
 		if (this.capacityWaiters.length === 0) return;
-
 		const waiters = this.capacityWaiters;
 		this.capacityWaiters = [];
-
-		for (const waiter of waiters) {
-			waiter.resolve(undefined);
-		}
+		for (const waiter of waiters) { waiter.resolve(undefined); }
 	}
+    private grow(): void {
+        const oldCapacity = this.capacity;
+        const newCapacity = oldCapacity * 2;
+        const newMask = newCapacity - 1;
+    
+        const channelKey = new Int32Array(newCapacity).fill(-1);
+        const channelState = new Uint8Array(newCapacity);
+        const channelHash = new Int32Array(newCapacity);
+    
+        const channelSubHead = new Int32Array(newCapacity).fill(NO_SUB);
+        const channelSubTail = new Int32Array(newCapacity).fill(NO_SUB);
+    
+        // Rehash existing channels directly from the old table.
+        for (let oldSlot = 0; oldSlot < oldCapacity; oldSlot++) {
+            if (this.channelState[oldSlot] !== 1) continue;
+    
+            const hash = this.channelHash[oldSlot];
+            const channelId = this.channelKey[oldSlot];
+    
+            let newSlot = hash & newMask;
+    
+            while (channelState[newSlot] === 1) {
+                newSlot = (newSlot + 1) & newMask;
+            }
+    
+            channelState[newSlot] = 1;
+            channelHash[newSlot] = hash;
+            channelKey[newSlot] = channelId;
+    
+            channelSubHead[channelId] = this.channelSubHead[channelId];
+            channelSubTail[channelId] = this.channelSubTail[channelId];
+        }
+    
+        const subHandler = new Array<Handler | undefined>(newCapacity);
+        const subNext = new Int32Array(newCapacity).fill(NO_SUB);
+        const subPrev = new Int32Array(newCapacity).fill(NO_SUB);
+        const subChannel = new Int32Array(newCapacity).fill(-1);
+    
+        for (let subId = 0; subId < this.subCount; subId++) {
+            subHandler[subId] = this.subHandler[subId];
+            subNext[subId] = this.subNext[subId];
+            subPrev[subId] = this.subPrev[subId];
+            subChannel[subId] = this.subChannel[subId];
+        }
+    
+        const msgChannel = new Int32Array(newCapacity).fill(-1);
+        const msgPayload: unknown[] = new Array(newCapacity);
+        const msgDeferred: (Deferred | undefined)[] = new Array(newCapacity);
+    
+        // Copy the ring in FIFO order, preserving wraparound.
+        for (let i = 0; i < this.msgCount; i++) {
+            const oldSlot = (this.msgHead + i) % oldCapacity;
+    
+            msgChannel[i] = this.msgChannel[oldSlot];
+            msgPayload[i] = this.msgPayload[oldSlot];
+            msgDeferred[i] = this.msgDeferred[oldSlot];
+        }
+    
+        this.channelKey = channelKey;
+        this.channelState = channelState;
+        this.channelHash = channelHash;
+    
+        this.channelSubHead = channelSubHead;
+        this.channelSubTail = channelSubTail;
+    
+        this.subHandler = subHandler;
+        this.subNext = subNext;
+        this.subPrev = subPrev;
+        this.subChannel = subChannel;
+    
+        this.msgChannel = msgChannel;
+        this.msgPayload = msgPayload;
+        this.msgDeferred = msgDeferred;
+    
+        this.channelMask = newMask;
+        this.capacity = newCapacity;
+    
+        this.msgHead = 0;
+        this.msgTail = this.msgCount;
+    }
 	// #endregion
 	//                                                                                                                 [Drain loop]
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -5210,7 +5281,7 @@ export class WAR_ROOOM {
 	public k: A = "__SAURON__";
 	private raven: DEATH_STAR;
 
-	// #endregion
+ 
 	//                                                                                                                  MAIN CACHES
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	#META = new M2<A, M2<A, M2<A, A>>>();
@@ -5507,12 +5578,86 @@ export class WAR_ROOOM {
      cloud... kinda, curious to see if I was able to code it and have it working first shot... I doubt it.
     ============================================================================ ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [THE DARK SIDE] */
 class DRS {
+    public r: A = "THE_WIZARD_ROOT_REG";
+	public m: A = "SAURON_MASTER_REG";
+	public s: A = "SAURON_SLAVE_REG";
+	public k: A = "__SAURON__";
 	public hub: DEATH_STAR;
 	constructor(hub: DEATH_STAR) {
 		this.hub = hub;
 	}
+    public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
+		const existing = this.hub.state.state.get(k, { s: s, m: m, r: r });
+		if (existing !== undefined) return existing;
+		const t = UF(v)
+		this.hub.state.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
+		return t;
+	}
+	public useCell = (() => {
+		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
+
+			const senderTokenRef = this.hub.signals.naked.atom(this.hub.REGISTRY._sid());
+
+			this.hub.bus.sub( (i: A) => {
+					const incoming = i.p;
+					if (incoming?.from === senderTokenRef.value) return;
+					this.hub.state.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
+					// set(k, incoming.value, false, s, m, r);
+					setState(incoming.value);
+			 }, k, s, m, 	r, ); // stay in sync with local writes too (including our own setLive below)
+			this.hub.state.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
+			// sub(k, (newValue: any) => setState(newValue), s, m, r);
+
+			const setLive = (next: any) => {
+				const newValue = typeof next === "function" ? next(this.hub.state.state.get(k, { s: s, m: m, r: r })) : next;
+				setState(newValue);
+				this.hub.state.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
+				// set(k, newValue, true, s, m, r); // local write
+				this.hub.bus.send({ value: newValue, from: senderTokenRef.value }, k, s, m, r); // broadcast to the bus
+			};
+
+			return [state, setLive] as const;
+		};
+		fn.mailbox = (v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
+
+			const senderTokenRef = this.hub.signals.naked.atom(this.hub.REGISTRY._sid());
+			const queueRef = this.hub.signals.atom<Queue | null>(null);
+
+			if (!queueRef.current) {
+				queueRef.current = new Queue(1);
+			}
+
+			// mailbox — replace the whole useEffect block:
+			this.hub.bus.sub( (i: A) => {
+			    const incoming = i.p;
+			    if (incoming?.from === senderTokenRef.value) return;
+			    queueRef.current!.run(async () => {
+						const current = this.hub.state.state.get(k, { s: s, m: m, r: r });
+						const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
+						this.hub.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+						return next;
+			    });
+			}, k, s, m, r, );
+
+			this.hub.state.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
+
+			const setLive = (next: any) => {
+				const t = typeof next === "function" ? next() : next;
+				this.hub.bus.send({ value: t, from: senderTokenRef.value }, k, s, m, r);
+			};
+
+			return [state, setLive] as const;
+		};
+		return fn;
+	})();
 }
 class SPREADSHEET {
+    public r: A = "THE_WIZARD_ROOT_REG";
+	public m: A = "SAURON_MASTER_REG";
+	public s: A = "SAURON_SLAVE_REG";
+	public k: A = "__SAURON__";
 	public hub: DEATH_STAR;
 	public cell() {}
 	public useCell() {}
@@ -5556,7 +5701,6 @@ export const death_star = new DEATH_STAR();
 // #endregion
 //                                                                                                                    USE STATE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
 export function darkState<T = any, S = T>(initialValue?: T | (() => T), options: StateOptions<T, S> = {}, __sauron_id__ = _sid()) {
 	return death_star.state.createHook(
 		"darkState",
@@ -5656,7 +5800,6 @@ export function darkEffect(effect: (signal?: AbortSignal) => void | (() => void)
 		},
 	);
 }
-
 function _depsEqual(a: A[], b: A[]): boolean {
 	if (a.length !== b.length) return false;
 	for (let i = 0; i < a.length; i++) {
@@ -5667,7 +5810,6 @@ function _depsEqual(a: A[], b: A[]): boolean {
 // #endregion
 //                                                                                                                 USE INTERVAL
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
 export function darkInterval(options: { timer?: number; autoStart?: boolean; execute: () => void }, __sauron_id__ = _sid()) {
 	const autoStart = options.autoStart ? Boolean(options.autoStart) !== false : true;
 	const callback = options.execute ? options.execute : console.log(`interval triggered`);
@@ -5752,7 +5894,6 @@ export function darkDeferredValue<T>(value: T, __sauron_id__ = _sid()): T {
 		},
 	);
 }
-
 // #endregion
 //                                                                                                        USE IMPERATIVE HANDLE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
