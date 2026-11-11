@@ -1,6 +1,6 @@
 {
   "name": "@the-w1zard/singularity",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "sideEffects": false,
   "type": "module",
   "main": "./dist/index.js",
@@ -12,18 +12,18 @@
   "files": [
     "dist"
   ],
-  "scripts": { 
+  "scripts": {
+    "1": "git add .",
+    "2": "git commit -m \"first commit\"",
+    "3": "git pull",
+    "4": "git push",
+    "5": "npm version patch",
+    "6": "git push",
+    "7": "git push --tags",
+    "8": "npm publish --access public",
     "build": "tsc",
     "check": "tsc --noEmit",
-    "1": "git add .",
-		"2": "git commit -m \"first commit\"",
-		"3": "git pull",
-		"4": "git push",
-		"5": "npm version patch",
-		"6": "git push",
-		"7": "git push --tags",
-		"8": "npm publish --access public",
-		"*": "npm run 1 && npm run 2 && npm run 3 && npm run 4 && npm run 5 && npm run 6 && npm run 7 && npm run 8"
+    "*": "npm run 1 && npm run 2 && npm run 3 && npm run 4 && npm run 5 && npm run 6 && npm run 7 && npm run 8"
   },
   "devDependencies": {
     "@the-w1zard/alias_types": "^1.0.6",
