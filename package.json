@@ -31,15 +31,11 @@
     "typescript": "^6.0.0"
   },
   "dependencies": {
-    "@preact/signals-core": "^1.14.5",
-    "@the-w1zard/databases": "^1.0.1",
     "@the-w1zard/dx": "^1.0.18",
-    "@the-w1zard/mq": "^1.0.0",
     "@the-w1zard/resolvers": "^1.0.3",
     "@the-w1zard/store": "^1.0.8",
     "@the-w1zard/the-cloud": "^1.0.4",
-    "@the-w1zard/the-registry": "^1.0.4",
-    "preact": "^11.2.0"
+    "@the-w1zard/the-registry": "^1.0.6"
   },
   "imports": {
     "#dx": "@the-w1zard/dx",

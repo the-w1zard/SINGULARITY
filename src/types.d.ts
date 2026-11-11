@@ -13,6 +13,8 @@ declare global {
 		peek: <T = A>() => T | UD
 		read: <T = A>() => T | UD
 		write: <T = A>(value: T | ((previous: T) => T)) => T 
+		triggerRender?: boolean
+		subscribe?: (() => V)
 	} 
 	interface ATOM<T = U> extends CONTRACT_MASTER<T> {}
 	/** The minimal contract between the builder and a master-atom constructor. */
