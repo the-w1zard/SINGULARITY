@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@the-w1zard/dx':
-        specifier: ^1.0.18
-        version: 1.0.18
+        specifier: ^1.0.20
+        version: 1.0.20
       '@the-w1zard/resolvers':
         specifier: ^1.0.3
         version: 1.0.3
@@ -25,11 +25,11 @@ importers:
         version: 1.0.7
     devDependencies:
       '@the-w1zard/alias_types':
-        specifier: ^1.0.6
-        version: 1.0.6
+        specifier: ^1.0.7
+        version: 1.0.7
       '@the-w1zard/types':
-        specifier: ^1.0.11
-        version: 1.0.11
+        specifier: ^1.0.12
+        version: 1.0.12
       '@tsconfig/node-lts':
         specifier: ^24.0.0
         version: 24.0.1
@@ -92,11 +92,11 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@the-w1zard/alias_types@1.0.6':
-    resolution: {integrity: sha512-KtpT1KIIpZo42pJuqpwCUEJcjQea5O1aQh9rys9rfgFQZE8DCmX58Y4L3cwRrUZ/qd78j87iBuGbXKUq7dtdYQ==}
+  '@the-w1zard/alias_types@1.0.7':
+    resolution: {integrity: sha512-HtFEzFraDiXKZKKlRi5qfQjNE7YrWIOqIVJhGUynO9no6UkQ9R8lJUH4zjHCrZC+HFGFtk9Boj1e9s1P4UtlKw==}
 
-  '@the-w1zard/dx@1.0.18':
-    resolution: {integrity: sha512-D2Cx3kXnB/busPba+N8OIkqlXZWPhLlR4wrg5pRbYFxKhv6UCeqNwFSYLmH/5mrJboGEHZ7d9lwjT72HFk95GA==}
+  '@the-w1zard/dx@1.0.20':
+    resolution: {integrity: sha512-uEyS/YFg/4skjEKLYGHuomE8ZusGb9rndd/3AlOSbBItWeqAdO5kZs+ywmUsiREX5FC1vRhLE0nyICac7MO/Jg==}
 
   '@the-w1zard/prims@1.0.1':
     resolution: {integrity: sha512-rYZrjUPHE6mR1zXcepBtSCZOfTwpSz5YmSVge7IDJw4XKWrn9TrNjL8d7MzdtnuN9sCzOB0Uc7QW33P2g06o8g==}
@@ -113,8 +113,8 @@ packages:
   '@the-w1zard/the-registry@1.0.7':
     resolution: {integrity: sha512-DpwuAw1KQoEu/eIorfgVIXfLV+uswnnJaTX0NjTTmeNwTae3tpYF1CJZm45dLXntXMQKxRa5/irSuJdPoIk8Kw==}
 
-  '@the-w1zard/types@1.0.11':
-    resolution: {integrity: sha512-CWU5zsuw1kzweE7t5fNWyYbyA68JirB/0+nxXUqCm4ozv3rmLFshQvz3DhUOsV3PvFRjPm1xIF0SVwoprMEm8A==}
+  '@the-w1zard/types@1.0.12':
+    resolution: {integrity: sha512-CtYTksMVCay6fqSvL90RIef2OHBoxv7i6YJKwhH/IIISqF/FGU/I96fR5jUo/ssSz4V0+MZ8OTSsqNI0faNJ/g==}
 
   '@tsconfig/node-lts@24.0.1':
     resolution: {integrity: sha512-xo+1KtV5zVb90fyyeglG1n5cqg3cQXLlCkEpLptYlZUNk28xmwhuD5GmxoXwmrVtUTvaMyclun9kAd0TK7H+Pg==}
@@ -206,9 +206,9 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@the-w1zard/alias_types@1.0.6': {}
+  '@the-w1zard/alias_types@1.0.7': {}
 
-  '@the-w1zard/dx@1.0.18':
+  '@the-w1zard/dx@1.0.20':
     dependencies:
       '@babel/parser': 8.1.0
       '@babel/traverse': 8.1.0
@@ -216,9 +216,9 @@ snapshots:
 
   '@the-w1zard/prims@1.0.1':
     dependencies:
-      '@the-w1zard/alias_types': 1.0.6
+      '@the-w1zard/alias_types': 1.0.7
       '@the-w1zard/store': 1.0.8
-      '@the-w1zard/types': 1.0.11
+      '@the-w1zard/types': 1.0.12
 
   '@the-w1zard/resolvers@1.0.3':
     dependencies:
@@ -226,23 +226,23 @@ snapshots:
 
   '@the-w1zard/store@1.0.8':
     dependencies:
-      '@the-w1zard/alias_types': 1.0.6
-      '@the-w1zard/dx': 1.0.18
+      '@the-w1zard/alias_types': 1.0.7
+      '@the-w1zard/dx': 1.0.20
 
   '@the-w1zard/the-cloud@1.0.4':
     dependencies:
-      '@the-w1zard/dx': 1.0.18
+      '@the-w1zard/dx': 1.0.20
       '@the-w1zard/prims': 1.0.1
       '@the-w1zard/resolvers': 1.0.3
       '@the-w1zard/store': 1.0.8
 
   '@the-w1zard/the-registry@1.0.7':
     dependencies:
-      '@the-w1zard/dx': 1.0.18
+      '@the-w1zard/dx': 1.0.20
 
-  '@the-w1zard/types@1.0.11':
+  '@the-w1zard/types@1.0.12':
     dependencies:
-      '@the-w1zard/alias_types': 1.0.6
+      '@the-w1zard/alias_types': 1.0.7
 
   '@tsconfig/node-lts@24.0.1': {}
 

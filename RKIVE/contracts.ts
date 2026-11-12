@@ -459,10 +459,7 @@ export type ContractInstance = (
 // The 12 master atoms register here. `atom()` is the default
 // fast-path master. The other 11 are your real constructors.
 
-export const MASTER_ATOM_FACTORIES: Record<
-    MASTER_ATOM_KIND,
-    (value: A, key?: ATOM_KEY) => ATOM
-> = {
+export const MASTER_ATOM_FACTORIES: Record<MASTER_ATOM_KIND, (value: A, key?: ATOM_KEY) => ATOM> = {
     // Default fast path — the only one atom_contract needs built-in.
     DEFAULT: (value, key) => atom(value, key),
 

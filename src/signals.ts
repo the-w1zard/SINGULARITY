@@ -9,7 +9,6 @@ import { Queue } from "./comps/queue";
 //                                                                                                                       TYPPES
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 const NO_SUB = -1;
-const NO_MSG = -1;
 type Handler = (payload: unknown) => unknown | Promise<unknown>;
 function pow2(value: number): boolean {
 	return value > 0 && (value & (value - 1)) === 0;
@@ -73,51 +72,14 @@ const RX_Flags = {
 	PENDING: 1 << 10,
 } as const;
 type Pid = number;
-type Lid = number;
-const ReactiveFlags = {
-	NONE: 0,
-	SIGNAL: 1 << 0,
-	COMPUTED: 1 << 1,
-	EFFECT: 1 << 2,
-	DIRTY: 1 << 3,
-	RUNNING: 1 << 4,
-	DISPOSED: 1 << 5,
-	MUTABLE: 1 << 6,
-	WATCHING: 1 << 7,
-	RECURSEDCHECK: 1 << 8,
-	RECURSED: 1 << 9,
-	PENDING: 1 << 10,
-} as const;
-const NO_LINK = -1;
-const NO_PID = -1;
-const HOOK_KIND = {
-	NONE: 0,
-	STATE: 1,
-	REDUCER: 2,
-	REF: 3,
-	MEMO: 4,
-	EFFECT: 5,
-	CONTEXT: 6,
-} as const;
-const HOOK_FLAG = {
-	NONE: 0,
-	DIRTY: 1 << 0,
-	RUNNING: 1 << 2,
-	MOUNTED: 1 << 3,
-	DISPOSED: 1 << 4,
-	RENDER_PENDING: 1 << 5,
-} as const;
+type Lid = number;  
 type RenderFn = () => void;
 type CleanupFn = () => void;
 type EffectFn = () => void | CleanupFn;
 let Bun: A = null;
 let Deno: A = null;
-if (typeof (globalThis as A).Deno !== "undefined") {
-	Deno = (globalThis as A).Deno;
-}
-if (typeof (globalThis as A).Bun !== "undefined") {
-	Bun = (globalThis as A).Bun;
-}
+if (typeof (globalThis as A).Deno !== "undefined") { Deno = (globalThis as A).Deno;}
+if (typeof (globalThis as A).Bun !== "undefined") {	Bun = (globalThis as A).Bun;}
 export const hasBun = typeof (globalThis as A).Bun !== "undefined";
 export const hasDeno = typeof (globalThis as A).Deno !== "undefined";
 export const hasNode = typeof process !== "undefined" && !!process.versions?.node;
@@ -672,10 +634,9 @@ class GOVERNOR {
 //                                                                                                         [DARTH MAUL] SIGNALS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class DARTH_MAUL_ENGINE {
-	public hub: DARTH_MAUL;
-	// ======================================================================
-	// SOA / lane storage — Warlock lane semantics preserved
-	// ======================================================================
+	public hub: DARTH_MAUL; 
+    //                                                                                                                    CONSTANTS
+    // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	private readonly capacity: number;
 	private readonly lane: I32;
 	private readonly ops: U8;
@@ -1698,90 +1659,7 @@ class DARTH_MAUL_ENGINE {
 		return this.rKind[pid] === RKind.EFFECT_SCOPE;
 	}
 }
-export const def = new (class DEFINITION {
-	public MASTER_ATOM_KEYS = ["ATOM", "MODULE_ATOM", "CLOUD_ATOM", "SAURON_ATOM", "DRS_ATOM", "DUPLEX_ATOM", "SLAB_ATOM", "STREAM_ATOM", "S_CLASS_ATOM", "SPREADSHEET_ATOM", "SEND_ATOM", "VERTEX"] as const;
-	public MQ = {
-		RETRY: this.DEFINE_ATOM_KIND("retry"),
-		ACK: this.DEFINE_ATOM_KIND("ack"),
-		DEADLINE: this.DEFINE_ATOM_KIND("deadline"),
-		DEDUPE: this.DEFINE_ATOM_KIND("dedupe"),
-		DEPTH: this.DEFINE_ATOM_KIND("depth"),
-		WILDCARD: this.DEFINE_ATOM_KIND("wildcard"),
-		REPLY: this.DEFINE_ATOM_KIND("reply"),
-		WINDOW: this.DEFINE_ATOM_KIND("window"),
-		RESUME: this.DEFINE_ATOM_KIND("resume"),
-		CREDIT: this.DEFINE_ATOM_KIND("credit"),
-		CORRELATION: this.DEFINE_ATOM_KIND("correlation"),
-	} as const;
-	public ELECTRONS = {
-		ADAPTER_ELECTRON: this.DEFINE_ATOM_KIND("adapter"),
-		BEAM_CODEC_ELECTRON: this.DEFINE_ATOM_KIND("beam_codec"),
-		BINARY_ELECTRON: this.DEFINE_ATOM_KIND("binary"),
-		BYTE_CODE_VM: this.DEFINE_ATOM_KIND("byte_code_vm"),
-		CHANNEL_ELECTRON: this.DEFINE_ATOM_KIND("channel"),
-		CHANNELS_ELECTRON: this.DEFINE_ATOM_KIND("channels"),
-		CONCURRENCY_ELECTRON: this.DEFINE_ATOM_KIND("concurrency"),
-		DEADLETTER_ELECTRON: this.DEFINE_ATOM_KIND("deadletter"),
-		DESTRUCTION_ELECTRON: this.DEFINE_ATOM_KIND("destruction"),
-		ERROR_ELECTRON: this.DEFINE_ATOM_KIND("error"),
-		EVENT_ELECTRON: this.DEFINE_ATOM_KIND("event"),
-		EXTERNAL_SUBSCRIPTION_ELECTRON: this.DEFINE_ATOM_KIND("exterenal_sub"),
-		GATE_ELECTRON: this.DEFINE_ATOM_KIND("gate"),
-		GLOBAL_SUBSCRIPTION_ELECTRON: this.DEFINE_ATOM_KIND("global_sub"),
-		GOVERNOR_ELECTRON: this.DEFINE_ATOM_KIND("GOVERNOR"),
-		HOOK_ELECTRON: this.DEFINE_ATOM_KIND("hook"),
-		HTTP_TRANSPORT: this.DEFINE_ATOM_KIND("http_transport"),
-		INJECTION_CODEC_ELECTRON: this.DEFINE_ATOM_KIND("injection"),
-		METRICS_ELECTRON: this.DEFINE_ATOM_KIND("metrics"),
-		MIDDLEWARE_ELECTRON: this.DEFINE_ATOM_KIND("middlleware"),
-		RIFTS_ACCESS_ELECTRON: this.DEFINE_ATOM_KIND("rifts"),
-		REACTIVE_ELECTRON: this.DEFINE_ATOM_KIND("reactive"),
-		ROUTE_ELECTRON: this.DEFINE_ATOM_KIND("route"),
-		RUN_ON_ELECTRON: this.DEFINE_ATOM_KIND("run_on"),
-		SEALED_ERROR_ELECTRON: this.DEFINE_ATOM_KIND("sealed_error"),
-		SESSION_ELECTRON: this.DEFINE_ATOM_KIND("session"),
-		SHELL_ELECTRON: this.DEFINE_ATOM_KIND("reshelltry"),
-		SIGNAL_ELECTRON: this.DEFINE_ATOM_KIND("signal"),
-		SOA_QUAD_TIERED_REGISTRY_ELECTRON: this.DEFINE_ATOM_KIND("soa_registry"),
-		SUBSCRIPTION_ELECTRON: this.DEFINE_ATOM_KIND("subscription"),
-		TRANSFORM_ELECTRON: this.DEFINE_ATOM_KIND("transform"),
-		WAITER_ELECTRON: this.DEFINE_ATOM_KIND("waiter"),
-	} as const;
-	public NEUTRONS = {
-		COMPRESSION_NEUTRON: this.DEFINE_ATOM_KIND("compression"),
-		CONFLICT_NEUTRON: this.DEFINE_ATOM_KIND("conflict"),
-		CONTEXT_NEUTRON: this.DEFINE_ATOM_KIND("context"),
-		ENCRYPTION_NEUTRON: this.DEFINE_ATOM_KIND("encryption"),
-		GROUPS_NEUTRON: this.DEFINE_ATOM_KIND("groups"),
-		HISTORY_NEUTRON: this.DEFINE_ATOM_KIND("history"),
-		META_NEUTRON: this.DEFINE_ATOM_KIND("meta"),
-		OFFSEC_NEUTRON: this.DEFINE_ATOM_KIND("offsec"),
-		PERMISSIONS_NEUTRON: this.DEFINE_ATOM_KIND("permissions"),
-		PERSISTENCE_NEUTRON: this.DEFINE_ATOM_KIND("persistence"),
-		PRIORITY_NEUTRON: this.DEFINE_ATOM_KIND("priority"),
-		SNAPSHOT_NEUTRON: this.DEFINE_ATOM_KIND("snapshot"),
-		TAGS_NEUTRON: this.DEFINE_ATOM_KIND("tags"),
-		TIME_TRAVEL_NEUTRON: this.DEFINE_ATOM_KIND("time_travel"),
-		TTL_NEUTRON: this.DEFINE_ATOM_KIND("ttl"),
-	} as const;
-	public PROTONS = {
-		CONTRACTS_PROTON: this.DEFINE_ATOM_KIND("contract"),
-		REACTIVE_PROTON: this.DEFINE_ATOM_KIND("reactive"),
-		REGISTRY_PROTON: this.DEFINE_ATOM_KIND("registry"),
-		SCHEMA_PROTON: this.DEFINE_ATOM_KIND("schema"),
-		VALUES_REGISTRY_PROTON: this.DEFINE_ATOM_KIND("values_reg"),
-	} as const;
-	public DEFINE_ATOM_KIND(name: string): symbol {
-		return Symbol(name);
-	}
-	public PARTICLE_KEYS = {
-		...this.PROTONS,
-		...this.NEUTRONS,
-		...this.ELECTRONS,
-		...this.MQ,
-	} as const;
-	public BARE_MASTER_RUNTIME: ATOM_CONTRACT_RUNTIME = { createMaster: (kind, k, s, m, r, value) => ({ k, s, m, r, value }) };
-})();
+
 class DARTH_MAUL {
 	//                                                                                                                    CONSTANTS
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -1808,59 +1686,6 @@ class DARTH_MAUL {
 		this.m = hub.m;
 		this.s = hub.s;
 		this.k = hub.k;
-	}
-	// #endregion
-	//                                                                                                                         ATOM
-	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	public atom_contract<T = U, M extends CONTRACT_MASTER<T> = CONTRACT_MASTER<T>, B extends object = Record<never, never>>(definition: (context: { readonly self: ATOM_CONTRACT_SELF }) => ATOM_CONTRACT_CONFIG<T, M, B>, runtime?: ATOM_CONTRACT_RUNTIME<M>): ATOM_CONTRACT<T, M, B> {
-		// Defines a reusable atom contract. Defining it creates no atom and performs no registration. Calling the returned function creates one master and its declared bindables; the master itself remains owned by the supplied runtime.
-		const selected = definition({ self: { atom: "ATOM" } });
-		const kind = selected.atom ?? "ATOM";
-		if (!def.MASTER_ATOM_KEYS.includes(kind)) { throw new TypeError(`Unknown master atom: ${String(kind)}`); }
-
-		const config: ATOM_CONTRACT_CONFIG<T, M, B> = { ...selected, atom: kind };
-		const masterRuntime = runtime ?? (def.BARE_MASTER_RUNTIME as ATOM_CONTRACT_RUNTIME<M>);
-
-		const contract = ((initialValue?: T, k?: A, s?: S, m?: S, r?: S) => {
-			const rr = r ?? this.r;
-			const mm = m ?? this.m; 
-			const ss = s ?? this.s; 
-			const kk = k ?? this.k;
-			const configuredValue = config.value;
-			const value = initialValue !== undefined ? initialValue : typeof configuredValue === "function" ? (configuredValue as () => T)() : (configuredValue as T);
-			const master = masterRuntime.createMaster(kind, kk, ss, mm, rr, value);
-
-			const bindables: B[] = [];
-			const operations: B = {} as B;
-
-			for (const createBindable of config.bindables ?? []) {
-				//if (!config.bindables!.includes(createBindable)) { throw new TypeError(`Unknown bindable: ${String(createBindable)}`); }
-				const bound = createBindable({ self: master, kk, ss, mm, rr });
-				bindables.push(bound);
-				Object.assign(operations, bound);
-			}
-
-			const instance: ATOM_CONTRACT_INSTANCE<T, M, B> = Object.assign(operations, {
-				atom: kind,
-				kk,
-				ss,
-				mm,
-				rr,
-				master,
-				bindables,
-				get value() { return master.value; },
-				set value(next: T) { master.value = next; },
-			});
-
-			return instance;
-		}) as ATOM_CONTRACT<T, M, B>;
-
-		Object.defineProperties(contract, { atom: { value: kind, enumerable: true }, config: { value: config, enumerable: true }, });
-		return contract;
-	}/** Marks a reusable bindable factory for inclusion in an atom contract. */
-
-	public atom_bindable<M extends CONTRACT_MASTER = CONTRACT_MASTER, B extends object = Record<never, never>>(factory: ATOM_BINDABLE<M, B>): ATOM_BINDABLE<M, B> {
-		return factory;
 	}
 	// #endregion
 	//                                                                                                                         MAPS
@@ -1899,7 +1724,7 @@ class DARTH_MAUL {
 		return metaMap;
 	}
 	public _contracts = {
-		DEFAULT: this.atom_contract(() => ({ atom: "VERTEX" })),
+		DEFAULT: ATOM_CONTRACT(() => ({ atom: "VERTEX" })),
 	};
 	// #endregion
 	//                                                                                                                          API
@@ -2271,12 +2096,7 @@ class DARTH_MAUL {
 			const source = options?.source ?? "surgery";
 			const cause = options?.cause ?? `surgery:${String(k)}:${Date.now()}`;
 
-			const written = atom.write(next, {
-				source,
-				cause,
-				triggerRender: true,
-				recordHistory: options?.record ?? true,
-			});
+			const written = atom.write(next);
 
 			this.surgery.journal.push({ key: k, previous, next: written, s, m, r });
 
@@ -2469,11 +2289,7 @@ class DARTH_MAUL {
 				throw new Error(`[Sauron] Cannot write unknown signal "${String(k)}"`);
 			}
 
-			return atom.write(value, {
-				source,
-				cause,
-				triggerRender: atom.triggerRender,
-			});
+			return atom.write(value);
 		};
 		fn.recordCausal = <K, V>(k: S, value: V, source: S, s = this.s, m = this.m, r = this.r, cause?: S): void => {
 			const atom = this.hub.wr._signals.get(k);
@@ -2525,117 +2341,7 @@ class DARTH_MAUL {
 		return fn;
 	})();
 	// #endregion
-	//                                                                                                   DISTRIBUTED REACTIVE STATE
-	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
-		const existing = this.hub.state.state.get(k, { s: s, m: m, r: r });
-		if (existing !== undefined) return existing;
-		const t = typeof v === "function" ? v() : v;
-		this.hub.state.state.set(k, t, { triggerRender: true, s: s, m: m, r: r });
-		return t;
-	}
-	public naked = (() => {
-		const fn = <T = A,>(k: SignalKey, v?: T | (() => T)) => {
-			const registry = this.hub.wr._naked_signals;
-			let atom = registry.get(k);
 
-			if (atom && v === undefined) { return atom; }
-			if (atom && v) { 
-                const t = UF(v)
-                atom = registry.set(k, t)
-                return atom;
-             }
-
-			const initialValue = UF(v)
-			atom = this.signal<T>(initialValue);
-			registry.set(k, atom);
-			return atom;
-		};
-        fn.atom =<T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid()}`, s = this.s, m = this.m, r = this.r, ) =>{
-            return {
-                get value(): T { return this.naked(k); },
-                get current(): T { return this.naked(k); },
-                peek(): T { return this.naked(k); },
-                set value(v: T) { this.naked(k, v); },
-                set current(v: T) { this.naked(k, v); },
-                set crt(v: T) { this.naked(k, v); },
-                set set(v: T) { this.naked(k, v); },
-            };
-        }
-		return fn;
-	})();
-
-	// #endregion
-	//                                                                                                           ANTI MESSAGE QUEUE
-	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	public useAntiMsgQ = (() => {
-		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
-
-			const senderTokenRef = this.naked.atom(this.hub.REGISTRY._sid()); // this.j.root._id.b();
-
-			this.hub.bus.sub( (i: A) => {
-					const incoming = i.p;
-					if (incoming?.from === senderTokenRef.value) return;
-					this.hub.state.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
-					// set(k, incoming.value, false, s, m, r);
-					setState(incoming.value);
-			}, k, s, m, r); // stay in sync with local writes too (including our own setLive below)
-			this.hub.state.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
-			// sub(k, (newValue: any) => setState(newValue), s, m, r);
-
-			const setLive = (next: any) => {
-				const newValue = typeof next === "function" ? next(this.hub.state.state.get(k, { s: s, m: m, r: r })) : next;
-				setState(newValue);
-				this.hub.state.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
-				// set(k, newValue, true, s, m, r); // local write
-				this.hub.bus.send({ value: newValue, from: senderTokenRef.value }, k, s, m, r); // broadcast to the bus
-			};
-
-			return [state, setLive] as const;
-		};
-		fn.mailbox = (v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => {
-				return this.state_setter(v, k, s, m, r);
-			});
-
-			const senderTokenRef = this.naked.atom(this.hub.REGISTRY._sid());
-			const queueRef = this.naked.atom<Queue | null>(null);
-
-			if (!queueRef.current) {
-				queueRef.current = new Queue(1);
-			}
-
-			// mailbox — replace the whole useEffect block:
-			this.hub.bus.sub(
-				(i: A) => {
-					const incoming = i.p;
-					if (incoming?.from === senderTokenRef.value) return;
-					queueRef.current!.run(async () => {
-						const current = this.hub.state.state.get(k, { s: s, m: m, r: r });
-						const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-						this.hub.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
-						return next;
-					});
-				},
-				k,
-				s,
-				m,
-				r,
-			);
-
-			this.hub.state.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
-
-			const setLive = (next: any) => {
-				const t = typeof next === "function" ? next() : next;
-				this.hub.bus.send({ value: t, from: senderTokenRef.value }, k, s, m, r);
-			};
-
-			return [state, setLive] as const;
-		};
-		return fn;
-	})();
-	// #endregion
 	//                                                                                                                        ASYNC
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public async = (() => {
@@ -3180,6 +2886,1359 @@ class DARTH_MAUL {
 	};
 
 	// #endregion
+}
+const queued: (EffectNode | UD)[] = [];
+export interface ReactiveNode {
+	deps?: Link;
+	depsTail?: Link;
+	subs?: Link;
+	subsTail?: Link;
+	flags: ReactiveFlags;
+}
+export interface Link {
+	version: number;
+	dep: ReactiveNode;
+	sub: ReactiveNode;
+	prevSub: Link | undefined;
+	nextSub: Link | undefined;
+	prevDep: Link | undefined;
+	nextDep: Link | undefined;
+}
+interface Stack<T> { value: T;	prev: Stack<T> | undefined;}
+export const enum ReactiveFlags {
+	None = 0,
+	Mutable = 1,
+	Watching = 2,
+	RecursedCheck = 4,
+	Recursed = 8,
+	Dirty = 16,
+	Pending = 32,
+}
+export function createReactiveSystem({ update, notify, unwatched,}: { update(sub: ReactiveNode): B;	notify(sub: ReactiveNode): V; unwatched(sub: ReactiveNode): V;}) {
+	return { link, unlink, propagate, checkDirty, shallowPropagate,	};
+	function link(dep: ReactiveNode, sub: ReactiveNode, version: number): void {
+		const prevDep = sub.depsTail;
+		if (prevDep !== undefined && prevDep.dep === dep) { return; }
+		const nextDep = prevDep !== undefined ? prevDep.nextDep : sub.deps;
+		if (nextDep !== undefined && nextDep.dep === dep) {
+			nextDep.version = version;
+			sub.depsTail = nextDep;
+			return;
+		}
+		const prevSub = dep.subsTail;
+		if (prevSub !== undefined && prevSub.version === version && prevSub.sub === sub) { return; }
+		const newLink
+			= sub.depsTail
+			= dep.subsTail
+			= {
+				version,
+				dep,
+				sub,
+				prevDep,
+				nextDep,
+				prevSub,
+				nextSub: undefined,
+			};
+		if (nextDep !== undefined) { nextDep.prevDep = newLink; }
+		if (prevDep !== undefined) { prevDep.nextDep = newLink; }
+        else { sub.deps = newLink; }
+		if (prevSub !== undefined) { prevSub.nextSub = newLink; }
+        else { dep.subs = newLink; }
+	}
+	function unlink(link: Link, sub = link.sub): Link | undefined {
+		const { dep, prevDep, nextDep, nextSub, prevSub } = link;
+		if (nextDep !== undefined) {
+			nextDep.prevDep = prevDep;
+		} else {
+			sub.depsTail = prevDep;
+		}
+		if (prevDep !== undefined) {
+			prevDep.nextDep = nextDep;
+		} else {
+			sub.deps = nextDep;
+		}
+		if (nextSub !== undefined) {
+			nextSub.prevSub = prevSub;
+		} else {
+			dep.subsTail = prevSub;
+		}
+		if (prevSub !== undefined) {
+			prevSub.nextSub = nextSub;
+		} else if ((dep.subs = nextSub) === undefined) {
+			unwatched(dep);
+		}
+		return nextDep;
+	}
+	function propagate(link: Link, innerWrite: boolean): void {
+		let next = link.nextSub;
+		let stack: Stack<Link | undefined> | undefined;
+
+		top: do {
+			const sub = link.sub;
+			let flags = sub.flags;
+
+			if (!(flags & (ReactiveFlags.RecursedCheck | ReactiveFlags.Recursed | ReactiveFlags.Dirty | ReactiveFlags.Pending))) {
+				sub.flags = flags | ReactiveFlags.Pending;
+				if (innerWrite) {
+					sub.flags |= ReactiveFlags.Recursed;
+				}
+			} else if (!(flags & (ReactiveFlags.RecursedCheck | ReactiveFlags.Recursed))) {
+				flags = ReactiveFlags.None;
+			} else if (!(flags & ReactiveFlags.RecursedCheck)) {
+				sub.flags = (flags & ~ReactiveFlags.Recursed) | ReactiveFlags.Pending;
+			} else if (!(flags & (ReactiveFlags.Dirty | ReactiveFlags.Pending)) && isValidLink(link, sub)) {
+				sub.flags = flags | (ReactiveFlags.Recursed | ReactiveFlags.Pending);
+				flags &= ReactiveFlags.Mutable;
+			} else {
+				flags = ReactiveFlags.None;
+			}
+
+			if (flags & ReactiveFlags.Watching) { notify(sub); }
+
+			if (flags & ReactiveFlags.Mutable) {
+				const subSubs = sub.subs;
+				if (subSubs !== undefined) {
+					const nextSub = (link = subSubs).nextSub;
+					if (nextSub !== undefined) {
+						stack = { value: next, prev: stack };
+						next = nextSub;
+					}
+					continue;
+				}
+			}
+
+			if ((link = next!) !== undefined) {
+				next = link.nextSub;
+				continue;
+			}
+
+			while (stack !== undefined) {
+				link = stack.value!;
+				stack = stack.prev;
+				if (link !== undefined) {
+					next = link.nextSub;
+					continue top;
+				}
+			}
+
+			break;
+		} while (true);
+	}
+	function checkDirty(link: Link, sub: ReactiveNode): boolean {
+		let stack: Stack<Link> | undefined;
+		let checkDepth = 0;
+		let dirty = false;
+
+		top: do {
+			const dep = link.dep;
+			const flags = dep.flags;
+
+			if (sub.flags & ReactiveFlags.Dirty) {
+				dirty = true;
+			} else if ((flags & (ReactiveFlags.Mutable | ReactiveFlags.Dirty)) === (ReactiveFlags.Mutable | ReactiveFlags.Dirty)) {
+				const subs = dep.subs!;
+				if (update(dep)) {
+					if (subs.nextSub !== undefined) { shallowPropagate(subs); }
+					dirty = true;
+				}
+			} else if ((flags & (ReactiveFlags.Mutable | ReactiveFlags.Pending)) === (ReactiveFlags.Mutable | ReactiveFlags.Pending)) {
+				stack = { value: link, prev: stack };
+				link = dep.deps!;
+				sub = dep;
+				++checkDepth;
+				continue;
+			}
+
+			if (!dirty) {
+				const nextDep = link.nextDep;
+				if (nextDep !== undefined) { link = nextDep; continue; }
+			}
+
+			while (checkDepth--) {
+				link = stack!.value;
+				stack = stack!.prev;
+				if (dirty) {
+					const subs = sub.subs!;
+					if (update(sub)) {
+						if (subs.nextSub !== undefined) {
+							shallowPropagate(subs);
+						}
+						sub = link.sub;
+						continue;
+					}
+					dirty = false;
+				} else {
+					sub.flags &= ~ReactiveFlags.Pending;
+				}
+				sub = link.sub;
+				const nextDep = link.nextDep;
+				if (nextDep !== undefined) {
+					link = nextDep;
+					continue top;
+				}
+			}
+
+			return dirty && !!sub.flags;
+		} while (true);
+	}
+	function shallowPropagate(link: Link): void {
+		do {
+			const sub = link.sub;
+			const flags = sub.flags;
+			if ((flags & (ReactiveFlags.Pending | ReactiveFlags.Dirty)) === ReactiveFlags.Pending) {
+				sub.flags = flags | ReactiveFlags.Dirty;
+				if ((flags & (ReactiveFlags.Watching | ReactiveFlags.RecursedCheck)) === ReactiveFlags.Watching) {
+					notify(sub);
+				}
+			}
+		} while ((link = link.nextSub!) !== undefined);
+	}
+	function isValidLink(checkLink: Link, sub: ReactiveNode): boolean {
+		let link = sub.depsTail;
+		while (link !== undefined) {
+			if (link === checkLink) {
+				return true;
+			}
+			link = link.prevDep;
+		}
+		return false;
+	}
+}
+interface EffectScopeNode extends ReactiveNode {}
+interface EffectNode extends ReactiveNode {	fn(): (() => V) | V; cleanup?: () => V;}
+interface ComputedNode<T = any> extends ReactiveNode {	value: T | UD;	getter: (previousValue?: T) => T;} 
+interface SignalNode<T = any> extends ReactiveNode { currentValue: T; pendingValue: T;}
+const HasChildEffect = 64;
+let cycle = 0;
+let runDepth = 0;
+let batchDepth = 0;
+let notifyIndex = 0;
+let queuedLength = 0;
+let activeSub: ReactiveNode | UD;
+const {	link, unlink, propagate, checkDirty, shallowPropagate,} = createReactiveSystem({	
+    update(node: SignalNode | ComputedNode | EffectScopeNode): boolean {
+		if ('getter' in node) { return updateComputed(node); }
+		if ('currentValue' in node) { return updateSignal(node); }
+		node.flags = ReactiveFlags.Mutable;
+		return true;
+	},
+	notify(effect: EffectNode) {
+		let insertIndex = queuedLength;
+		let firstInsertedIndex = insertIndex;
+		do {
+			queued[insertIndex++] = effect;
+			effect.flags &= ~ReactiveFlags.Watching;
+			effect = effect.subs?.sub as EffectNode;
+			if (effect === undefined || !(effect.flags & ReactiveFlags.Watching)) { break; }
+		} while (true);
+
+		queuedLength = insertIndex;
+
+		while (firstInsertedIndex < --insertIndex) {
+			const left = queued[firstInsertedIndex];
+			queued[firstInsertedIndex++] = queued[insertIndex];
+			queued[insertIndex] = left;
+		}
+	},
+	unwatched(node: SignalNode | ComputedNode | EffectNode | EffectScopeNode) {
+		if ('getter' in node) {
+			if (node.depsTail !== undefined) {
+				node.flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+				disposeAllDepsInReverse(node);
+			}
+		}
+		else if ('currentValue' in node) { }// Nothing to do for signals, they are always mutable and never dirty until pendingValue changes
+		else if ('fn' in node) { effectOper.call(node); }
+		else { effectScopeOper.call(node); }
+	},
+});
+export function getActiveSub(): ReactiveNode | UD {	return activeSub;}
+export function setActiveSub(sub?: ReactiveNode) {
+	const prevSub = activeSub;
+	activeSub = sub;
+	return prevSub;
+}
+export function getBatchDepth(): N { return batchDepth;}
+export function startBatch() { ++batchDepth;}
+export function endBatch() { if (!--batchDepth) { flush(); }}
+export function isSignal(fn: () => V): B {	return fn.name === 'bound ' + signalOper.name;}
+export function isComputed(fn: () => V): B { return fn.name === 'bound ' + computedOper.name;}
+export function isEffect(fn: () => V): B {	return fn.name === 'bound ' + effectOper.name;}
+export function isEffectScope(fn: () => V): B {	return fn.name === 'bound ' + effectScopeOper.name;}
+export function signal<T>(): { (): T | UD;	(value: T | UD): V;};
+export function signal<T>(initialValue: T): { (): T; (value: T): V;};
+export function signal<T>(initialValue?: T): { (): T | UD;	(value: T | UD): V;} {
+	return signalOper.bind({
+		currentValue: initialValue,
+		pendingValue: initialValue,
+		subs: undefined,
+		subsTail: undefined,
+		flags: ReactiveFlags.Mutable,
+	}) as () => T | undefined;
+}
+export function computed<T>(getter: (previousValue?: T) => T): () => T {
+	return computedOper.bind({
+		value: undefined,
+		subs: undefined,
+		subsTail: undefined,
+		deps: undefined,
+		depsTail: undefined,
+		flags: ReactiveFlags.None,
+		getter: getter as (previousValue?: unknown) => unknown,
+	}) as () => T;
+}
+export function effect(fn: () => V | (() => V)): () => V {
+	const e: EffectNode = {
+		fn,
+		cleanup: undefined,
+		subs: undefined,
+		subsTail: undefined,
+		deps: undefined,
+		depsTail: undefined,
+		flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
+	};
+	const prevSub = setActiveSub(e);
+	if (prevSub !== undefined) {
+		link(e, prevSub, 0);
+		prevSub.flags |= HasChildEffect;
+	}
+	try {
+		++runDepth;
+		const result = e.fn();
+		e.cleanup = typeof result === "function" ? result : undefined;
+	} finally {
+		--runDepth;
+		activeSub = prevSub;
+		e.flags &= ~ReactiveFlags.RecursedCheck;
+	}
+	return effectOper.bind(e);
+}
+export function effectScope(fn: () => V): () => V {
+	const e: EffectScopeNode = {
+		deps: undefined,
+		depsTail: undefined,
+		subs: undefined,
+		subsTail: undefined,
+		flags: ReactiveFlags.Mutable,
+	};
+	const prevSub = setActiveSub(e);
+	if (prevSub !== undefined) {
+		link(e, prevSub, 0);
+		prevSub.flags |= HasChildEffect;
+	}
+	try {
+		fn();
+	} finally {
+		activeSub = prevSub;
+	}
+	return effectScopeOper.bind(e);
+}
+export function trigger(fn: () => V) {
+	const sub: ReactiveNode = {
+		deps: undefined,
+		depsTail: undefined,
+		flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
+	};
+	const prevSub = setActiveSub(sub);
+	++batchDepth;
+	try {
+		fn();
+	} finally {
+		activeSub = prevSub;
+		sub.flags = ReactiveFlags.None;
+		let link = sub.deps;
+		while (link !== undefined) {
+			const dep = link.dep;
+			link = unlink(link, sub);
+			const subs = dep.subs;
+			if (subs !== undefined) {
+				propagate(subs, !!runDepth);
+				shallowPropagate(subs);
+			}
+		}
+		if (!--batchDepth) {
+			flush();
+		}
+	}
+}
+function updateComputed(c: ComputedNode): B {
+	if (c.flags & HasChildEffect) {
+		let link = c.depsTail;
+		while (link !== undefined) {
+			const prev = link.prevDep;
+			const dep = link.dep;
+			if (!('getter' in dep) && !('currentValue' in dep)) {
+				unlink(link, c);
+			}
+			link = prev;
+		}
+	}
+	c.depsTail = undefined;
+	c.flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
+	const prevSub = setActiveSub(c);
+	try {
+		++cycle;
+		const oldValue = c.value;
+		return oldValue !== (c.value = c.getter(oldValue));
+	} finally {
+		activeSub = prevSub;
+		c.flags &= ~ReactiveFlags.RecursedCheck;
+		purgeDeps(c);
+	}
+}
+function updateSignal(s: SignalNode): B {	
+    s.flags = ReactiveFlags.Mutable;
+    const previous = s.currentValue;
+    const next = s.pendingValue;
+    s.currentValue = next;
+    return !Object.is(previous, next);
+}
+function run(e: EffectNode): V {
+	const flags = e.flags;
+	if (
+		flags & ReactiveFlags.Dirty
+		|| (
+			flags & ReactiveFlags.Pending
+			&& checkDirty(e.deps!, e)
+		)
+	) {
+		if (flags & HasChildEffect) {
+			let link = e.depsTail;
+			while (link !== undefined) {
+				const prev = link.prevDep;
+				const dep = link.dep;
+				if (!('getter' in dep) && !('currentValue' in dep)) {
+					unlink(link, e);
+				}
+				link = prev;
+			}
+		}
+		if (e.cleanup) {
+			runCleanup(e);
+			if (!e.flags) {
+				return;
+			}
+		}
+		e.depsTail = undefined;
+		e.flags = ReactiveFlags.Watching | ReactiveFlags.RecursedCheck;
+		const prevSub = setActiveSub(e);
+		try {
+			++cycle;
+			++runDepth;
+			const result = e.fn();
+			e.cleanup = typeof result === "function" ? result : undefined;
+		} finally {
+			--runDepth;
+			activeSub = prevSub;
+			e.flags &= ~ReactiveFlags.RecursedCheck;
+			purgeDeps(e);
+		}
+	} else if (e.deps !== undefined) {
+		e.flags = ReactiveFlags.Watching | (flags & HasChildEffect);
+	}
+}
+function flush(): V {
+	try {
+		while (notifyIndex < queuedLength) {
+			const effect = queued[notifyIndex]!;
+			queued[notifyIndex++] = undefined;
+			run(effect);
+		}
+	} finally {
+		while (notifyIndex < queuedLength) {
+			const effect = queued[notifyIndex]!;
+			queued[notifyIndex++] = undefined;
+			effect.flags |= ReactiveFlags.Watching | ReactiveFlags.Recursed;
+		}
+		notifyIndex = 0;
+		queuedLength = 0;
+	}
+}
+function computedOper<T>(this: ComputedNode<T>): T {
+	const flags = this.flags;
+	if ( flags & ReactiveFlags.Dirty || ( flags & ReactiveFlags.Pending && ( checkDirty(this.deps!, this) || (this.flags = flags & ~ReactiveFlags.Pending, false) ) ) ) {
+		if (updateComputed(this)) {
+			const subs = this.subs;
+			if (subs !== undefined) { shallowPropagate(subs); }
+		}
+	} else if (!flags) {
+		this.flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
+		const prevSub = setActiveSub(this);
+		try {
+			this.value = this.getter();
+		} finally {
+			activeSub = prevSub;
+			this.flags &= ~ReactiveFlags.RecursedCheck;
+		}
+	}
+	const sub = activeSub;
+	if (sub !== undefined) {
+		link(this, sub, cycle);
+	}
+	return this.value!;
+}
+function signalOper<T>(this: SignalNode<T>, ...value: [T]): T | V {
+	if (value.length) {
+		if (this.pendingValue !== (this.pendingValue = value[0])) {
+			this.flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+			const subs = this.subs;
+			if (subs !== undefined) {
+				propagate(subs, !!runDepth);
+				if (!batchDepth) {
+					flush();
+				}
+			}
+		}
+	} else {
+		if (value.length) {
+            const next = value[0];
+
+            if (!Object.is(this.pendingValue, next)) {
+                this.pendingValue = next;
+                this.flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+                const subs = this.subs;
+                if (subs !== undefined) {
+                    propagate(subs, !!runDepth);
+                    if (!batchDepth) {
+                        flush();
+                    }
+                }
+            }
+        } else {
+            if (this.flags & ReactiveFlags.Dirty) {
+                if (updateSignal(this)) {
+                    const subs = this.subs;
+                    if (subs !== undefined) {
+                        shallowPropagate(subs);
+                    }
+                }
+            }
+            const sub = activeSub;
+            if (sub !== undefined) {
+                link(this, sub, cycle);
+            }
+            return this.currentValue;
+        }
+	}
+}
+function runCleanup(e: EffectNode): V {
+	const cleanup = e.cleanup!;
+	e.cleanup = undefined;
+	const prevSub = activeSub;
+	activeSub = undefined;
+	try {
+		cleanup();
+	} finally {
+		activeSub = prevSub;
+	}
+}
+function effectOper(this: EffectNode): V {
+	effectScopeOper.call(this);
+	if (this.cleanup) {
+		runCleanup(this);
+	}
+}
+function effectScopeOper(this: EffectScopeNode): V {
+	this.flags = ReactiveFlags.None;
+	disposeAllDepsInReverse(this);
+	const sub = this.subs;
+	if (sub !== undefined) {
+		unlink(sub);
+	}
+}
+function disposeAllDepsInReverse(sub: ReactiveNode): V {
+	let link = sub.depsTail;
+	while (link !== undefined) {
+		const prev = link.prevDep;
+		unlink(link, sub);
+		link = prev;
+	}
+}
+function purgeDeps(sub: ReactiveNode) {
+	const depsTail = sub.depsTail;
+	let dep = depsTail !== undefined ? depsTail.nextDep : sub.deps;
+	while (dep !== undefined) {
+		dep = unlink(dep, sub);
+	}
+}
+export interface BusMessage<P = A> {
+	id: string;          // unique message id
+	cid?: string;        // correlation id: request id being answered
+	r: S;
+	m: S;
+	s: S;
+	k: S;
+	p: P;                // payload
+	from?: S;            // sender identity, useful for echo suppression
+	replyTo?: string;    // reply channel key
+	ts: number;
+}
+export interface BusHandler<P = A, R = A> {
+	(msg: BusMessage<P>): R | Promise<R> | void;
+}
+type Scope = { r: S; m: S; s: S; k: S };
+type HandlerSet = Set<BusHandler>;
+class BEAR {
+    public r: A = "THE_WIZARD_ROOT_REG";
+	public m: A = "SAURON_MASTER_REG";
+	public s: A = "SAURON_SLAVE_REG";
+	public k: A = "__SAURON__";
+	public hub: DEATH_STAR
+    #SIGNAL_CELLS = new M2<A, M2<A, M2<A, A>>>();
+    _signal_cells: M2<A, A>;
+
+    _signal_listeners: M2<A, ST<(value: A) => void>>;
+    _signal_global_listeners: M2<A, ST<(key: A, value: A) => void>>;
+    _signal_waiters: M2<A, ST<(value: A) => void>>;
+
+    _signal_persistent: M2<A, A>;
+    _signal_persistent_keys: M2<A, A>;
+    constructor(raven: DEATH_STAR) {
+        this.r = raven.r ?? "THE_WIZARD_ROOT_REG";
+		this.m = raven.m ?? "SAURON_MASTER_REG";
+
+		this.s = raven.s ?? "SAURON_SLAVE_REG";
+		this.k = raven.k ?? "THE_K_KEY";
+		this.hub = raven
+        this._signal_cells = this.map("_signal_cells_raven", this.m, this.r, "#SIGNAL_CELLS");
+
+        this._signal_listeners = this.map("_signal_listeners_raven", this.m, this.r);
+        this._signal_global_listeners = this.map("_signal_global_listeners_raven", this.m, this.r);
+        this._signal_waiters = this.map("_signal_waiters_raven", this.m, this.r);
+
+        this._signal_persistent_keys = this.map("_signal_persistent_keys_raven", this.m, this.r);
+        this._signal_persistent = this.map("_signal_persistent_raven", this.m, this.r);
+		this.selfId = `bus_${this.hub.REGISTRY._sid()}`
+    }
+    public get_root(c: S, r: S) {
+		let root;
+		switch (c) {
+			case "#SIGNAL_CELLS": { root = this.#SIGNAL_CELLS.get(r); break; }
+			case "globalThis": { (globalThis as A)[r]; break; }
+		}
+		if (!root) {
+			root = new M2<A, M2<A, M2<A, A>>>();
+			switch (c) {
+				case "#SIGNAL_CELLS": { root = this.#SIGNAL_CELLS.set(r, root); break; }
+				case "globalThis": { (globalThis as A)[r] = root; break; }
+			}
+		}
+		return root;
+	}
+	public map<K = A, V = A>(s = this.s, m = this.m, r = this.r, c = "gt"): M2<K, V> | K | V {
+		const root = this.get_root(c, r);
+		let masterMap = root.get(m);
+		if (!masterMap) { masterMap = new M2<A, M2<A, A>>(); root.set(m, masterMap); }
+		let slaveMap = masterMap.get(s);
+		if (!slaveMap) { slaveMap = new M2<K, V>(); masterMap.set(s, slaveMap); }
+		return slaveMap;
+	}
+	private get<T = A>( key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },	): { (): T | UD; (value: T | UD): V } {
+		const { s, m, r } = opts;
+	
+		let cell = this._signal_cells.get(key);
+	
+		if (!cell) {
+			cell = signal<T>(undefined);
+			this._signal_cells.set(key, cell);
+		}
+	
+		return cell as { (): T | UD; (value: T | UD): V };
+	}
+	private read<T = A>( cell: { (): T | UD; (value: T | UD): V }, ): T | UD {
+		const prevSub = getActiveSub();
+	
+		// Do not create a dependency while performing an administrative read.
+		setActiveSub(undefined);
+	
+		try {
+			return cell() as T | UD;
+		} finally {
+			setActiveSub(prevSub);
+		}
+	}
+	private write<T = A>( cell: { (): T | UD; (value: T | UD): V }, value: T | UD,	): void {
+		cell(value as T);
+	}
+	private notifyKeyListeners( key: A, value: A | UD, opts: ScopeOptions,	): void {
+		const listeners = this._signal_listeners.get(key);
+	
+		if (!listeners) return;
+	
+		for (const listener of listeners) {
+			try {
+				listener(value);
+			} catch (err) {
+				console.error(`[Sauron Signal Listener Error]:`, err);
+			}
+		}
+	}
+	public scheduleGlobalNotify( key: A, value: A | UD, opts: ScopeOptions,	): void {
+		const globalListeners = this._signal_global_listeners.get(
+			"_signal_global_listeners_raven",
+		);
+	
+		if (globalListeners) {
+			for (const listener of globalListeners) {
+				try {
+					listener(key, value);
+				} catch (err) {
+					console.error(`[Sauron Signal Global Listener Error]:`, err);
+				}
+			}
+		}
+	
+		const waiters = this._signal_waiters.get(key);
+	
+		if (waiters) {
+			const resolved = Array.from(waiters);
+			this._signal_waiters.delete(key);
+	
+			for (const resolve of resolved) {
+				try {
+					resolve(value);
+				} catch (err) {
+					console.error(`[Sauron Signal Waiter Error]:`, err);
+				}
+			}
+		}
+	}
+	private notifyAll( key: A, value: A | UD, opts: ScopeOptions,	): void {
+		this.notifyKeyListeners(key, value, opts);
+		this.scheduleGlobalNotify(key, value, opts);
+	}
+	public atom<T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid()}`, s = this.s, m = this.m, r = this.r, ) {
+		return {
+			get value(): T { return this.signal(k); },
+			get current(): T { return this.signal(k); },
+			peek(): T { return this.signal(k); },
+			set value(v: T) { this.signal(k, v); },
+			set current(v: T) { this.signal(k, v); },
+			set crt(v: T) { this.signal(k, v); },
+			set set(v: T) { this.signal(k, v); },
+		};
+	}
+	public store = {
+		get: <T = A,>(
+			key: A,
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): T | UD => {
+			const cell = this.get<T>(key, opts);
+			const value = this.read<T>(cell);
+	
+			if (value !== undefined) {
+				return MaybePromise(value);
+			}
+	
+			const persistent = this._signal_persistent;
+			const persistKeys = this._signal_persistent_keys;
+	
+			if (persistKeys.has(key) && persistent.has(key)) {
+				const hydrated = persistent.get(key) as T;
+				this.write(cell, hydrated);
+				return MaybePromise(hydrated);
+			}
+	
+			return MaybePromise(undefined);
+		},
+		set: <T = A,>(
+			key: A,
+			value: T | ((prev: T | UD) => T),
+			opts: { triggerRender?: B; cap?: N } & ScopeOptions =
+				{ s: this.s, m: this.m, r: this.r, triggerRender: true, cap: 200 },
+		): T | UD => {
+			const { triggerRender = true, s, m, r, cap } = opts;
+			const cell = this.get<T>(key, opts);
+		
+			const prev = this.read<T>(cell);
+			const next =
+				typeof value === "function"
+					? (value as (prev: T | UD) => T)(prev)
+					: value;
+		
+			if (Object.is(prev, next)) {
+				return MaybePromise(prev as T);
+			}
+		
+			this.write(cell, next);
+		
+			if (this._signal_persistent_keys.has(key)) {
+				this._signal_persistent.set(key, next);
+			}
+		
+			this.notifyKeyListeners(key, next, { s, m, r });
+		
+			if (triggerRender) {
+				this.scheduleGlobalNotify(key, next, { s, m, r });
+			}
+		
+			return MaybePromise(next as T);
+		},
+		subscribe: <T = A,>(
+			key: A,
+			listener: (value: T) => void,
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): (() => void) => {
+			const cell = this.get<T>(key, opts);
+			const listeners = this._signal_listeners;
+	
+			if (!listeners.has(key)) {
+				listeners.set(key, new Set());
+			}
+	
+			listeners.get(key)!.add(listener as (value: A) => void);
+	
+			return () => {
+				const current = listeners.get(key);
+	
+				if (!current) return;
+	
+				current.delete(listener as (value: A) => void);
+	
+				if (current.size === 0) {
+					listeners.delete(key);
+				}
+			};
+		},
+		delete: (key: A,opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },): B => {
+			const { s, m, r } = opts;
+			const cells = this._signal_cells;
+			const cell = cells.get(key);
+		
+			const existed = cells.has(key);
+		
+			if (cell) {
+				this.write(cell, undefined);
+			}
+		
+			cells.delete(key);
+		
+			if (this._signal_persistent_keys.has(key)) {
+				this._signal_persistent_keys.delete(key);
+				this._signal_persistent.delete(key);
+			}
+		
+			this.notifyKeyListeners(key, undefined, { s, m, r });
+		
+			if (existed) {
+				this.scheduleGlobalNotify(key, undefined, { s, m, r });
+			}
+		
+			this._signal_listeners.delete(key);
+		
+			return MaybePromise(existed);
+		},
+		entries: <T = A,>(
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): [A, T][] => {
+			const cells = this._signal_cells;
+			const result: [A, T][] = [];
+	
+			for (const [key, cell] of cells.entries()) {
+				const value = this.read<T>(cell as any);
+	
+				if (value !== undefined) {
+					result.push([key, value]);
+				}
+			}
+	
+			return MaybePromise(result);
+		},	
+		persist: (
+			key: A,
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): void => {
+			const cell = this.get(key, opts);
+			const value = this.read(cell);
+	
+			this._signal_persistent_keys.set(key, true);
+	
+			if (value !== undefined) {
+				this._signal_persistent.set(key, value);
+			}
+		},	
+		unpersist: (
+			key: A,
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): void => {
+			this._signal_persistent_keys.delete(key);
+			this._signal_persistent.delete(key);
+		},	
+		has: (
+			key: A,
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): B => {
+			const cell = this._signal_cells.get(key);
+	
+			if (!cell) {
+				return MaybePromise(false);
+			}
+	
+			const value = this.read(cell as any);
+	
+			return MaybePromise(value !== undefined);
+		},	
+		clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }, ): void => {
+			const cells = this._signal_cells;
+		
+			for (const [key, cell] of Array.from(cells.entries())) {
+				this.write(cell as any, undefined);
+				this.notifyKeyListeners(key, undefined, opts);
+				this.scheduleGlobalNotify(key, undefined, opts);
+			}
+		
+			cells.clear();
+			this._signal_listeners.clear();
+		},
+		clearPersistent: (
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): void => {
+			this._signal_persistent.clear();
+			this._signal_persistent_keys.clear();
+		},
+		_emit: (key: A, s = this.s, m = this.m, r = this.r, ): void => {
+			const opts = { s, m, r };
+			const cell = this._signal_cells.get(key);
+		
+			if (!cell) return;
+		
+			const value = this.read(cell as any);
+		
+			this.notifyAll(key, value, opts);
+		},
+	};
+	public state: SauronState = {
+		get: <T = A,>(
+			key: string | symbol,
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): T | UD => {
+			return MaybePromise(this.store.get<T>(key, opts) as T);
+		},	
+		set: <T = A,>(
+			key: string | symbol,
+			value: T | ((prev: T | UD) => T),
+			opts: { triggerRender?: B } & ScopeOptions =
+				{ s: this.s, m: this.m, r: this.r },
+		): void => {
+			const { s, m, r, triggerRender = true } = opts;
+	
+			this.store.set(key, value, {
+				s,
+				m,
+				r,
+				triggerRender,
+			});
+	
+			return MaybePromise(value as T);
+		},	
+		delete: (key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }, ): B => {
+			return this.store.delete(key, opts);
+		},
+		getByPrefix: <T = A,>(
+			prefix: string,
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): { key: string; value: T }[] => {
+			return this.store
+				.entries<T>(opts)
+				.filter(([key]) => typeof key === "string" && key.startsWith(prefix))
+				.map(([key, value]) => ({ key: key as string, value }));
+		},
+		getAll: <T = A,>(
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): Record<string | symbol, T> => {
+			const result: Record<string | symbol, T> = {};
+	
+			for (const [key, value] of this.store.entries<T>(opts)) {
+				result[key] = value;
+			}
+	
+			return result;
+		},
+		subscribe: <T = A,>(
+			key: string | symbol,
+			listener: (value: T) => void,
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): (() => void) => {
+			return this.store.subscribe<T>(key, listener, opts);
+		},
+		subscribeAll: (
+			listener: (key: string | symbol, value: A) => void,
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): (() => void) => {
+			const { s, m, r } = opts;
+			const listeners = this._signal_global_listeners;
+	
+			if (!listeners.has("_signal_global_listeners_raven")) {
+				listeners.set("_signal_global_listeners_raven", new Set());
+			}
+	
+			const set = listeners.get("_signal_global_listeners_raven")!;
+			set.add(listener as any);
+	
+			return () => {
+				set.delete(listener as any);
+	
+				if (set.size === 0) {
+					listeners.delete("_signal_global_listeners_raven");
+				}
+			};
+		},
+		clear: (
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): void => {
+			const { s, m, r } = opts;
+	
+			this.store.clear(opts);
+	
+			this._signal_waiters.clear();
+	
+			const globalListeners = this._signal_global_listeners.get(
+				"_signal_global_listeners_raven",
+			);
+	
+			globalListeners?.clear();
+		},
+		waitFor: <T = A,>(
+			key: string | symbol,
+			opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
+		): Promise<T> => {
+			const existing = this.state.get<T>(key, opts);
+	
+			if (existing !== undefined) {
+				return Promise.resolve(existing);
+			}
+	
+			return new Promise<T>((resolve) => {
+				const waiters = this._signal_waiters;
+	
+				if (!waiters.has(key)) {
+					waiters.set(key, new Set());
+				}
+	
+				waiters.get(key)!.add(resolve as A);
+			});
+		},
+	};
+	public cell = (() => {
+		const fn = <T = A>(key: A, s?: S, m?: S, r?: S) => {
+			return MaybePromise(this.state.get<T>(key, { s, m, r }));
+		};
+		fn.getAll= <T = A>(opts?: ScopeOptions): Record<S | SY, T> =>{
+			return this.state.getAll<T>(opts);
+		}
+		fn.set=<T = A>(label: A, value: T, triggerRender = true, s?: S, m?: S, r?: S) =>{
+			this.cell._broadcastSS(label, value, "sauron", "set");
+			return MaybePromise(this.state.set(label, value, { triggerRender, s, m, r }));
+		}
+		fn._broadcastSS=(key: A, value: A, storageType: S, fn: S, path?: S, domain?: S, options?: A) =>{
+			_localChange = true;
+			_channel?.postMessage({ key, value, storageType, fn, path, domain, options });
+		}
+		fn.subAll=(fn: (key: S | symbol, value: A) => V, s?: S, m?: S, r?: S): () => V =>{
+			if (!fn) return () => {};
+			return this.state.subscribeAll(fn, { s, m, r });
+		}
+		fn.sub=<T = A>(k: A, fn: (value: T) => void, s?: S, m?: S, r?: S): () => void =>{
+			if (!k || !fn) return () => {};
+			return MaybePromise(this.state.subscribe<T>(k, fn, { s, m, r }));
+		}
+		fn.delete=(label: A, s?: S, m?: S, r?: S): B =>{
+			if (!label) return false;
+			const v = this.state.delete(label, { s, m, r });
+			this.cell._broadcastSS(label, undefined, "sauron", "delete");
+			return v;
+		}
+		fn.waitFor=<T = A>(label: S, s?: S, m?: S, r?: S): P<T> =>{
+			return this.state.waitFor<T>(label, { s, m, r });
+		}
+		fn.deleteMany= async(keys: A[], s?: S, m?: S, r?: S): P<B> =>{
+			if (!Array.isArray(keys) || keys.length === 0) {
+				return false;
+			}
+			let allDeleted = true;
+	
+			// Batch all deletes without triggering renders until the end
+			for (let i = 0; i < keys.length; i++) {
+				const deleted = this.cell.delete(keys[i], s, m, r);
+				if (!deleted) {
+					allDeleted = false;
+				}
+			}
+	
+			return allDeleted;
+		}
+		fn.setMany=async<T = Record<S, A>>(entries: T): Promise<void>=> {
+			if (!entries || typeof entries !== "object") {
+				return;
+			}
+			// Batch all sets without triggering renders until the end
+			const entriesArray = Object.entries(entries);
+			for (let i = 0; i < entriesArray.length; i++) {
+				const [key, value] = entriesArray[i];
+				// Only trigger render on the last item to avoid multiple renders
+				const triggerRender = i === entriesArray.length - 1;
+				this.cell.set(key, value, triggerRender);
+			}
+		}
+		fn.getMany=async<T = A>(keys: S[], s?: S, m?: S, r?: S) =>{
+			if (!Array.isArray(keys) || keys.length === 0) {
+				return {};
+			}
+	
+			const result: Record<S, T | undefined> = {};
+	
+			const promises = keys.map(async (key) => {
+				const value = await this.cell<T>(key, s, m, r);
+				return { key, value };
+			});
+	
+			const results = await Promise.all(promises);
+	
+			for (const { key, value } of results) {
+				result[key] = value;
+			}
+	
+			return result;
+		}
+		return fn;
+	})();
+	//                                                                                                   DISTRIBUTED REACTIVE STATE
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
+		const existing = this.state.get(k, { s: s, m: m, r: r });
+		if (existing !== undefined) return existing;
+		const t = typeof v === "function" ? v() : v;
+		this.state.set(k, t, { triggerRender: true, s: s, m: m, r: r });
+		return t;
+	}
+	public signal = (() => {
+		const fn = <T = A,>(k: SignalKey, v?: T | (() => T)) => {
+			const registry = this._signal_cells
+			let atom = registry.get(k);
+
+			if (atom && v === undefined) { return atom; }
+			if (atom && v) { 
+                const t = UF(v)
+                atom = registry.set(k, t)
+                return atom;
+             }
+
+			const initialValue = UF(v)
+			atom = signal<T>(initialValue);
+			registry.set(k, atom);
+			return atom;
+		};
+		return fn;
+	})();
+	public useCell = (() => {
+		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
+
+			const senderTokenRef = this.atom(this.hub.REGISTRY._sid());
+
+			this.hub.bus.sub( (i: A) => {
+					const incoming = i.p;
+					if (incoming?.from === senderTokenRef.value) return;
+					this.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
+					// set(k, incoming.value, false, s, m, r);
+					setState(incoming.value);
+			 }, k, s, m, 	r, ); // stay in sync with local writes too (including our own setLive below)
+			this.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
+			// sub(k, (newValue: any) => setState(newValue), s, m, r);
+
+			const setLive = (next: any) => {
+				const newValue = typeof next === "function" ? next(this.state.get(k, { s: s, m: m, r: r })) : next;
+				setState(newValue);
+				this.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
+				// set(k, newValue, true, s, m, r); // local write
+				this.hub.bus.send({ value: newValue, from: senderTokenRef.value }, k, s, m, r); // broadcast to the bus
+			};
+
+			return [state, setLive] as const;
+		};
+		fn.mailbox = (v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
+
+			const senderTokenRef = this.atom(this.hub.REGISTRY._sid());
+			const queueRef = this.atom<Queue | null>(null);
+
+			if (!queueRef.current) {
+				queueRef.current = new Queue(1);
+			}
+
+			// mailbox — replace the whole useEffect block:
+			this.hub.bus.sub( (i: A) => {
+			    const incoming = i.p;
+			    if (incoming?.from === senderTokenRef.value) return;
+			    queueRef.current!.run(async () => {
+						const current = this.state.get(k, { s: s, m: m, r: r });
+						const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
+						this.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+						return next;
+			    });
+			}, k, s, m, r, );
+
+			this.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
+
+			const setLive = (next: any) => {
+				const t = typeof next === "function" ? next() : next;
+				this.hub.bus.send({ value: t, from: senderTokenRef.value }, k, s, m, r);
+			};
+
+			return [state, setLive] as const;
+		};
+		return fn;
+	})();
+	// #endregion
+	//                                                                                                           ANTI MESSAGE QUEUE
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public useAntiMsgQ = (() => {
+		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
+
+			const senderTokenRef = this.atom(this.hub.REGISTRY._sid()); // this.j.root._id.b();
+
+			this.hub.bus.sub( (i: A) => {
+					const incoming = i.p;
+					if (incoming?.from === senderTokenRef.value) return;
+					this.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
+					// set(k, incoming.value, false, s, m, r);
+					setState(incoming.value);
+			}, k, s, m, r); // stay in sync with local writes too (including our own setLive below)
+			this.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
+			// sub(k, (newValue: any) => setState(newValue), s, m, r);
+
+			const setLive = (next: any) => {
+				const newValue = typeof next === "function" ? next(this.state.get(k, { s: s, m: m, r: r })) : next;
+				setState(newValue);
+				this.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
+				// set(k, newValue, true, s, m, r); // local write
+				this.hub.bus.send({ value: newValue, from: senderTokenRef.value }, k, s, m, r); // broadcast to the bus
+			};
+
+			return [state, setLive] as const;
+		};
+		fn.mailbox = (v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			const [state, setState] = darkState(() => {
+				return this.state_setter(v, k, s, m, r);
+			});
+
+			const senderTokenRef = this.atom(this.hub.REGISTRY._sid());
+			const queueRef = this.atom<Queue | null>(null);
+
+			if (!queueRef.current) {
+				queueRef.current = new Queue(1);
+			}
+
+			// mailbox — replace the whole useEffect block:
+			this.hub.bus.sub(
+				(i: A) => {
+					const incoming = i.p;
+					if (incoming?.from === senderTokenRef.value) return;
+					queueRef.current!.run(async () => {
+						const current = this.state.get(k, { s: s, m: m, r: r });
+						const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
+						this.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+						return next;
+					});
+				},
+				k,
+				s,
+				m,
+				r,
+			);
+
+			this.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
+
+			const setLive = (next: any) => {
+				const t = typeof next === "function" ? next() : next;
+				this.hub.bus.send({ value: t, from: senderTokenRef.value }, k, s, m, r);
+			};
+
+			return [state, setLive] as const;
+		};
+		return fn;
+	})();
+	// #endregion
+	private channels = new M<S, HandlerSet>();
+	private pending = new M<S, { resolve: (v: A) => V; reject: (e: A) => void; timer?: A }>();
+  
+	private seq = 0;
+	private selfId: S 
+    private defaultTimeout = 5000
+	private channelKey({ r, m, s, k }: Scope): S { return `${r}::${m}::${s}::${k}`; }
+	private id(): string { return `${this.selfId}_${Date.now().toString(36)}_${(this.seq++).toString(36)}`;	}
+	public sub<P = A, R = A>( handler: BusHandler<P, R>, k: S, s: S, m: S, r: S, ): () => void {
+		const key = this.channelKey({ r, m, s, k });
+	
+		let set = this.channels.get(key);
+		if (!set) {
+		  set = new Set();
+		  this.channels.set(key, set);
+		}
+	
+		set.add(handler as BusHandler);
+	
+		return () => {
+		  const current = this.channels.get(key);
+		  if (!current) return;
+	
+		  current.delete(handler as BusHandler);
+	
+		  if (current.size === 0) this.channels.delete(key);
+		};
+	}
+	public send<Z = A, R = A>( payload: Z, k: S, s: S, m: S, r: S, opts: { timeout?: N; from?: S } = {}, ): P<R> {
+		const cid = this.id();
+		const timeout = opts.timeout ?? this.defaultTimeout;
+	
+		return new P<R>((resolve, reject) => {
+		  const timer = setTimeout(() => {
+			this.pending.delete(cid);
+			reject(new Error(`[mini-bus] request timed out: ${k} (${cid})`));
+		  }, timeout);
+	
+		  this.pending.set(cid, { resolve, reject, timer });
+	
+		  try {
+			this.dispatch({ id: cid, cid, r, m, s, k, p: payload, from: opts.from ?? this.selfId, replyTo: `${r}::${m}::${s}::${k}::reply`, ts: Date.now(), });
+		  } catch (err) {
+			clearTimeout(timer);
+			this.pending.delete(cid);
+			reject(err);
+		  }
+		});
+	}
+	public reply<R = A>( request: BusMessage, value: R | Promise<R>, ): void {
+		if (!request.cid) return;
+	
+		const pending = this.pending.get(request.cid);
+		if (!pending) return;
+	
+		this.pending.delete(request.cid);
+	
+		if (pending.timer) clearTimeout(pending.timer);
+	
+		Promise.resolve(value).then(pending.resolve, pending.reject);
+	  }
+	private dispatch(msg: BusMessage): void {
+		const handlers = this.channels.get(this.channelKey(msg));
+		if (!handlers) return;
+	
+		for (const handler of Array.from(handlers)) {
+		  try {
+			const result = handler(msg);
+	
+			// Auto-reply when the handler returns a value and the sender expects one.
+			if (msg.cid && result !== undefined) {
+			  this.reply(msg, result);
+			}
+		  } catch (err) {
+			if (msg.cid) this.reply(msg, Promise.reject(err));
+			else console.error("[mini-bus] handler error:", err);
+		  }
+		}
+	  }
 }
 // #endregion
 //                                                                                                            [DARTH VADER] BUS
@@ -3816,6 +4875,7 @@ class DARTH_VADER {
 	//                                                                                                                 [Drain loop]
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 }
+// #endregion
 // #endregion
 //                                                                                                                [RAVEN] STATE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -4750,6 +5810,20 @@ class RAVEN {
 			else return _root;
 		}
 	};
+	public getCurrentComponentCell = (): ComponentInstance => {
+		if (isReact === true && IS_THE_WIZARD === false) {
+			if (this._currentComponent) return this._currentComponent;
+			return _root;
+		} else {
+			if (!init_hooks_context) {
+				this.hub.bear.cell.set("_root", _root, true, this.s, this.m, this.r);
+				init_hooks_context = true;
+			}
+			const updated_ctx = this.hub.bear.cell("_root", this.s, this.m, this.r) as ComponentInstance;
+			if (updated_ctx && updated_ctx.id === this.r) return updated_ctx;
+			else return _root;
+		}
+	};
 	public unmountComponent(id: string) {
 		const instance = this._components.get(id);
 
@@ -4909,9 +5983,7 @@ class RAVEN {
 					}
 				}
 
-				if (isReact && this._adapter && forceUpdate) {
-					this._adapter.onHookSubscribe(key, forceUpdate);
-				}
+				if (isReact && this._adapter && forceUpdate) { this._adapter.onHookSubscribe(key, forceUpdate); }
 
 				const notify = (k: string) => {
 					if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
@@ -4923,11 +5995,8 @@ class RAVEN {
 
 				const hookState = component.hooks.get(key)!;
 				this.beginHookDependencyCapture(hookState);
-				try {
-					return updater(hookState, key, notify);
-				} finally {
-					this.endHookDependencyCapture();
-				}
+				try { return updater(hookState, key, notify); 	} 
+				finally { this.endHookDependencyCapture(); }
 			} catch (e: A) {
 				//  log(`[THE_CLOUD][CREATE_HOOK]`, { error: e, }, t.error)
 				return e.error;
@@ -4937,9 +6006,7 @@ class RAVEN {
 				const component = this.getCurrentComponent();
 				const key = `${component.id}:${hookName}:${sauronId}`;
 
-				if (!this._components.has(component.id)) {
-					this._components.set(component.id, component);
-				}
+				if (!this._components.has(component.id)) { this._components.set(component.id, component); }
 
 				if (!component.hooks.has(key)) {
 					const state = initializer();
@@ -4961,11 +6028,88 @@ class RAVEN {
 
 				const hookState = component.hooks.get(key)!;
 				this.beginHookDependencyCapture(hookState);
-				try {
-					return updater(hookState, key, notify);
-				} finally {
-					this.endHookDependencyCapture();
+				try { return updater(hookState, key, notify); }
+				finally { this.endHookDependencyCapture(); }
+			} catch (e: A) {
+				// log(`[THE_CLOUD][CREATE_HOOK]`, { error: e, }, t.error)
+				return e.error;
+			}
+		}
+	}
+	public createHookCell<T>(hookName: string, sauronId: string, initializer: () => HookState, updater: (state: HookState, key: string, notify: (key: string) => void) => T, triggerRender: boolean = true): T {
+		if (isReact === true && IS_THE_WIZARD === false) {
+			try {
+				const isReact = this._isReactRenderContext();
+				const { instance, forceUpdate } = isReact && this._adapter ? this._adapter.getComponentInstance() : { instance: this.getCurrentComponentCell(), forceUpdate: undefined };
+
+				const component = instance;
+
+				// ─── THE TARGETED FIX ───────────────────────────────────────────────────────
+				// Use sequential indexing when in React so it matches React's rendering slots.
+				// Otherwise, use Sauron's default compilation ID string.
+				const stableSlotId = isReact ? `seq-${this._reactHookCursor++}` : sauronId;
+				const key = `${component.id}:${hookName}:${stableSlotId}`;
+				// ────────────────────────────────────────────────────────────────────────────
+				if (!this._components.has(component.id)) {
+					this._components.set(component.id, component);
 				}
+
+				if (!component.hooks.has(key)) {
+					const state = initializer();
+					component.hooks.set(key, state);
+					if (component.render) {
+						const unsub = this.subscribeToHook(key, () => component.render?.());
+						component.unmount.add(unsub);
+					}
+				}
+
+				if (isReact && this._adapter && forceUpdate) { this._adapter.onHookSubscribe(key, forceUpdate); }
+
+				const notify = (k: string) => {
+					if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
+						const state = component.hooks.get(k);
+						this.devRecord(component.id, hookName, stableSlotId, k, state?.value);
+					}
+					this.notifyHook(k);
+				};
+
+				const hookState = component.hooks.get(key)!;
+				this.beginHookDependencyCapture(hookState);
+				try { return updater(hookState, key, notify); 	} 
+				finally { this.endHookDependencyCapture(); }
+			} catch (e: A) {
+				//  log(`[THE_CLOUD][CREATE_HOOK]`, { error: e, }, t.error)
+				return e.error;
+			}
+		} else {
+			try {
+				const component = this.getCurrentComponentCell();
+				const key = `${component.id}:${hookName}:${sauronId}`;
+
+				if (!this._components.has(component.id)) { this._components.set(component.id, component); }
+
+				if (!component.hooks.has(key)) {
+					const state = initializer();
+					component.hooks.set(key, state);
+
+					if (triggerRender && component.render) {
+						const unsub = this.subscribeToHook(key, () => component.render?.());
+						component.unmount.add(unsub);
+					}
+				}
+
+				const notify = (k: string) => {
+					if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
+						const state = component.hooks.get(k);
+						this.devRecord(component.id, hookName, sauronId, k, state?.value);
+					}
+					if (triggerRender) this.notifyHook(k);
+				};
+
+				const hookState = component.hooks.get(key)!;
+				this.beginHookDependencyCapture(hookState);
+				try { return updater(hookState, key, notify); }
+				finally { this.endHookDependencyCapture(); }
 			} catch (e: A) {
 				// log(`[THE_CLOUD][CREATE_HOOK]`, { error: e, }, t.error)
 				return e.error;
@@ -4976,34 +6120,34 @@ class RAVEN {
 		_localChange = true;
 		_channel?.postMessage({ key, value, storageType, fn, path, domain, options });
 	}
-	public getSauron<T = A>(key: A, s?: S, m?: S, r?: S) {
+	public getDark<T = A>(key: A, s?: S, m?: S, r?: S) {
 		return MaybePromise(this.state.get<T>(key, { s, m, r }));
 	}
-	public setSauron<T = A>(label: S, value: T, triggerRender = true, s?: S, m?: S, r?: S) {
+	public setDark<T = A>(label: S, value: T, triggerRender = true, s?: S, m?: S, r?: S) {
 		this._broadcastSS(label, value, "sauron", "set");
 		return MaybePromise(this.state.set(label, value, { triggerRender, s, m, r }));
 	}
-	public getAllSauron<T = A>(opts?: ScopeOptions): Record<S | symbol, T> {
+	public getAllDark<T = A>(opts?: ScopeOptions): Record<S | symbol, T> {
 		return this.state.getAll<T>(opts);
 	}
-	public subAllSauron(fn: (key: S | symbol, value: A) => V, s?: S, m?: S, r?: S): () => V {
+	public subAllDark(fn: (key: S | symbol, value: A) => V, s?: S, m?: S, r?: S): () => V {
 		if (!fn) return () => {};
 		return this.state.subscribeAll(fn, { s, m, r });
 	}
-	public subSauron<T = A>(k: A, fn: (value: T) => void, s?: S, m?: S, r?: S): () => void {
+	public subDark<T = A>(k: A, fn: (value: T) => void, s?: S, m?: S, r?: S): () => void {
 		if (!k || !fn) return () => {};
 		return MaybePromise(this.state.subscribe<T>(k, fn, { s, m, r }));
 	}
-	public deleteSauron(label: A, s?: S, m?: S, r?: S): B {
+	public deleteDark(label: A, s?: S, m?: S, r?: S): B {
 		if (!label) return false;
 		const v = this.state.delete(label, { s, m, r });
 		this._broadcastSS(label, undefined, "sauron", "delete");
 		return v;
 	}
-	public waitForSauron<T = A>(label: S, s?: S, m?: S, r?: S): P<T> {
+	public waitForDark<T = A>(label: S, s?: S, m?: S, r?: S): P<T> {
 		return this.state.waitFor<T>(label, { s, m, r });
 	}
-	public async deleteMany(keys: A[], s?: S, m?: S, r?: S): P<B> {
+	public async deleteManyDark(keys: A[], s?: S, m?: S, r?: S): P<B> {
 		if (!Array.isArray(keys) || keys.length === 0) {
 			return false;
 		}
@@ -5019,7 +6163,7 @@ class RAVEN {
 
 		return allDeleted;
 	}
-	public async setMany<T = Record<S, A>>(entries: T): Promise<void> {
+	public async setManyDark<T = Record<S, A>>(entries: T): Promise<void> {
 		if (!entries || typeof entries !== "object") {
 			return;
 		}
@@ -5032,7 +6176,7 @@ class RAVEN {
 			this.set(key, value, triggerRender);
 		}
 	}
-	public async getMany<T = A>(keys: S[], s?: S, m?: S, r?: S) {
+	public async getManyDark<T = A>(keys: S[], s?: S, m?: S, r?: S) {
 		if (!Array.isArray(keys) || keys.length === 0) {
 			return {};
 		}
@@ -5280,8 +6424,6 @@ export class WAR_ROOOM {
 	public s: A = "SAURON_SLAVE_REG";
 	public k: A = "__SAURON__";
 	private raven: DEATH_STAR;
-
- 
 	//                                                                                                                  MAIN CACHES
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	#META = new M2<A, M2<A, M2<A, A>>>();
@@ -5388,84 +6530,29 @@ export class WAR_ROOOM {
 	get_root(c: S, r: S) {
 		let root;
 		switch (c) {
-			case "#CONTEXT": {
-				root = this.#CONTEXT.get(r);
-				break;
-			}
-			case "#META": {
-				root = this.#META.get(r);
-				break;
-			}
-			case "#SIGNALS": {
-				root = this.#SIGNALS.get(r);
-				break;
-			}
-			case "#ATOMS": {
-				root = this.#ATOMS.get(r);
-				break;
-			}
-			case "#SAURON": {
-				root = this.#SAURON.get(r);
-				break;
-			}
-			case "#BUS": {
-				root = this.#BUS.get(r);
-				break;
-			}
-			case "#NAKED_SIGNALS": {
-				root = this.#NAKED_SIGNALS.get(r);
-				break;
-			}
-			case "gt": {
-				root = rootRegistry.get(r);
-				break;
-			}
-			case "globalThis": {
-				(globalThis as A)[r];
-				break;
-			}
+			case "#CONTEXT": { root = this.#CONTEXT.get(r); break; }
+			case "#META": { root = this.#META.get(r); break; }
+			case "#SIGNALS": { root = this.#SIGNALS.get(r); break; }
+			case "#ATOMS": { root = this.#ATOMS.get(r); break; }
+			case "#SAURON": { root = this.#SAURON.get(r); break; }
+			case "#BUS": { root = this.#BUS.get(r); break; }
+			case "#NAKED_SIGNALS": { root = this.#NAKED_SIGNALS.get(r); break; }
+			case "gt": { root = rootRegistry.get(r); break; }
+			case "globalThis": { (globalThis as A)[r]; break; }
 		}
 		if (!root) {
 			root = new M2<A, M2<A, M2<A, A>>>();
 			switch (c) {
-				case "#CONTEXT": {
-					root = this.#CONTEXT.set(r, root);
-					break;
-				}
-				case "#META": {
-					root = this.#META.set(r, root);
-					break;
-				}
-				case "#SIGNALS": {
-					root = this.#SIGNALS.set(r, root);
-					break;
-				}
-				case "#ATOMS": {
-					root = this.#ATOMS.set(r, root);
-					break;
-				}
-				case "#SAURON": {
-					root = this.#SAURON.set(r, root);
-					break;
-				}
-				case "#NAKED_SIGNALS": {
-					root = this.#NAKED_SIGNALS.set(r, root);
-					break;
-				}
-				case "#BUS": {
-					root = this.#BUS.set(r, root);
-					break;
-				}
-				case "gt": {
-					rootRegistry.set(r, root);
-					break;
-				}
-				case "globalThis": {
-					(globalThis as A)[r] = root;
-					break;
-				}
+				case "#CONTEXT": { root = this.#CONTEXT.set(r, root); break; }
+				case "#META": { root = this.#META.set(r, root); break; }
+				case "#SIGNALS": { root = this.#SIGNALS.set(r, root); break; }
+				case "#ATOMS": { root = this.#ATOMS.set(r, root); break; }
+				case "#SAURON": { root = this.#SAURON.set(r, root); break; }
+				case "#NAKED_SIGNALS": { root = this.#NAKED_SIGNALS.set(r, root); break; }
+				case "#BUS": { root = this.#BUS.set(r, root); break; }
+				case "gt": { rootRegistry.set(r, root); break; }
+				case "globalThis": { (globalThis as A)[r] = root; break; }
 			}
-			this.#CONTEXT.set(r, root);
 		}
 		return root;
 	}
@@ -5525,10 +6612,10 @@ export class WAR_ROOOM {
 		}
 		return slaveMap;
 	}
-	// (globalThis as A)[r] //  STATE_CONTEXT === "sauron" ? : null;
-	// (globalThis as A)[r] = root;
+	
 }
-
+// (globalThis as A)[r] //  STATE_CONTEXT === "sauron" ? : null;
+	// (globalThis as A)[r] = root;
 // #endregion
 //                                                                                                             [DEATH STAR] HUB
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -5587,34 +6674,34 @@ class DRS {
 		this.hub = hub;
 	}
     public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
-		const existing = this.hub.state.state.get(k, { s: s, m: m, r: r });
+		const existing = this.hub.bear.state.get(k, { s: s, m: m, r: r });
 		if (existing !== undefined) return existing;
 		const t = UF(v)
-		this.hub.state.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
+		this.hub.bear.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
 		return t;
 	}
 	public useCell = (() => {
 		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) => {
 			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
 
-			const senderTokenRef = this.hub.signals.naked.atom(this.hub.REGISTRY._sid());
+			const senderTokenRef = this.hub.bear.atom(this.hub.REGISTRY._sid());
 
-			this.hub.bus.sub( (i: A) => {
+			this.hub.bear.sub( (i: A) => {
 					const incoming = i.p;
 					if (incoming?.from === senderTokenRef.value) return;
-					this.hub.state.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
+					this.hub.bear.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
 					// set(k, incoming.value, false, s, m, r);
 					setState(incoming.value);
 			 }, k, s, m, 	r, ); // stay in sync with local writes too (including our own setLive below)
-			this.hub.state.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
+			this.hub.bear.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
 			// sub(k, (newValue: any) => setState(newValue), s, m, r);
 
 			const setLive = (next: any) => {
-				const newValue = typeof next === "function" ? next(this.hub.state.state.get(k, { s: s, m: m, r: r })) : next;
+				const newValue = typeof next === "function" ? next(this.hub.bear.state.get(k, { s: s, m: m, r: r })) : next;
 				setState(newValue);
-				this.hub.state.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
+				this.hub.bear.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
 				// set(k, newValue, true, s, m, r); // local write
-				this.hub.bus.send({ value: newValue, from: senderTokenRef.value }, k, s, m, r); // broadcast to the bus
+				this.hub.bear.send({ value: newValue, from: senderTokenRef.value }, k, s, m, r); // broadcast to the bus
 			};
 
 			return [state, setLive] as const;
@@ -5622,30 +6709,30 @@ class DRS {
 		fn.mailbox = (v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r) => {
 			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
 
-			const senderTokenRef = this.hub.signals.naked.atom(this.hub.REGISTRY._sid());
-			const queueRef = this.hub.signals.atom<Queue | null>(null);
+			const senderTokenRef = this.hub.bear.atom(this.hub.REGISTRY._sid());
+			const queueRef = this.hub.bear.atom<Queue | null>(null);
 
 			if (!queueRef.current) {
 				queueRef.current = new Queue(1);
 			}
 
 			// mailbox — replace the whole useEffect block:
-			this.hub.bus.sub( (i: A) => {
+			this.hub.bear.sub( (i: A) => {
 			    const incoming = i.p;
 			    if (incoming?.from === senderTokenRef.value) return;
 			    queueRef.current!.run(async () => {
-						const current = this.hub.state.state.get(k, { s: s, m: m, r: r });
+						const current = this.hub.bear.state.get(k, { s: s, m: m, r: r });
 						const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-						this.hub.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+						this.hub.bear.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
 						return next;
 			    });
 			}, k, s, m, r, );
 
-			this.hub.state.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
+			this.hub.bear.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
 
 			const setLive = (next: any) => {
 				const t = typeof next === "function" ? next() : next;
-				this.hub.bus.send({ value: t, from: senderTokenRef.value }, k, s, m, r);
+				this.hub.bear.send({ value: t, from: senderTokenRef.value }, k, s, m, r);
 			};
 
 			return [state, setLive] as const;
@@ -5675,6 +6762,7 @@ export class DEATH_STAR {
 	public governor: GOVERNOR;
 	public REGISTRY: Registry;
 	public wr: WAR_ROOOM;
+	public bear: BEAR
 	//public MESH: Mesh;
 
 	public r: S = "THE_WIZARD_ROOT_REG";
@@ -5695,6 +6783,7 @@ export class DEATH_STAR {
 		this.governor = new GOVERNOR(this);
 		this.drs = new DRS(this);
 		this.spreadsheet = new SPREADSHEET(this);
+		this.bear = new BEAR(this)
 	}
 }
 export const death_star = new DEATH_STAR();
@@ -5702,10 +6791,7 @@ export const death_star = new DEATH_STAR();
 //                                                                                                                    USE STATE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 export function darkState<T = any, S = T>(initialValue?: T | (() => T), options: StateOptions<T, S> = {}, __sauron_id__ = _sid()) {
-	return death_star.state.createHook(
-		"darkState",
-		__sauron_id__,
-		() => ({
+	return death_star.state.createHook( "darkState", __sauron_id__, () => ({
 			value: {
 				current: typeof initialValue === "function" ? (initialValue as () => T)() : initialValue,
 				derived: undefined as A,
@@ -5726,20 +6812,14 @@ export function darkState<T = any, S = T>(initialValue?: T | (() => T), options:
 				const nextSelected = selector ? selector(next) : (next as unknown as S);
 				if (!equals(prevSelected, nextSelected)) {
 					s.current = next;
-					if (derive) {
-						s.derived = derive(next);
-					}
+					if (derive) {s.derived = derive(next);}
 					notify(key);
 				}
 				return next;
 			};
 
-			if (derive && s.derived === undefined) {
-				s.derived = derive(s.current);
-			}
-			if (derive) {
-				return [getValue(), setValue, s.derived] as const;
-			}
+			if (derive && s.derived === undefined) { s.derived = derive(s.current); }
+			if (derive) { return [getValue(), setValue, s.derived] as const; }
 
 			return [getValue(), setValue] as const;
 		},
@@ -5933,7 +7013,262 @@ export function darkMemo<T>(factory: () => T, deps: A[], __sauron_id__ = _sid())
 }
 
 // #endregion
+// #endregion
+//                                                                                                                 ATOM HELPERS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const def = new (class DEFINITION {
+	public MASTER_ATOM_KEYS = ["ATOM", "MODULE_ATOM", "CLOUD_ATOM", "SAURON_ATOM", "DRS_ATOM", "DUPLEX_ATOM", "SLAB_ATOM", "STREAM_ATOM", "S_CLASS_ATOM", "SPREADSHEET_ATOM", "SEND_ATOM", "VERTEX"] as const;
+	public MQ = {
+		RETRY: this.DEFINE_ATOM_KIND("retry"),
+		ACK: this.DEFINE_ATOM_KIND("ack"),
+		DEADLINE: this.DEFINE_ATOM_KIND("deadline"),
+		DEDUPE: this.DEFINE_ATOM_KIND("dedupe"),
+		DEPTH: this.DEFINE_ATOM_KIND("depth"),
+		WILDCARD: this.DEFINE_ATOM_KIND("wildcard"),
+		REPLY: this.DEFINE_ATOM_KIND("reply"),
+		WINDOW: this.DEFINE_ATOM_KIND("window"),
+		RESUME: this.DEFINE_ATOM_KIND("resume"),
+		CREDIT: this.DEFINE_ATOM_KIND("credit"),
+		CORRELATION: this.DEFINE_ATOM_KIND("correlation"),
+	} as const;
+	public ELECTRONS = {
+		ADAPTER_ELECTRON: this.DEFINE_ATOM_KIND("adapter"),
+		BEAM_CODEC_ELECTRON: this.DEFINE_ATOM_KIND("beam_codec"),
+		BINARY_ELECTRON: this.DEFINE_ATOM_KIND("binary"),
+		BYTE_CODE_VM: this.DEFINE_ATOM_KIND("byte_code_vm"),
+		CHANNEL_ELECTRON: this.DEFINE_ATOM_KIND("channel"),
+		CHANNELS_ELECTRON: this.DEFINE_ATOM_KIND("channels"),
+		CONCURRENCY_ELECTRON: this.DEFINE_ATOM_KIND("concurrency"),
+		DEADLETTER_ELECTRON: this.DEFINE_ATOM_KIND("deadletter"),
+		DESTRUCTION_ELECTRON: this.DEFINE_ATOM_KIND("destruction"),
+		ERROR_ELECTRON: this.DEFINE_ATOM_KIND("error"),
+		EVENT_ELECTRON: this.DEFINE_ATOM_KIND("event"),
+		EXTERNAL_SUBSCRIPTION_ELECTRON: this.DEFINE_ATOM_KIND("exterenal_sub"),
+		GATE_ELECTRON: this.DEFINE_ATOM_KIND("gate"),
+		GLOBAL_SUBSCRIPTION_ELECTRON: this.DEFINE_ATOM_KIND("global_sub"),
+		GOVERNOR_ELECTRON: this.DEFINE_ATOM_KIND("GOVERNOR"),
+		HOOK_ELECTRON: this.DEFINE_ATOM_KIND("hook"),
+		HTTP_TRANSPORT: this.DEFINE_ATOM_KIND("http_transport"),
+		INJECTION_CODEC_ELECTRON: this.DEFINE_ATOM_KIND("injection"),
+		METRICS_ELECTRON: this.DEFINE_ATOM_KIND("metrics"),
+		MIDDLEWARE_ELECTRON: this.DEFINE_ATOM_KIND("middlleware"),
+		RIFTS_ACCESS_ELECTRON: this.DEFINE_ATOM_KIND("rifts"),
+		REACTIVE_ELECTRON: this.DEFINE_ATOM_KIND("reactive"),
+		ROUTE_ELECTRON: this.DEFINE_ATOM_KIND("route"),
+		RUN_ON_ELECTRON: this.DEFINE_ATOM_KIND("run_on"),
+		SEALED_ERROR_ELECTRON: this.DEFINE_ATOM_KIND("sealed_error"),
+		SESSION_ELECTRON: this.DEFINE_ATOM_KIND("session"),
+		SHELL_ELECTRON: this.DEFINE_ATOM_KIND("reshelltry"),
+		SIGNAL_ELECTRON: this.DEFINE_ATOM_KIND("signal"),
+		SOA_QUAD_TIERED_REGISTRY_ELECTRON: this.DEFINE_ATOM_KIND("soa_registry"),
+		SUBSCRIPTION_ELECTRON: this.DEFINE_ATOM_KIND("subscription"),
+		TRANSFORM_ELECTRON: this.DEFINE_ATOM_KIND("transform"),
+		WAITER_ELECTRON: this.DEFINE_ATOM_KIND("waiter"),
+	} as const;
+	public NEUTRONS = {
+		COMPRESSION_NEUTRON: this.DEFINE_ATOM_KIND("compression"),
+		CONFLICT_NEUTRON: this.DEFINE_ATOM_KIND("conflict"),
+		CONTEXT_NEUTRON: this.DEFINE_ATOM_KIND("context"),
+		ENCRYPTION_NEUTRON: this.DEFINE_ATOM_KIND("encryption"),
+		GROUPS_NEUTRON: this.DEFINE_ATOM_KIND("groups"),
+		HISTORY_NEUTRON: this.DEFINE_ATOM_KIND("history"),
+		META_NEUTRON: this.DEFINE_ATOM_KIND("meta"),
+		OFFSEC_NEUTRON: this.DEFINE_ATOM_KIND("offsec"),
+		PERMISSIONS_NEUTRON: this.DEFINE_ATOM_KIND("permissions"),
+		PERSISTENCE_NEUTRON: this.DEFINE_ATOM_KIND("persistence"),
+		PRIORITY_NEUTRON: this.DEFINE_ATOM_KIND("priority"),
+		SNAPSHOT_NEUTRON: this.DEFINE_ATOM_KIND("snapshot"),
+		TAGS_NEUTRON: this.DEFINE_ATOM_KIND("tags"),
+		TIME_TRAVEL_NEUTRON: this.DEFINE_ATOM_KIND("time_travel"),
+		TTL_NEUTRON: this.DEFINE_ATOM_KIND("ttl"),
+	} as const;
+	public PROTONS = {
+		CONTRACTS_PROTON: this.DEFINE_ATOM_KIND("contract"),
+		REACTIVE_PROTON: this.DEFINE_ATOM_KIND("reactive"),
+		REGISTRY_PROTON: this.DEFINE_ATOM_KIND("registry"),
+		SCHEMA_PROTON: this.DEFINE_ATOM_KIND("schema"),
+		VALUES_REGISTRY_PROTON: this.DEFINE_ATOM_KIND("values_reg"),
+	} as const;
+	public DEFINE_ATOM_KIND(name: string): symbol {
+		return Symbol(name);
+	}
+	public PARTICLE_KEYS = {
+		...this.PROTONS,
+		...this.NEUTRONS,
+		...this.ELECTRONS,
+		...this.MQ,
+	} as const;
+})();
+export function createLiveSelf(instanceId: S) {
+	const liveTarget: R<A> = {};
+	const selfProxy = new PX(liveTarget, {
+		get(target, key: S) {
+			return target[key];
+		},
+		set(target, key: S, value: A) {
+			// reuse the existing Sauron store — same primitive `live`/`useLive` already build on
+			target[key] = value;
+			death_star.bear.cell.set(`${instanceId}:${key}`, value);
+			//  setPrev(sV, `${instanceId}:${key}`, value)
+			return true;
+		},
+	});
+	return { selfProxy, liveTarget };
+}
+function mergeInto<T extends object>(target: T, source: object): T {
+	// defineProperties, not assign — this is what preserves get/set accessors
+	// as live accessors instead of flattening them into snapshots (the bug from last time)
+	Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
+	return target;
+}
+export function resolveFactory(raw: AnyFactory): AnyFactory {
+	if (typeof raw === "function") return raw;
+	return () => raw;
+}
+type StubHit = { category: S; key: S; prop: S };
+export const STUB_HITS: StubHit[] = [];
+const NINJA_STUB_BRAND = "__is_atom_stub__";
+export function isStub(value: A): B {
+	try {
+		return !!value && (typeof value === "object" || typeof value === "function") && value[NINJA_STUB_BRAND] === true;
+	} catch {
+		return false;
+	}
+}
+export function makeStub(trace?: { category: S; key: S }): A {
+	return new Proxy(() => makeStub(trace), {
+		get: (_t, prop: S | SY) => {
+			if (prop === NINJA_STUB_BRAND) return true;
+			if (prop === Symbol.toPrimitive || prop === "toString" || prop === "valueOf") return () => "";
+			if (trace && typeof prop === "string") {
+				STUB_HITS.push({ ...trace, prop });
+			}
+			return makeStub(trace);
+		},
+		apply: () => {
+			if (trace) STUB_HITS.push({ ...trace, prop: "()" });
+			return makeStub(trace);
+		},
+	});
+}
+export function NexusMirror(excludeName: S) {
+	return new Proxy(
+		{},
+		{
+			get: (_t: A, name: S) => {
+				if (name === excludeName) return makeStub({ category: excludeName, key: name });
+				return new Proxy([], {
+					get: (_s: A, prop: S | SY) => {
+						let arr = death_star.bear.cell(name);
+						if (!arr) return makeStub({ category: name, key: String(prop) });
+						if (prop in arr) return (arr as any)[prop];
+						return makeStub({ category: name, key: String(prop) });
+					},
+				});
+			},
+		},
+	);
+}
+export function buildCtx(refs: A, selfProxy: A): SelfType {
+	let builtins = {
+		self: selfProxy,
+	};
+	return new Proxy(builtins, {
+		get: (target, key: S) => (key in target ? (target as A)[key] : (refs as A)[key]),
+	});
+}
+export function withTypoGuard<T extends Record<S, A>>(result: T, label: S, allowedExtraKeys: S[] = ["freyr"]): T {
+	return new Proxy(result, {
+		get(target, prop, receiver) {
+			if (typeof prop === "symbol" || prop in target || allowedExtraKeys.includes(prop as string)) {
+				return Reflect.get(target, prop, receiver);
+			}
 
+			const validKeys = Object.keys(target).join(", ");
+
+			throw new Error(`\n\x1b[31m[${label} Typo Error]\x1b[0m Property \x1b[33m"${String(prop)}"\x1b[0m does not exist on this ${label} definition.\n` + `  -> \x1b[32mDid you make a spelling mistake?\x1b[0m\n` + `  -> \x1b[35mAvailable definitions:\x1b[0m [ ${validKeys} ]\n` + `  -> \x1b[36mDefined at:\x1b[0m ${location}\n`);
+		},
+	});
+}
+function createResolvingSelf() {
+	const draft: Record<string, any> = {};
+	const self = new Proxy(draft, {
+		get(target, key: string) {
+			return key in target ? target[key] : makeStub({ category: "self", key });
+		},
+	});
+	return { self, draft };
+}
+function resolvePool<R extends Record<S, A>>(factory: (self: A) => R, passes: N = 3): R {
+	const { self, draft } = createResolvingSelf();
+	let out: R;
+	for (let i = 0; i < passes; i++) {
+		out = factory(self);
+		mergeInto(draft, out); // descriptor-based — accessors survive, same helper as before
+	}
+	return draft as R; // only the FINAL pass's result ever gets exposed/committed
+}
+function createMaster(kind, kk, ss, mm, rr, initialValue) {
+	if (!def.MASTER_ATOM_KEYS.includes(kind)) throw new TypeError(`Unknown master atom: ${kind}`);
+	const kindFactory = resolveFactory(death_star.bear.cell(kind));
+	if (!kindFactory) throw new TypeError(`No behavior registered for master atom: ${kind}`);
+
+	const [value, setLive] = death_star.bear.useCell.mailbox(initialValue, kk, ss, mm, rr); // once — real subscribe
+
+	return { value, setLive, kindFactory }; // handed to the pool builder, not yet merged
+}
+export function ATOM_BINDABLE<T extends object>(factory: (ctx: { self: any }) => T): any {
+	const build = (instance: any): T => {
+		const self = new Proxy({}, {
+			get: (_t, key) => instance[key as string],
+			set: (_t, key, value) => { instance[key as string] = value; return true; },
+			has: (_t, key) => key in instance,
+		});
+		return factory({ self });
+	};
+	Object.defineProperty(build, "__build", { value: build, enumerable: false });
+	return build;
+}
+export function ATOM_CONTRACT<C extends AnyObject | Factory, M extends CONTRACT_MASTER<T>, B extends object = Record<S, never>, T = A>(arg1: S | C, arg2?: C) {
+	const instanceId = _sid();
+	const categoryName = typeof arg1 === "string" ? arg1 : `ATOM_CONTRACT${instanceId}`;
+	const rawConfig = (typeof arg1 === "string" ? arg2! : arg1) as AnyType;
+	if (rawConfig === undefined || rawConfig === null) throw new Error(`Self is required, define self in your props at ${location}`);
+	const factory = resolveFactory(rawConfig as Factory);
+	const refs = NexusMirror(categoryName);
+	const { selfProxy, liveTarget } = createLiveSelf(instanceId);
+	const pass = factory(buildCtx(refs, selfProxy));
+	const rr = pass.r ?? death_star.r;
+	const mm = pass.m ?? death_star.m;
+	const ss = pass.s ?? death_star.s;
+	const kk = pass.k ?? death_star.k;
+	Object.assign(liveTarget, pass);
+	const kind = pass.atom ?? "ATOM";
+	const contract = ((initialValue?: T) => {
+		const { value, setLive, kindFactory } = createMaster(kind, kk, ss, mm, rr, initialValue);
+	
+		const pool = resolvePool((self) => {
+			mergeInto(self, {
+				get value() { return value; },
+				set value(next) { setLive(next); },
+			});
+			mergeInto(self, kindFactory(buildCtx(NexusMirror(kind), self)));
+			mergeInto(self, { atom: kind, k: kk, s: ss, m: mm, r: rr });
+	
+			for (const [bindKey, ref] of Object.entries(pass.bindables ?? {}) as [string, ATOM_BINDABLE][]) {
+				mergeInto(self, { [bindKey]: ref({ self, k: kk, s: ss, m: mm, r: rr }) });
+			}
+			return self;
+		}, 3);
+	
+		return pool as ATOM_CONTRACT_INSTANCE<T, M, B>;
+	}) as ATOM_CONTRACT<T, M, B>;
+	Object.assign(contract, liveTarget);
+	death_star.bear.cell.set(categoryName, contract);
+	return withTypoGuard(contract, categoryName) //as unknown as MirrorImageFactory<C>;
+}
+
+// #endregion
 
 export class RAVENS_WAR_ROOOM2 {
     public r: A = "THE_WIZARD_ROOT_REG";
@@ -5942,7 +7277,6 @@ export class RAVENS_WAR_ROOOM2 {
 	public k: A = "__SAURON__";
     public raven : RAVEN
 
-    // #endregion
     //                                                                                                                  MAIN CACHES
     // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
     #META = new M2<A, M2<A, M2<A, A>>>();

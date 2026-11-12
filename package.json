@@ -26,14 +26,14 @@
     "*": "npm run 1 && npm run 2 && npm run 3 && npm run 4 && npm run 5 && npm run 6 && npm run 7 && npm run 8"
   },
   "devDependencies": {
-    "@the-w1zard/alias_types": "^1.0.6",
-    "@the-w1zard/types": "^1.0.11",
+    "@the-w1zard/alias_types": "^1.0.7",
+    "@the-w1zard/types": "^1.0.12",
     "@tsconfig/node-lts": "^24.0.0",
     "@types/node": "^24.0.0",
     "typescript": "^6.0.0"
   },
   "dependencies": {
-    "@the-w1zard/dx": "^1.0.18",
+    "@the-w1zard/dx": "^1.0.20",
     "@the-w1zard/resolvers": "^1.0.3",
     "@the-w1zard/store": "^1.0.8",
     "@the-w1zard/the-cloud": "^1.0.4",

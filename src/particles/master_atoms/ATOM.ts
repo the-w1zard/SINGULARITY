@@ -1,7 +1,7 @@
 //                                                                                                  ATOM
-import { GATE_ELECTRON } from "../electrons/gate.js";
-import { SEALED_ERROR_ELECTRON } from "../electrons/sealed_error.js";
-import { SUBSCRIPTION_ELECTRON } from "../electrons/subscription.js";
+import { GATE_ELECTRON } from "../electrons/gate";
+import { SEALED_ERROR_ELECTRON } from "../electrons/sealed_error";
+import { SUBSCRIPTION_ELECTRON } from "../electrons/subscription";
 import type { ATOM_CLASS, ATOM_KEY } from "../factory/types";
 
 // #region ══════════════════════════════════════════════════════════════════════════════════════════════════════

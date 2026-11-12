@@ -1,14 +1,21 @@
 // electrons/binary.ts
 export type CBORValue = undefined | null | boolean | number | string | Uint8Array | CBORValue[] | { [k: string]: CBORValue };
-
-export class BINARY_ELECTRON {
-	public k: ATOM_KEY;
-
-	constructor(k: ATOM_KEY, initialCapacity = 1 << 16) {
-		this.root_cell_key = root_cell_key;
-        this.bytes = new Uint8Array(initialCapacity);
-            this.view = new DataView(this.bytes.buffer);
-	}
+const TAG = {
+	UNDEFINED: 0,
+	NULL: 1,
+	FALSE: 2,
+	TRUE: 3,
+	INT32: 4,
+	FLOAT64: 5,
+	STRING: 6,
+	ARRAY: 7,
+	OBJECT: 8,
+	UINT8ARRAY: 9,
+	REF: 10,
+} as const;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+export class BINARY_CODEC {
 
 	encodeJSONEnvelope(envelope: any): Uint8Array {
 		return new TextEncoder().encode(JSON.stringify(envelope));
@@ -16,30 +23,7 @@ export class BINARY_ELECTRON {
 	decodeJSONEnvelope(bytes: Uint8Array): any {
 		return JSON.parse(new TextDecoder().decode(bytes));
 	}
-	ser(value: unknown): string {
-		if (value instanceof Map) {
-			return JSON.stringify({ __type: "Map", value: Array.from(value.entries()).map(([key, val]) => [ser(key), ser(val)]) });
-		}
-		if (value instanceof Set) {
-			return JSON.stringify({ __type: "Set", value: Array.from(value.values()).map((value) => ser(value)) });
-		}
-		return typeof value === "string" ? value : JSON.stringify(value);
-	}
-	deser(raw: string | null): any {
-		if (raw === null) return null;
-		try {
-			const parsed = JSON.parse(raw);
-			if (parsed?.__type === "Map") {
-				return new Map(parsed.value.map(([key, value]: [string, string]) => [deser(key), deser(value)]));
-			}
-			if (parsed?.__type === "Set") {
-				return new Set(parsed.value.map((value: string) => deser(value)));
-			}
-			return parsed;
-		} catch {
-			return raw;
-		}
-	}
+	 
         /* =============================================================================
          Encodes ordinary JavaScript values into a collider-owned byte slab.
          ================================= ⇦✦──⇦✦──✦──✦──←'pew pew' 🧙 [BINARY_CODEC] */
@@ -51,7 +35,7 @@ export class BINARY_ELECTRON {
         private stringBytes: U8[] = [];
         private refs = new Map<object, N>();
         private nextRef = 0;
-        encode(value: U): U8 {
+        encode_js(value: U): U8 {
             this.tail = 0;
             this.strings.clear();
             this.stringBytes.length = 0;
@@ -63,7 +47,7 @@ export class BINARY_ELECTRON {
             return this.bytes.subarray(0, this.tail);
         }
         /* HC_BINARY_CODEC */
-        decode(binary: U8): U {
+        decode_js(binary: U8): U {
             const savedBytes = this.bytes;
             const savedView = this.view;
             const savedTail = this.tail;
@@ -302,8 +286,6 @@ export class BINARY_ELECTRON {
 	/* =============================================================================
      BINARY ENC, WITH JSON ABOVE
      ================================= ⇦✦──⇦✦──✦──✦──←'pew pew' 🧙 [BINARY_CODEC] */
-	private readonly encoder = new TextEncoder();
-	private readonly decoder = new TextDecoder();
 	private ensureAvailable(buf: Uint8Array, pos: number, length: number): void {
 		if (pos < 0 || length < 0 || pos + length > buf.length) throw new Error("CBOR: truncated buffer");
 	}
@@ -397,7 +379,7 @@ export class BINARY_ELECTRON {
 		}
 
 		if (typeof v === "string") {
-			const encoded = this.encoder.encode(v);
+			const encoded = encoder.encode(v);
 			out.push(this.encodeUint(0x60, encoded.length));
 			out.push(encoded);
 			return;
@@ -476,7 +458,7 @@ export class BINARY_ELECTRON {
 		if (major === 3) {
 			this.ensureAvailable(buf, nextPos, n);
 			const bytes = buf.slice(nextPos, nextPos + n);
-			return [this.decoder.decode(bytes), nextPos + n];
+			return [decoder.decode(bytes), nextPos + n];
 		}
 		if (major === 4) {
 			const arr: CBORValue[] = [];
@@ -539,14 +521,16 @@ export class BINARY_ELECTRON {
 	private static topicToIdMap: Map<string, number> = new Map();
 	private static idToTopicMap: Map<number, string> = new Map();
 	private static headerBuffer = new ArrayBuffer(4); // Reusable scratch buffer & DataView for header manipulations (Zero GC)
-	private static headerView = new DataView(BINARY.headerBuffer);
-	private static headerBytes = new Uint8Array(BINARY.headerBuffer);
+	private static headerView = new DataView(BINARY_CODEC.headerBuffer);
+	private static headerBytes = new Uint8Array(BINARY_CODEC.headerBuffer);
 
-	public FLYWEIGHT_FRAME: DecodedFrame = {
-		topicId: 0,
-		topicName: undefined,
-		p: new Uint8Array(0),
-	};
+	public FLYWEIGHT_FRAME(): DecodedFrame{
+		return {
+			topicId: 0,
+			topicName: undefined,
+			p: new Uint8Array(0),
+		}
+	}
 	public static hashTopic(topic: string): number {
 		let hash = 0x811c9dc5;
 		for (let i = 0; i < topic.length; i++) {
@@ -585,15 +569,15 @@ export class BINARY_ELECTRON {
 	}
 
 	public static encodeFrame(topic: string, p: Uint8Array | string | Record<string, unknown>): Uint8Array {
-		const topicId = BinaryEncoder.getTopicId(topic);
+		const topicId = BINARY_CODEC.getTopicId(topic);
 
 		let payloadBytes: Uint8Array;
 		if (p instanceof Uint8Array) {
 			payloadBytes = p;
 		} else if (typeof p === "string") {
-			payloadBytes = this.encoder.encode(p);
+			payloadBytes = encoder.encode(p);
 		} else {
-			payloadBytes = this.encoder.encode(JSON.stringify(p));
+			payloadBytes = encoder.encode(JSON.stringify(p));
 		}
 
 		const frame = new Uint8Array(4 + payloadBytes.byteLength);
@@ -607,24 +591,24 @@ export class BINARY_ELECTRON {
 
 		return frame;
 	}
-	public static decodeFrame(frameBytes: Uint8Array): DecodedFrame {
+	public   decodeFrame(frameBytes: Uint8Array): DecodedFrame {
 		if (frameBytes.byteLength < 4) {
 			throw new Error("Invalid frame: buffer smaller than minimum header size (4 bytes).");
 		}
 
 		// Direct byte copy into static DataView to read Uint32 safely without memory allocation
-		this.headerBytes[0] = frameBytes[0];
-		this.headerBytes[1] = frameBytes[1];
-		this.headerBytes[2] = frameBytes[2];
-		this.headerBytes[3] = frameBytes[3];
+		BINARY_CODEC.headerBytes[0] = frameBytes[0];
+		BINARY_CODEC.headerBytes[1] = frameBytes[1];
+		BINARY_CODEC.headerBytes[2] = frameBytes[2];
+		BINARY_CODEC.headerBytes[3] = frameBytes[3];
 
-		const topicId = this.headerView.getUint32(0, true);
+		const topicId = BINARY_CODEC.headerView.getUint32(0, true);
 
-		FLYWEIGHT_FRAME.topicId = topicId;
-		FLYWEIGHT_FRAME.topicName = BinaryEncoder.getTopicName(topicId);
-		FLYWEIGHT_FRAME.p = frameBytes.subarray(4); // Zero-copy view
+		this.FLYWEIGHT_FRAME().topicId = topicId;
+		this.FLYWEIGHT_FRAME().topicName = BINARY_CODEC.getTopicName(topicId);
+		this.FLYWEIGHT_FRAME().p = frameBytes.subarray(4); // Zero-copy view
 
-		return FLYWEIGHT_FRAME;
+		return this.FLYWEIGHT_FRAME();
 	}
 	public createSharedDepotBuffer(capacityBytes: number): SharedArrayBuffer {
 		// Enforce 64-byte alignment on capacity
@@ -637,7 +621,7 @@ export class BINARY_ELECTRON {
 		// Initialize Header State
 		Atomics.store(headerView, this.HEADER_IDX_WRITE_HEAD, 0);
 		Atomics.store(headerView, this.HEADER_IDX_READ_HEAD, 0);
-		Atomics.store(headerView, this.HEADER_IDX_MUTEX, MUTEX_UNLOCKED);
+		Atomics.store(headerView, this.HEADER_IDX_MUTEX, this.MUTEX_UNLOCKED);
 		Atomics.store(headerView, this.HEADER_IDX_CAPACITY, alignedCapacity);
 
 		return sab;
@@ -650,7 +634,7 @@ export class BINARY_ELECTRON {
 		const capacity = Atomics.load(headerInt32, this.HEADER_IDX_CAPACITY);
 
 		// Map p slice strictly starting at byte 64
-		const payloadUint8 = new Uint8Array(sab, this.EADER_SIZE_BYTES, capacity);
+		const payloadUint8 = new Uint8Array(sab, this.HEADER_SIZE_BYTES, capacity);
 
 		return {
 			headerInt32,
@@ -662,7 +646,7 @@ export class BINARY_ELECTRON {
 		if (sab.byteLength < this.HEADER_SIZE_BYTES) return false;
 
 		const headerInt32 = new Int32Array(sab, 0, 4);
-		const capacity = Atomics.load(headerInt32, HEADER_IDX_CAPACITY);
+		const capacity = Atomics.load(headerInt32, this.HEADER_IDX_CAPACITY);
 
 		// Buffer length must equal 64 bytes header + registered capacity
 		return sab.byteLength === this.HEADER_SIZE_BYTES + capacity;
