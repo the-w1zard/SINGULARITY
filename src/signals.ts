@@ -7016,7 +7016,26 @@ export function darkMemo<T>(factory: () => T, deps: A[], __sauron_id__ = _sid())
 // #endregion
 //                                                                                                                 ATOM HELPERS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const def = new (class DEFINITION {
+export function patch<T extends object>(self: { value: T }, partial: Partial<T>): T {
+	self.value = { ...self.value, ...partial };
+	return self.value;
+}
+export function update<T>(self: { value: T }, fn: (current: T) => T): T {
+	self.value = fn(self.value);
+	return self.value;
+}
+export function createHistory<T>(limit = 50) {
+	const past: T[] = [];
+	const future: T[] = [];
+	return {
+		push(value: T) { past.push(value); if (past.length > limit) past.shift(); future.length = 0; },
+		undo(current: T): T | undefined { if (!past.length) return undefined; future.push(current); return past.pop(); },
+		redo(current: T): T | undefined { if (!future.length) return undefined; past.push(current); return future.pop(); },
+		get canUndo() { return past.length > 0; },
+		get canRedo() { return future.length > 0; },
+	};
+}
+const def = new (class DEFINITION {
 	public MASTER_ATOM_KEYS = ["ATOM", "MODULE_ATOM", "CLOUD_ATOM", "SAURON_ATOM", "DRS_ATOM", "DUPLEX_ATOM", "SLAB_ATOM", "STREAM_ATOM", "S_CLASS_ATOM", "SPREADSHEET_ATOM", "SEND_ATOM", "VERTEX"] as const;
 	public MQ = {
 		RETRY: this.DEFINE_ATOM_KIND("retry"),
@@ -7099,7 +7118,7 @@ export const def = new (class DEFINITION {
 		...this.MQ,
 	} as const;
 })();
-export function createLiveSelf(instanceId: S) {
+function createLiveSelf(instanceId: S) {
 	const liveTarget: R<A> = {};
 	const selfProxy = new PX(liveTarget, {
 		get(target, key: S) {
@@ -7120,23 +7139,23 @@ function mergeInto<T extends object>(target: T, source: object): T {
 	// as live accessors instead of flattening them into snapshots (the bug from last time)
 	Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
 	return target;
-}
-export function resolveFactory(raw: AnyFactory): AnyFactory {
+} 
+function resolveFactory(raw: AnyFactory): AnyFactory {
 	if (typeof raw === "function") return raw;
 	return () => raw;
 }
 type StubHit = { category: S; key: S; prop: S };
-export const STUB_HITS: StubHit[] = [];
+const STUB_HITS: StubHit[] = [];
 const NINJA_STUB_BRAND = "__is_atom_stub__";
-export function isStub(value: A): B {
+function isStub(value: A): B {
 	try {
 		return !!value && (typeof value === "object" || typeof value === "function") && value[NINJA_STUB_BRAND] === true;
 	} catch {
 		return false;
 	}
 }
-export function makeStub(trace?: { category: S; key: S }): A {
-	return new Proxy(() => makeStub(trace), {
+function makeStub(trace?: { category: S; key: S }): A {
+		return new Proxy(() => makeStub(trace), {
 		get: (_t, prop: S | SY) => {
 			if (prop === NINJA_STUB_BRAND) return true;
 			if (prop === Symbol.toPrimitive || prop === "toString" || prop === "valueOf") return () => "";
@@ -7151,7 +7170,7 @@ export function makeStub(trace?: { category: S; key: S }): A {
 		},
 	});
 }
-export function NexusMirror(excludeName: S) {
+function NexusMirror(excludeName: S) {
 	return new Proxy(
 		{},
 		{
@@ -7169,7 +7188,7 @@ export function NexusMirror(excludeName: S) {
 		},
 	);
 }
-export function buildCtx(refs: A, selfProxy: A): SelfType {
+function buildCtx(refs: A, selfProxy: A): SelfType {
 	let builtins = {
 		self: selfProxy,
 	};
@@ -7177,7 +7196,7 @@ export function buildCtx(refs: A, selfProxy: A): SelfType {
 		get: (target, key: S) => (key in target ? (target as A)[key] : (refs as A)[key]),
 	});
 }
-export function withTypoGuard<T extends Record<S, A>>(result: T, label: S, allowedExtraKeys: S[] = ["freyr"]): T {
+function withTypoGuard<T extends Record<S, A>>(result: T, label: S, allowedExtraKeys: S[] = ["freyr"]): T {
 	return new Proxy(result, {
 		get(target, prop, receiver) {
 			if (typeof prop === "symbol" || prop in target || allowedExtraKeys.includes(prop as string)) {
@@ -7269,7 +7288,23 @@ export function ATOM_CONTRACT<C extends AnyObject | Factory, M extends CONTRACT_
 }
 
 // #endregion
+const liveContract = ATOM_CONTRACT(() => ({
+	atom: "VERTEX",
+	value: { count: 0 },
+	bindables: {
+		counter: ATOM_BINDABLE(({ self }) => ({
+			increment() {
+				self.value = { count: self.value.count + 1 };
+				return self.value.count;
+			},
+		})),
+	},
+}));
 
+const a = liveContract();
+console.log("before:", a.read());        // { count: 0 }
+a.counter.increment();
+console.log("after, same read fn:", a.read()); // must show { count: 1 } WITHOUT calling read() being redefined/rebuilt
 export class RAVENS_WAR_ROOOM2 {
     public r: A = "THE_WIZARD_ROOT_REG";
 	public m: A = "SAURON_MASTER_REG";
