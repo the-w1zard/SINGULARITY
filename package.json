@@ -1,6 +1,6 @@
 {
   "name": "@the-w1zard/singularity",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
