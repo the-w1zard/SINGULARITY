@@ -50,7 +50,7 @@ export const FLAG = {
 type Teardown = void | (() => void);
 type Getter<T> = (previous?: T) => T;
 
-export class SIGNALS_DISRUPTOR {
+export class WARLOCK2 {
   private readonly capacity: number;
 
   // ── Lane / world-object SOA ──────────────────────────────────────────────

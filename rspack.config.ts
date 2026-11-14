@@ -42,6 +42,7 @@ const config: Configuration = {
                   syntax: 'typescript',
                   tsx: true,
                 },
+                target: 'es2022',
               },
             },
           },

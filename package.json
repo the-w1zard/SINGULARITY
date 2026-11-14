@@ -1,7 +1,6 @@
 {
   "name": "@the-w1zard/singularity",
   "version": "1.0.7",
-  "sideEffects": false,
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -23,21 +22,26 @@
     "8": "npm publish --access public",
     "build": "tsc",
     "check": "tsc --noEmit",
-    "*": "npm run 1 && npm run 2 && npm run 3 && npm run 4 && npm run 5 && npm run 6 && npm run 7 && npm run 8"
+    "*": "pnpm update && npm run 1 && npm run 2 && npm run 3 && npm run 4 && npm run 5 && npm run 6 && npm run 7 && npm run 8"
   },
   "devDependencies": {
-    "@the-w1zard/alias_types": "^1.0.7",
-    "@the-w1zard/types": "^1.0.12",
-    "@tsconfig/node-lts": "^24.0.0",
-    "@types/node": "^24.0.0",
-    "typescript": "^6.0.0"
+    "@the-w1zard/alias_types": "^1.0.15",
+    "@the-w1zard/types": "^1.0.15",
+    "@tsconfig/node-lts": "^24.0.1",
+    "@types/node": "^24.19.2",
+    "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@the-w1zard/dx": "^1.0.20",
+    "@preact/signals-core": "^1.14.5",
+    "@the-w1zard/dx": "^1.0.30",
     "@the-w1zard/resolvers": "^1.0.3",
-    "@the-w1zard/store": "^1.0.8",
-    "@the-w1zard/the-cloud": "^1.0.4",
-    "@the-w1zard/the-registry": "^1.0.7"
+    "@the-w1zard/store": "^1.0.9",
+    "@the-w1zard/the-cloud": "^1.0.6",
+    "@the-w1zard/the-registry": "^1.0.12",
+    "preact": "^11.2.0"
+  },
+  "peerDependencies": {
+    "@the-w1zard/dx": "^1.0.27"
   },
   "imports": {
     "#dx": "@the-w1zard/dx",

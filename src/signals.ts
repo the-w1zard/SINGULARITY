@@ -1,18 +1,103 @@
+/*  ===========================================================================================================================
+	 Welcome to the dark side...
+     The counterpart to the traditional portion of the platform, where the light side gives you features... this does not.
+     But... There is something that the dark side has, that the light does not... True, raw... power. Literally as much as we
+     can acquire.
+     The signals solution bench comes in at being 40-1100x more performant than both preact AND alien...
+     The atoms solution... that will be a bit harder to bench because, no other atoms solution even advertises any sort
+     of performance metrics... across the board really. But I will install a few and bench them myself, so that is to come.
+     Other bench tests that will also have to be entirely done with zero help... 
+     Message queue / bus... I don't think this one is possible... because a bench test is not fair, unless all solutions
+     in question are ran on the same machine. I honestly don't know of any solutions that you do not have to pay for sooo, this
+     one is out.
+     Application state / context, this one will be easy enough. Just download and set up a very basic version of a couple
+     of platforms and run the same test on each.
+     All other solution I don't think... I can bench either due to industry availability... BUT that doesn't mean I will
+     not put everything on a bench anyways! So in total we have...
+     - signals: 40-1100x more performant than both preact AND alien...
+     - atoms: hitting 751 million ops per sec in the users usage path...
+     - app context / state
+     - hooks
+     - message queue / bus
+     - slab
+     - distributed reactive state
+     - spreadsheet engine
+     - same node / same app transport x3
+     - same node / different app transport 
+     - anti message queue
+     Now the reason why this is the dark side is because, each and every single solution... is entirely backed by disruptors.
+     Currently, I believe that there is 6 at the time of writing with an asterisk, because the atoms solution that number is
+     entirely dependant on user usage because there are disruptors available there too.
+
+     Now there will be one slow bit of code that could not be entirely converted, due to its use being used by several other 
+     parts of the application. Which is the portion of how the buses actually end up becoming a mesh. Each bus does not store
+     values within its own class / domain. Instead the message queues access a cross-node module instance where most back end
+     fns and the storage of all subscribers and other similar values are placed so that each bus has access to them. 
+
+     This portion is still optimized, just not at disruptor speed — it operates at 105M ops/sec, which is the same rate my M2 hits. 
+     The rest of the mesh paths run at 400-600M ops/sec, above that line.
+     I am looking into ways of drastically improving that number, but when you operate at these numbers and have nothing 
+     to go off of, its just a fucking roll of the dice. One little implementation detail could mean the difference between 4 mill 
+     and 900 mill. The best disruptor I have built to date, started life as a 400k ops per sec disruptor and currently sits at
+     1.2 billion(2.1 bill on a friends newer machine), same archtecture as when it was first built.
+     OTHER THAN THAT ONE SMALL PORTION OF CODE, everything else was entirely redone... even the reactive state portion ie the 
+     cloud... kinda, curious to see if I was able to code it and have it working first shot... I doubt it.
+    ============================================================================ ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [THE DARK SIDE] */
 //                                                                                                                      IMPORTS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 import { Registry } from "@the-w1zard/the-registry";
 // import { Mesh } from "@the-w1zard/the-mesh"
 // import { darkState, useEffect } from "@the-w1zard/the-dark-side"
-import { Queue } from "./comps/queue";
+import { queue, Queue } from "./comps/queue";
+import { M2 } from "#dx";
+//import { M2 } from "@the-w1zard/dx";
+
 
 // #endregion
 //                                                                                                                       TYPPES
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-const NO_SUB = -1;
+type SIG_BUS_Message<P = A> = {
+    id: S;
+    r: S;
+    m: S;
+    s: S;
+    k: S;
+    p: { p: P };
+    ts: N;
+    _ack: B;
+
+    /** Correlates an async reply back to the awaiting send() call. */
+    replyTo?: S;
+
+    /** Marks this message as part of a stream. */
+    stream?: B;
+
+    /** Marks the final stream frame. */
+    end?: B;
+
+    error?: {
+        message: S;
+        code?: S;
+    };
+};
 type Handler = (payload: unknown) => unknown | Promise<unknown>;
-function pow2(value: number): boolean {
-	return value > 0 && (value & (value - 1)) === 0;
-}
+type Slot<P> = { sequence: number; key: unknown; payload: P | undefined; tombstone: boolean };
+type hdr<P = A, R = A> = ( msg: SIG_BUS_Message<P>, reply: (value: R | Promise<R>) => V,) => A;
+type PendingEntry = {
+    resolve: (value: A) => V;
+    reject: (error: A) => V;
+    timer?: A;
+    stream?: B;
+};
+type Pid = number;
+type Lid = number;  
+type RenderFn = () => void;
+type CleanupFn = () => void;
+type EffectFn = () => void | CleanupFn;
+type Scope = { r: S; m: S; s: S; k: S };
+type HandlerSet = Set<BusHandler>;
+
+
 interface Deferred {
 	resolve: (value: unknown) => void;
 	reject: (reason?: unknown) => void;
@@ -30,6 +115,46 @@ interface HADRON_COLLIDER_OPTIONS {
 	shared?: A;
 	capacity?: A;
 }
+interface IndexEntry {
+	lane: number;
+	seq: number;
+}
+export interface ReactiveNode {
+	deps?: Link;
+	depsTail?: Link;
+	subs?: Link;
+	subsTail?: Link;
+	flags: ReactiveFlags;
+}
+export interface Link {
+	version: number;
+	dep: ReactiveNode;
+	sub: ReactiveNode;
+	prevSub: Link | undefined;
+	nextSub: Link | undefined;
+	prevDep: Link | undefined;
+	nextDep: Link | undefined;
+}
+interface Stack<T> { value: T;	prev: Stack<T> | undefined;}
+interface BusMessage<P = A> {
+	id: string;          // unique message id
+	cid?: string;        // correlation id: request id being answered
+	r: S;
+	m: S;
+	s: S;
+	k: S;
+	p: P;                // payload
+	from?: S;            // sender identity, useful for echo suppression
+	replyTo?: string;    // reply channel key
+	ts: number;
+}
+interface BusHandler<P = A, R = A> {	(msg: BusMessage<P>): R | Promise<R> | void;}
+
+
+
+
+const NO_SUB = -1;
+function pow2(value: number): boolean {	return value > 0 && (value & (value - 1)) === 0;}
 const enum RKind {
 	NONE = 0,
 	SIGNAL = 1,
@@ -71,11 +196,6 @@ const RX_Flags = {
 	RECURSED: 1 << 9,
 	PENDING: 1 << 10,
 } as const;
-type Pid = number;
-type Lid = number;  
-type RenderFn = () => void;
-type CleanupFn = () => void;
-type EffectFn = () => void | CleanupFn;
 let Bun: A = null;
 let Deno: A = null;
 if (typeof (globalThis as A).Deno !== "undefined") { Deno = (globalThis as A).Deno;}
@@ -87,11 +207,9 @@ export const isBrowser = typeof window !== "undefined";
 export const isVSCode = typeof process !== "undefined" && process.env.VSCODE_PID;
 export let _localChange = false;
 export let _channel: BroadcastChannel | null = null;
-
 export let isReact = false;
 export let IS_THE_WIZARD = true;
 let init_hooks_context = false;
-
 // #endregion
 //                                                                                                                [EXOGUL] SLAB
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -631,7 +749,7 @@ class GOVERNOR {
 	}
 }
 // #endregion
-//                                                                                                         [DARTH MAUL] SIGNALS
+//                                                                                                [DARTH MAUL] DISRPTOR SIGNALS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class DARTH_MAUL_ENGINE {
 	public hub: DARTH_MAUL; 
@@ -1659,7 +1777,6 @@ class DARTH_MAUL_ENGINE {
 		return this.rKind[pid] === RKind.EFFECT_SCOPE;
 	}
 }
-
 class DARTH_MAUL {
 	//                                                                                                                    CONSTANTS
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -1762,10 +1879,12 @@ class DARTH_MAUL {
 		const registry = this.hub.wr._signals;
 		let atom = registry.get(k);
 
-		if (atom || v === undefined) {
-			return atom as ATOM<T> | T;
+		if (atom && v === undefined) { return atom as ATOM<T> | T; }
+		if (atom && v !== undefined) {
+			const vv = typeof v === "function" ? (v as () => T)() : v;
+			atom.write(vv)
+			return atom as ATOM<T> 
 		}
-
 		const initialValue = typeof v === "function" ? (v as () => T)() : v;
 		atom = this._contracts.DEFAULT(initialValue, k, s, m, r);
 		registry.set(k, atom);
@@ -1780,12 +1899,10 @@ class DARTH_MAUL {
 	}
 	public read<T = A>(k: SignalKey, s = this.s, m = this.m, r = this.r): T | UD {
 		const atom = this.hub.wr._signals.get(k) as ATOM<T> | undefined;
-
 		return atom?.read();
 	}
 	public peek<T = A>(k: SignalKey, s = this.s, m = this.m, r = this.r): T | UD {
 		const atom = this.hub.wr._signals.get(k) as ATOM<T> | UD;
-
 		return atom?.peek();
 	}
 	public signal<T>(initialValue?: T): { (): T | UD; (value: T): V } {
@@ -1796,21 +1913,15 @@ class DARTH_MAUL {
         Object.defineProperty(fn, eng.BRAND_SIGNAL, { value: true });
         return fn;                                        
     }
-	public has(k: A, s = this.s, m = this.m, r = this.r): B {
-		return this.hub.wr._signals.get(k) !== undefined;
-	}
+	public has(k: A, s = this.s, m = this.m, r = this.r): B { return this.hub.wr._signals.get(k) !== undefined; }
 	public freeze(k: A, s = this.s, m = this.m, r = this.r): void {
 		const atom = this.hub.wr._signals.get(k);
-		if (!atom) {
-			throw new Error(`[Sauron] Cannot freeze unknown signal "${String(k)}"`);
-		}
+		if (!atom) { throw new Error(`[Sauron] Cannot freeze unknown signal "${String(k)}"`); }
 		atom.setFrozen();
 	}
 	public unfreeze(k: A, s = this.s, m = this.m, r = this.r): void {
 		const atom = this.hub.wr._signals.get(k);
-		if (!atom) {
-			throw new Error(`[Sauron] Cannot freeze unknown signal "${String(k)}"`);
-		}
+		if (!atom) { throw new Error(`[Sauron] Cannot freeze unknown signal "${String(k)}"`); }
 		atom.setUnfrozen();
 	}
 	public seal(k: A, s = this.s, m = this.m, r = this.r): V {
@@ -1820,18 +1931,13 @@ class DARTH_MAUL {
 	}
 	public reset(k: A, s = this.s, m = this.m, r = this.r): V {
 		const atom = this.hub.wr._signals.get(k) as ATOM<A> | UD;
-		if (!atom) {
-			throw new Error(`[Sauron] Cannot reset unknown signal "${String(k)}"`);
-		}
+		if (!atom) { throw new Error(`[Sauron] Cannot reset unknown signal "${String(k)}"`); 	}
 		atom.value = atom.initial;
 		// this._writeResolved(k, atom.initial, "reset", s, m, r, "reset");
 	}
-	public hydrate<T>(k: A, value: T, s = this.s, m = this.m, r = this.r): V {
-		const atom = this.hub.wr._signals.get(k) as ATOM<T> | UD;
-		if (!atom) {
-			this.create(k, value, undefined, s, m, r);
-			return;
-		}
+	public hydrate<T = ATOM<A> | A>(k: A, value: T, s = this.s, m = this.m, r = this.r): V {
+		let atom = this.hub.wr._signals.get(k) as ATOM<T> | UD;
+		if (!atom) { this.create(k, value, undefined, s, m, r); return; }
 		// atom.write(value, { source: "hydrate", triggerRender: false });
 	}
 	public tx(fn: () => V): V {
@@ -2309,9 +2415,7 @@ class DARTH_MAUL {
 			component.hooks.set(hookKey, { value: undefined });
 
 			const atom = this.create(rk, undefined, undefined, s, m, r);
-			if (!atom) {
-				return;
-			}
+			if (!atom) { return; }
 
 			const unsubSignal = atom.subscribeExternal(() => {
 				this.hub.state.notifyHook(hookKey);
@@ -2341,7 +2445,6 @@ class DARTH_MAUL {
 		return fn;
 	})();
 	// #endregion
-
 	//                                                                                                                        ASYNC
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public async = (() => {
@@ -2887,24 +2990,11 @@ class DARTH_MAUL {
 
 	// #endregion
 }
+// #endregion
+// #endregion
+//                                                                                                  [DARTH MAUL] SIGNALS ENGINE
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 const queued: (EffectNode | UD)[] = [];
-export interface ReactiveNode {
-	deps?: Link;
-	depsTail?: Link;
-	subs?: Link;
-	subsTail?: Link;
-	flags: ReactiveFlags;
-}
-export interface Link {
-	version: number;
-	dep: ReactiveNode;
-	sub: ReactiveNode;
-	prevSub: Link | undefined;
-	nextSub: Link | undefined;
-	prevDep: Link | undefined;
-	nextDep: Link | undefined;
-}
-interface Stack<T> { value: T;	prev: Stack<T> | undefined;}
 export const enum ReactiveFlags {
 	None = 0,
 	Mutable = 1,
@@ -3152,115 +3242,6 @@ const {	link, unlink, propagate, checkDirty, shallowPropagate,} = createReactive
 		else { effectScopeOper.call(node); }
 	},
 });
-export function getActiveSub(): ReactiveNode | UD {	return activeSub;}
-export function setActiveSub(sub?: ReactiveNode) {
-	const prevSub = activeSub;
-	activeSub = sub;
-	return prevSub;
-}
-export function getBatchDepth(): N { return batchDepth;}
-export function startBatch() { ++batchDepth;}
-export function endBatch() { if (!--batchDepth) { flush(); }}
-export function isSignal(fn: () => V): B {	return fn.name === 'bound ' + signalOper.name;}
-export function isComputed(fn: () => V): B { return fn.name === 'bound ' + computedOper.name;}
-export function isEffect(fn: () => V): B {	return fn.name === 'bound ' + effectOper.name;}
-export function isEffectScope(fn: () => V): B {	return fn.name === 'bound ' + effectScopeOper.name;}
-export function signal<T>(): { (): T | UD;	(value: T | UD): V;};
-export function signal<T>(initialValue: T): { (): T; (value: T): V;};
-export function signal<T>(initialValue?: T): { (): T | UD;	(value: T | UD): V;} {
-	return signalOper.bind({
-		currentValue: initialValue,
-		pendingValue: initialValue,
-		subs: undefined,
-		subsTail: undefined,
-		flags: ReactiveFlags.Mutable,
-	}) as () => T | undefined;
-}
-export function computed<T>(getter: (previousValue?: T) => T): () => T {
-	return computedOper.bind({
-		value: undefined,
-		subs: undefined,
-		subsTail: undefined,
-		deps: undefined,
-		depsTail: undefined,
-		flags: ReactiveFlags.None,
-		getter: getter as (previousValue?: unknown) => unknown,
-	}) as () => T;
-}
-export function effect(fn: () => V | (() => V)): () => V {
-	const e: EffectNode = {
-		fn,
-		cleanup: undefined,
-		subs: undefined,
-		subsTail: undefined,
-		deps: undefined,
-		depsTail: undefined,
-		flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
-	};
-	const prevSub = setActiveSub(e);
-	if (prevSub !== undefined) {
-		link(e, prevSub, 0);
-		prevSub.flags |= HasChildEffect;
-	}
-	try {
-		++runDepth;
-		const result = e.fn();
-		e.cleanup = typeof result === "function" ? result : undefined;
-	} finally {
-		--runDepth;
-		activeSub = prevSub;
-		e.flags &= ~ReactiveFlags.RecursedCheck;
-	}
-	return effectOper.bind(e);
-}
-export function effectScope(fn: () => V): () => V {
-	const e: EffectScopeNode = {
-		deps: undefined,
-		depsTail: undefined,
-		subs: undefined,
-		subsTail: undefined,
-		flags: ReactiveFlags.Mutable,
-	};
-	const prevSub = setActiveSub(e);
-	if (prevSub !== undefined) {
-		link(e, prevSub, 0);
-		prevSub.flags |= HasChildEffect;
-	}
-	try {
-		fn();
-	} finally {
-		activeSub = prevSub;
-	}
-	return effectScopeOper.bind(e);
-}
-export function trigger(fn: () => V) {
-	const sub: ReactiveNode = {
-		deps: undefined,
-		depsTail: undefined,
-		flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
-	};
-	const prevSub = setActiveSub(sub);
-	++batchDepth;
-	try {
-		fn();
-	} finally {
-		activeSub = prevSub;
-		sub.flags = ReactiveFlags.None;
-		let link = sub.deps;
-		while (link !== undefined) {
-			const dep = link.dep;
-			link = unlink(link, sub);
-			const subs = dep.subs;
-			if (subs !== undefined) {
-				propagate(subs, !!runDepth);
-				shallowPropagate(subs);
-			}
-		}
-		if (!--batchDepth) {
-			flush();
-		}
-	}
-}
 function updateComputed(c: ComputedNode): B {
 	if (c.flags & HasChildEffect) {
 		let link = c.depsTail;
@@ -3461,23 +3442,118 @@ function purgeDeps(sub: ReactiveNode) {
 		dep = unlink(dep, sub);
 	}
 }
-export interface BusMessage<P = A> {
-	id: string;          // unique message id
-	cid?: string;        // correlation id: request id being answered
-	r: S;
-	m: S;
-	s: S;
-	k: S;
-	p: P;                // payload
-	from?: S;            // sender identity, useful for echo suppression
-	replyTo?: string;    // reply channel key
-	ts: number;
+export function getActiveSub(): ReactiveNode | UD {	return activeSub;}
+export function setActiveSub(sub?: ReactiveNode) {
+	const prevSub = activeSub;
+	activeSub = sub;
+	return prevSub;
 }
-export interface BusHandler<P = A, R = A> {
-	(msg: BusMessage<P>): R | Promise<R> | void;
+export function getBatchDepth(): N { return batchDepth;}
+export function startBatch() { ++batchDepth;}
+export function endBatch() { if (!--batchDepth) { flush(); }}
+export function isSignal(fn: () => V): B {	return fn.name === 'bound ' + signalOper.name;}
+export function isComputed(fn: () => V): B { return fn.name === 'bound ' + computedOper.name;}
+export function isEffect(fn: () => V): B {	return fn.name === 'bound ' + effectOper.name;}
+export function isEffectScope(fn: () => V): B {	return fn.name === 'bound ' + effectScopeOper.name;}
+export function signal<T>(): { (): T | UD;	(value: T | UD): V;};
+export function signal<T>(initialValue: T): { (): T; (value: T): V;};
+export function signal<T>(initialValue?: T): { (): T | UD;	(value: T | UD): V;} {
+	return signalOper.bind({
+		currentValue: initialValue,
+		pendingValue: initialValue,
+		subs: undefined,
+		subsTail: undefined,
+		flags: ReactiveFlags.Mutable,
+	}) as () => T | undefined;
 }
-type Scope = { r: S; m: S; s: S; k: S };
-type HandlerSet = Set<BusHandler>;
+export function computed<T>(getter: (previousValue?: T) => T): () => T {
+	return computedOper.bind({
+		value: undefined,
+		subs: undefined,
+		subsTail: undefined,
+		deps: undefined,
+		depsTail: undefined,
+		flags: ReactiveFlags.None,
+		getter: getter as (previousValue?: unknown) => unknown,
+	}) as () => T;
+}
+export function effect(fn: () => V | (() => V)): () => V {
+	const e: EffectNode = {
+		fn,
+		cleanup: undefined,
+		subs: undefined,
+		subsTail: undefined,
+		deps: undefined,
+		depsTail: undefined,
+		flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
+	};
+	const prevSub = setActiveSub(e);
+	if (prevSub !== undefined) {
+		link(e, prevSub, 0);
+		prevSub.flags |= HasChildEffect;
+	}
+	try {
+		++runDepth;
+		const result = e.fn();
+		e.cleanup = typeof result === "function" ? result : undefined;
+	} finally {
+		--runDepth;
+		activeSub = prevSub;
+		e.flags &= ~ReactiveFlags.RecursedCheck;
+	}
+	return effectOper.bind(e);
+}
+export function effectScope(fn: () => V): () => V {
+	const e: EffectScopeNode = {
+		deps: undefined,
+		depsTail: undefined,
+		subs: undefined,
+		subsTail: undefined,
+		flags: ReactiveFlags.Mutable,
+	};
+	const prevSub = setActiveSub(e);
+	if (prevSub !== undefined) {
+		link(e, prevSub, 0);
+		prevSub.flags |= HasChildEffect;
+	}
+	try {
+		fn();
+	} finally {
+		activeSub = prevSub;
+	}
+	return effectScopeOper.bind(e);
+}
+export function trigger(fn: () => V) {
+	const sub: ReactiveNode = {
+		deps: undefined,
+		depsTail: undefined,
+		flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
+	};
+	const prevSub = setActiveSub(sub);
+	++batchDepth;
+	try {
+		fn();
+	} finally {
+		activeSub = prevSub;
+		sub.flags = ReactiveFlags.None;
+		let link = sub.deps;
+		while (link !== undefined) {
+			const dep = link.dep;
+			link = unlink(link, sub);
+			const subs = dep.subs;
+			if (subs !== undefined) {
+				propagate(subs, !!runDepth);
+				shallowPropagate(subs);
+			}
+		}
+		if (!--batchDepth) {
+			flush();
+		}
+	}
+}
+// #endregion
+//                                                                    [DARTH MAUL] SIGNALS & SIGNALS BACK STATE AND APP CONTEXT
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class BEAR {
     public r: A = "THE_WIZARD_ROOT_REG";
 	public m: A = "SAURON_MASTER_REG";
@@ -3618,6 +3694,25 @@ class BEAR {
 			set set(v: T) { this.signal(k, v); },
 		};
 	}
+	public signal = (() => {
+		const fn = <T = A,>(k: SignalKey, v?: T | (() => T)) => {
+			const registry = this._signal_cells
+			let atom = registry.get(k);
+
+			if (atom && v === undefined) { return atom; }
+			if (atom && v) { 
+                const t = UF(v)
+                atom = registry.set(k, t)
+                return atom;
+             }
+
+			const initialValue = UF(v)
+			atom = signal<T>(initialValue);
+			registry.set(k, atom);
+			return atom;
+		};
+		return fn;
+	})();
 	public store = {
 		get: <T = A,>(
 			key: A,
@@ -4002,246 +4097,1989 @@ class BEAR {
 		}
 		return fn;
 	})();
-	//                                                                                                   DISTRIBUTED REACTIVE STATE
-	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
 		const existing = this.state.get(k, { s: s, m: m, r: r });
 		if (existing !== undefined) return existing;
 		const t = typeof v === "function" ? v() : v;
 		this.state.set(k, t, { triggerRender: true, s: s, m: m, r: r });
 		return t;
+	} 
+}
+// #endregion
+//                                                                                                      [DARTH VADER] BUS - DRS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const END = Symbol("rift:end");
+class DRS_ENGINE {
+    public r: A = "THE_WIZARD_ROOT_REG";
+	public m: A = "SAURON_MASTER_REG";
+	public s: A = "SAURON_SLAVE_REG";
+	public k: A = "__SAURON__";
+	public hub: DEATH_STAR;
+	constructor(hub: DEATH_STAR) { this.hub = hub;	}
+    public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
+		const existing = this.hub.bear.state.get(k, { s: s, m: m, r: r });
+		if (existing !== undefined) return existing;
+		const t = UF(v)
+		this.hub.bear.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
+		return t;
 	}
-	public signal = (() => {
-		const fn = <T = A,>(k: SignalKey, v?: T | (() => T)) => {
-			const registry = this._signal_cells
-			let atom = registry.get(k);
-
-			if (atom && v === undefined) { return atom; }
-			if (atom && v) { 
-                const t = UF(v)
-                atom = registry.set(k, t)
-                return atom;
-             }
-
-			const initialValue = UF(v)
-			atom = signal<T>(initialValue);
-			registry.set(k, atom);
-			return atom;
-		};
-		return fn;
-	})();
 	public useCell = (() => {
-		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
+		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.REGISTRY._sid(), ) => {
+			return death_star.state.createHookCell( "useCell", __sauron_id__, () => ({
+					value: {
+						current: this.state_setter(v, k, s, m, r),
+						derived: undefined as A,
+					},
+				}),
+				(state, key, notify) => {
+					const st = state.value;
 
-			const senderTokenRef = this.atom(this.hub.REGISTRY._sid());
+					const senderToken = this.hub.bear.atom(this.hub.REGISTRY._sid());
 
-			this.hub.bus.sub( (i: A) => {
-					const incoming = i.p;
-					if (incoming?.from === senderTokenRef.value) return;
-					this.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
-					// set(k, incoming.value, false, s, m, r);
-					setState(incoming.value);
-			 }, k, s, m, 	r, ); // stay in sync with local writes too (including our own setLive below)
-			this.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
-			// sub(k, (newValue: any) => setState(newValue), s, m, r);
+					const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
+					const selector = options.selector ?? null;
+					const derive = options.derive ?? null;
 
-			const setLive = (next: any) => {
-				const newValue = typeof next === "function" ? next(this.state.get(k, { s: s, m: m, r: r })) : next;
-				setState(newValue);
-				this.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
-				// set(k, newValue, true, s, m, r); // local write
-				this.hub.bus.send({ value: newValue, from: senderTokenRef.value }, k, s, m, r); // broadcast to the bus
-			};
+					const getValue = (): any => (selector ? selector(st.current) : st.current);
 
-			return [state, setLive] as const;
-		};
-		fn.mailbox = (v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
-
-			const senderTokenRef = this.atom(this.hub.REGISTRY._sid());
-			const queueRef = this.atom<Queue | null>(null);
-
-			if (!queueRef.current) {
-				queueRef.current = new Queue(1);
-			}
-
-			// mailbox — replace the whole useEffect block:
-			this.hub.bus.sub( (i: A) => {
-			    const incoming = i.p;
-			    if (incoming?.from === senderTokenRef.value) return;
-			    queueRef.current!.run(async () => {
-						const current = this.state.get(k, { s: s, m: m, r: r });
-						const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-						this.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+					const setValue = (next: A) => {
+						const prevSelected = getValue();
+						const nextSelected = selector ? selector(next) : next;
+						if (!equals(prevSelected, nextSelected)) {
+							st.current = next;
+							if (derive) { st.derived = derive(next); }
+							notify(key);
+						}
 						return next;
-			    });
-			}, k, s, m, r, );
+					};
 
-			this.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
+					this.hub.bear_bus.sub((i: A) => {
+						const incoming = i.p;
+						if (incoming?.from === senderToken.value) return;
+						this.hub.bear.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
+						setValue(incoming.value);
+					}, k, s, m, r);
 
-			const setLive = (next: any) => {
-				const t = typeof next === "function" ? next() : next;
-				this.hub.bus.send({ value: t, from: senderTokenRef.value }, k, s, m, r);
+					this.hub.bear.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+
+					const setLive = (next: any) => {
+						const newValue = typeof next === "function" ? next(this.hub.bear.state.get(k, { s: s, m: m, r: r })) : next;
+						setValue(newValue);
+						this.hub.bear.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
+						this.hub.bear_bus.send({ value: newValue, from: senderToken.value }, k, s, m, r);
+					};
+
+					if (derive && st.derived === undefined) { st.derived = derive(st.current); }
+					if (derive) { return [getValue(), setLive, st.derived] as const; }
+
+					return [getValue(), setLive] as const;
+				},
+			);
+		};
+		fn.mailbox = ( v?: A,k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.REGISTRY._sid(),		) => {
+			return death_star.state.createHookCell("useCell.mailbox",__sauron_id__,() => ({
+					value: {
+						current: this.state_setter(v, k, s, m, r),
+						derived: undefined as A,
+					},
+				}),
+				(state, key, notify) => {
+					const st = state.value;
+
+					const senderToken = this.hub.bear.atom(this.hub.REGISTRY._sid());
+					const queueRef = this.hub.bear.atom<Queue | null>(null);
+
+					if (!queueRef.current) {
+						queueRef.current = new Queue(1);
+					}
+
+					const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
+					const selector = options.selector ?? null;
+					const derive = options.derive ?? null;
+
+					const getValue = (): any => (selector ? selector(st.current) : st.current);
+
+					const setValue = (next: A) => {
+						const prevSelected = getValue();
+						const nextSelected = selector ? selector(next) : next;
+						if (!equals(prevSelected, nextSelected)) {
+							st.current = next;
+							if (derive) { st.derived = derive(next); }
+							notify(key);
+						}
+						return next;
+					};
+
+					this.hub.bear_bus.sub((i: A) => {
+						const incoming = i.p;
+						if (incoming?.from === senderToken.value) return;
+						queueRef.current!.run(async () => {
+							const current = this.hub.bear.state.get(k, { s: s, m: m, r: r });
+							const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
+							this.hub.bear.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+							return next;
+						});
+					}, k, s, m, r);
+
+					this.hub.bear.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+
+					const setLive = (next: any) => {
+						const t = typeof next === "function" ? next() : next;
+						this.hub.bear_bus.send({ value: t, from: senderToken.value }, k, s, m, r);
+					};
+
+					if (derive && st.derived === undefined) { st.derived = derive(st.current); }
+					if (derive) { return [getValue(), setLive, st.derived] as const; }
+
+					return [getValue(), setLive] as const;
+				},
+			);
+		};
+
+		return fn;
+	})();
+
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	
+	public useAntiMsgQ = (() => {
+		const fn = ( v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.REGISTRY._sid(),		) => {
+			return death_star.state.createHookCell( "useAntiMsgQ", __sauron_id__, () => ({
+					value: {
+						current: this.state_setter(v, k, s, m, r),
+						derived: undefined as A,
+					},
+				}),
+				(state, key, notify) => {
+					const st = state.value;
+
+					const senderToken = this.hub.bear.atom(this.hub.REGISTRY._sid());
+
+					const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
+					const selector = options.selector ?? null;
+					const derive = options.derive ?? null;
+
+					const getValue = (): any => (selector ? selector(st.current) : st.current);
+
+					const setValue = (next: A) => {
+						const prevSelected = getValue();
+						const nextSelected = selector ? selector(next) : next;
+						if (!equals(prevSelected, nextSelected)) {
+							st.current = next;
+							if (derive) { st.derived = derive(next); }
+							notify(key);
+						}
+						return next;
+					};
+
+					this.hub.bear_bus.sub((i: A) => {
+						const incoming = i.p;
+						if (incoming?.from === senderToken.value) return;
+						this.hub.bear.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
+						setValue(incoming.value);
+					}, k, s, m, r);
+
+					this.hub.bear.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+
+					const setLive = (next: any) => {
+						const newValue = typeof next === "function" ? next(this.hub.bear.state.get(k, { s: s, m: m, r: r })) : next;
+						setValue(newValue);
+						this.hub.bear.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
+						this.hub.bear_bus.send({ value: newValue, from: senderToken.value }, k, s, m, r);
+					};
+
+					if (derive && st.derived === undefined) { st.derived = derive(st.current); }
+					if (derive) { return [getValue(), setLive, st.derived] as const; }
+
+					return [getValue(), setLive] as const;
+				},
+			);
+		};
+		fn.mailbox = ( v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.REGISTRY._sid(),		) => {
+			return death_star.state.createHookCell( "useAntiMsgQ.mailbox", __sauron_id__, () => ({
+					value: {
+						current: this.state_setter(v, k, s, m, r),
+						derived: undefined as A,
+					},
+				}),
+				(state, key, notify) => {
+					const st = state.value;
+
+					const senderToken = this.hub.bear.atom(this.hub.REGISTRY._sid());
+					const queueRef = this.hub.bear.atom<Queue | null>(null);
+
+					if (!queueRef.current) {
+						queueRef.current = new Queue(1);
+					}
+
+					const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
+					const selector = options.selector ?? null;
+					const derive = options.derive ?? null;
+
+					const getValue = (): any => (selector ? selector(st.current) : st.current);
+
+					const setValue = (next: A) => {
+						const prevSelected = getValue();
+						const nextSelected = selector ? selector(next) : next;
+						if (!equals(prevSelected, nextSelected)) {
+							st.current = next;
+							if (derive) { st.derived = derive(next); }
+							notify(key);
+						}
+						return next;
+					};
+
+					this.hub.bear_bus.sub((i: A) => {
+						const incoming = i.p;
+						if (incoming?.from === senderToken.value) return;
+						queueRef.current!.run(async () => {
+							const current = this.hub.bear.state.get(k, { s: s, m: m, r: r });
+							const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
+							this.hub.bear.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+							return next;
+						});
+					}, k, s, m, r);
+
+					this.hub.bear.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+
+					const setLive = (next: any) => {
+						const t = typeof next === "function" ? next() : next;
+						this.hub.bear_bus.send({ value: t, from: senderToken.value }, k, s, m, r);
+					};
+
+					if (derive && st.derived === undefined) { st.derived = derive(st.current); }
+					if (derive) { return [getValue(), setLive, st.derived] as const; }
+
+					return [getValue(), setLive] as const;
+				},
+			);
+		};
+
+		return fn;
+	})();
+
+	// #endregion
+}
+// #endregion
+//                                                                                       [DARTH VADER] BUS - SPREADSHEET_ENGINE
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+class SPREADSHEET_ENGINE {
+    public r: A = "THE_WIZARD_ROOT_REG";
+	public m: A = "SAURON_MASTER_REG";
+	public s: A = "SAURON_SLAVE_REG";
+	public k: A = "__SAURON__";
+	public hub: DEATH_STAR;
+	public cell() {}
+	public useCell() {}
+	constructor(hub: DEATH_STAR) {
+		this.hub = hub;
+	}
+}
+// #endregion
+//                                                                                                            [DARTH VADER] BUS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const rv = <T>(v: UF<T>): T => typeof v === "function" ? (v as () => T)() : v;
+export const sameValue = (a: A, b: A): B =>    Object.is(a, b) || (a instanceof Date && b instanceof Date && +a === +b);
+type QuadSub<V> = (v: V | UD) => void;
+const THE_MESH_CACHE: Record<S, Record<S, Record<S, Record<S, V>>>> = Object.create(null);
+class THE_MESH_STORE {
+	// to create other r level tier, must use global this option for creating a new context
+	public r: A = "THE_WIZARD_ROOT_REG";
+	public m: A = "SAURON_MASTER_REG";
+	public s: A = "SAURON_SLAVE_REG";
+	public k: A = "__SAURON__";
+
+	#handlers: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
+	#subRoot: Record<S, Record<S, Record<S, Record<S, Set<QuadSub<A>>>>>> = Object.create(null);
+	_handlers: Record<S, A> = Object.create(null);
+
+	_globalThis: Record<S, A>
+
+	#meta: Record<S, Record<S, Record<S, A>>> = Object.create(null);
+	#metaSubRoot: Record<S, Record<S, Record<S, Record<S, Set<QuadSub<A>>>>>> = Object.create(null);
+	#signals: Record<S, Record<S, Record<S, A>>> = Object.create(null);
+	#signalsSubRoot: Record<S, Record<S, Record<S, Record<S, Set<QuadSub<A>>>>>> = Object.create(null);
+	#naked_signals: Record<S, Record<S, Record<S, A>>> = Object.create(null);
+	#nakedSignalsSubRoot: Record<S, Record<S, Record<S, Record<S, Set<QuadSub<A>>>>>> = Object.create(null);
+	#context: Record<S, Record<S, Record<S, A>>> = Object.create(null);
+	#contextSubRoot: Record<S, Record<S, Record<S, Record<S, Set<QuadSub<A>>>>>> = Object.create(null);
+	#atoms: Record<S, Record<S, Record<S, A>>> = Object.create(null);
+	#atomsSubRoot: Record<S, Record<S, Record<S, Record<S, Set<QuadSub<A>>>>>> = Object.create(null);
+	#sauron: Record<S, Record<S, Record<S, A>>> = Object.create(null);
+	#sauronSubRoot: Record<S, Record<S, Record<S, Record<S, Set<QuadSub<A>>>>>> = Object.create(null);
+
+	_meta: Record<S, A> = Object.create(null);
+	_signals: Record<S, A> = Object.create(null);
+	_naked_signals: Record<S, A> = Object.create(null);
+	_context: Record<S, A> = Object.create(null);
+	_atoms: Record<S, A> = Object.create(null);
+	_sauron: Record<S, A> = Object.create(null);
+
+	constructor(hub: THE_MESH) {
+		this.r = hub.r;
+		this.m = hub.m;
+		this.s = hub.s;
+		this.k = hub.k;
+		this._handlers = this.getS();
+		const root = globalThis as any;
+  
+		const rL = (root[this.r] ??= Object.create(null));
+		const mL = (rL[this.m] ??= Object.create(null));
+		this._globalThis = mL[this.s] ??= Object.create(null);
+		this._meta = this.getS(this.s, this.m, this.r, "#meta");
+		this._signals = this.getS(this.s, this.m, this.r, "#signals");
+		this._naked_signals = this.getS(this.s, this.m, this.r, "#naked_signals");
+		this._context = this.getS(this.s, this.m, this.r, "#context");
+		this._atoms = this.getS(this.s, this.m, this.r, "#atoms");
+		this._sauron = this.getS(this.s, this.m, this.r, "#sauron");
+	}
+	public get_root(c: S, r: S) {
+		let root;
+		switch (c) {
+			case "#handlers": { root = this.#handlers[r];				break;			}
+			case "THE_MESH_CACHE": { root = THE_MESH_CACHE[r];				break;			}
+			case "globalThis": { root = (globalThis as A)[r];				break;			}
+			case "#meta": { root = this.#meta[r];				break;			}
+			case "#signals": { root = this.#signals[r];				break;			}
+			case "#naked_signals": { root = this.#naked_signals[r];				break;			}
+			case "#context": { root = this.#context[r];				break;			}
+			case "#atoms": { root = this.#atoms[r];				break;			}
+			case "#sauron": { root = this.#sauron[r];				break;			}
+		}
+		if (!root) {
+			root = Object.create(null);
+			switch (c) {
+				case "#handlers": { this.#handlers[r] = root;					break;				}
+				case "THE_MESH_CACHE": { THE_MESH_CACHE[r] = root;					break;				}
+				case "globalThis": { (globalThis as A)[r] = root;				break;				}
+				case "#meta": { this.#meta[r] = root;					break;				}
+				case "#signals": { this.#signals[r] = root;					break;				}
+				case "#naked_signals": { this.#naked_signals[r] = root;					break;				}
+				case "#context": { this.#context[r] = root;					break;				}
+				case "#atoms": { this.#atoms[r] = root;					break;				}
+				case "#sauron": { this.#sauron[r] = root;					break;				}
+			}
+		}
+		return root;
+	}
+	public getS(s: S = this.s, m: S = this.m, r: S = this.r, c = "#handlers") {
+		const rL = this.get_root(c, r); // this.get_root(c, r);   (this.#handlers[r] ??= Object.create(null));
+		const mL = (rL[m] ??= Object.create(null));
+		const sL = (mL[s] ??= Object.create(null));
+		return sL;
+	}
+	public handlers = (() => {
+		const fn = () => {};
+		fn.get = (() => {
+			const fn =<Z = A> (k: S, s: S = this.s, m: S = this.m, r: S = this.r): A | UD => {
+				return this.#handlers[r]?.[m]?.[s]?.[k]as Z;
 			};
-
-			return [state, setLive] as const;
+			fn.hot= <Z = A>(k: S): A | UD => {
+				return this._handlers[k] as Z;
+			};
+			return fn;
+		})();
+		fn.set = (() => {
+			const fn = (v: UF<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): this => {
+				const rL = (this.#handlers[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const sL = (mL[s] ??= Object.create(null));
+				const next = rv(v);
+				sL[k] = next;
+				this.handlers.emit(k, s, m, r, next);
+				return this;
+			}
+			fn.hot = <Z = A,>(v: UF<A>, k: S) => {
+				const sL = this._handlers;
+				const next = rv(v);
+				sL[k] = next;
+				this.handlers.emit(k, this.s, this.m, this.r, next);
+				return next as Z;
+			};
+			return fn;
+		})();
+		fn.has = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				return !!this.#handlers[r]?.[m]?.[s] && k in this.#handlers[r][m][s];
+			};
+			fn.hot= (k: S): B => {
+				return k in this._handlers;
+			};
+			return fn;
+		})();
+		fn.delete = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				const sL = this.#handlers[r]?.[m]?.[s];
+				if (!sL || !(k in sL)) return false;
+				delete sL[k];
+				this.handlers.emit(k, s, m, r, undefined);
+				return true;
+			};
+			fn.hot= (k: S): B => {
+				//                                           DELTE hot path
+				if (!(k in this._handlers)) return false;
+				delete this._handlers[k];
+				this.handlers.emit(k, this.s, this.m, this.r, undefined);
+				return true;
+			};
+			return fn;
+		})();
+		fn.on = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) => {
+			const rL = (this.#subRoot[r] ??= Object.create(null));
+			const mL = (rL[m] ??= Object.create(null));
+			const sL = (mL[s] ??= Object.create(null));
+			const set: Set<QuadSub<V>> = (sL[k] ??= new Set());
+			set.add(fn);
+			return () => {
+				set.delete(fn);
+				if (!set.size) delete sL[k];
+			};
+		};
+		fn.off = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): V => {
+			this.#subRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
+		};
+		fn.emit = (k: S, s: S, m: S, r: S, v: A | UD): void => {
+			const set = this.#subRoot[r]?.[m]?.[s]?.[k];
+			if (!set) return;
+			for (const fn of set) fn(v);
 		};
 		return fn;
 	})();
-	// #endregion
-	//                                                                                                           ANTI MESSAGE QUEUE
-	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	public useAntiMsgQ = (() => {
-		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
-
-			const senderTokenRef = this.atom(this.hub.REGISTRY._sid()); // this.j.root._id.b();
-
-			this.hub.bus.sub( (i: A) => {
-					const incoming = i.p;
-					if (incoming?.from === senderTokenRef.value) return;
-					this.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
-					// set(k, incoming.value, false, s, m, r);
-					setState(incoming.value);
-			}, k, s, m, r); // stay in sync with local writes too (including our own setLive below)
-			this.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
-			// sub(k, (newValue: any) => setState(newValue), s, m, r);
-
-			const setLive = (next: any) => {
-				const newValue = typeof next === "function" ? next(this.state.get(k, { s: s, m: m, r: r })) : next;
-				setState(newValue);
-				this.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
-				// set(k, newValue, true, s, m, r); // local write
-				this.hub.bus.send({ value: newValue, from: senderTokenRef.value }, k, s, m, r); // broadcast to the bus
+	public meta = (() => {
+		const fn = () => {};
+		fn.get = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): A | UD => {
+				return this.#meta[r]?.[m]?.[s]?.[k];
 			};
-
-			return [state, setLive] as const;
+			fn.hot = <Z = A,>(k: S): A | UD => this._meta[k] as Z;
+			return fn;
+		})();
+		fn.set = (() => {
+			const fn = (v: UF<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): this => {
+				const rL = (this.#meta[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const sL = (mL[s] ??= Object.create(null));
+				const next = rv(v);
+				sL[k] = next;
+				this.meta.emit(k, s, m, r, next);
+				return this;
+			};
+			fn.hot = <Z = A,>(v: UF<A>, k: S) => {
+				const sL = this._meta;
+				const next = rv(v);
+				sL[k] = next;
+				this.meta.emit(k, this.s, this.m, this.r, next);
+				return next as Z;
+			};
+			return fn;
+		})();
+		fn.has = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				return !!this.#meta[r]?.[m]?.[s] && k in this.#meta[r][m][s];
+			};
+			fn.hot = (k: S): B => k in this._meta;
+			return fn;
+		})();
+		fn.delete = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				const sL = this.#meta[r]?.[m]?.[s];
+				if (!sL || !(k in sL)) return false;
+				delete sL[k];
+				this.meta.emit(k, s, m, r, undefined);
+				return true;
+			};
+			fn.hot = (k: S): B => {
+				if (!(k in this._meta)) return false;
+				delete this._meta[k];
+				this.meta.emit(k, this.s, this.m, this.r, undefined);
+				return true;
+			};
+			return fn;
+		})();
+		fn.on = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) => {
+			const rL = (this.#metaSubRoot[r] ??= Object.create(null));
+			const mL = (rL[m] ??= Object.create(null));
+			const sL = (mL[s] ??= Object.create(null));
+			const set: Set<QuadSub<A>> = (sL[k] ??= new Set());
+			set.add(fn);
+			return () => {
+				set.delete(fn);
+				if (!set.size) delete sL[k];
+			};
 		};
-		fn.mailbox = (v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => {
-				return this.state_setter(v, k, s, m, r);
-			});
-
-			const senderTokenRef = this.atom(this.hub.REGISTRY._sid());
-			const queueRef = this.atom<Queue | null>(null);
-
-			if (!queueRef.current) {
-				queueRef.current = new Queue(1);
+		fn.off = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): V => {
+			this.#metaSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
+		};
+		fn.emit = (k: S, s: S, m: S, r: S, v: A | UD): void => {
+			const set = this.#metaSubRoot[r]?.[m]?.[s]?.[k];
+			if (!set) return;
+			for (const fn of set) fn(v);
+		};
+		return fn;
+	})();
+	public signals = (() => {
+		const fn = () => {};
+		fn.get = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): A | UD => {
+				return this.#signals[r]?.[m]?.[s]?.[k];
+			};
+			fn.hot = <Z = A,>(k: S): A | UD => this._signals[k] as Z;
+			return fn;
+		})();
+		fn.set = (() => {
+			const fn = (v: UF<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): this => {
+				const rL = (this.#signals[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const sL = (mL[s] ??= Object.create(null));
+				const next = rv(v);
+				sL[k] = next;
+				this.signals.emit(k, s, m, r, next);
+				return this;
+			};
+			fn.hot = <Z = A,>(v: UF<A>, k: S) => {
+				const sL = this._signals;
+				const next = rv(v);
+				sL[k] = next;
+				this.signals.emit(k, this.s, this.m, this.r, next);
+				return next as Z;
+			};
+			return fn;
+		})();
+		fn.has = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				return !!this.#signals[r]?.[m]?.[s] && k in this.#signals[r][m][s];
+			};
+			fn.hot = (k: S): B => k in this._signals;
+			return fn;
+		})();
+		fn.delete = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				const sL = this.#signals[r]?.[m]?.[s];
+				if (!sL || !(k in sL)) return false;
+				delete sL[k];
+				this.signals.emit(k, s, m, r, undefined);
+				return true;
+			};
+			fn.hot = (k: S): B => {
+				if (!(k in this._signals)) return false;
+				delete this._signals[k];
+				this.signals.emit(k, this.s, this.m, this.r, undefined);
+				return true;
+			};
+			return fn;
+		})();
+		fn.on = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) => {
+			const rL = (this.#signalsSubRoot[r] ??= Object.create(null));
+			const mL = (rL[m] ??= Object.create(null));
+			const sL = (mL[s] ??= Object.create(null));
+			const set: Set<QuadSub<A>> = (sL[k] ??= new Set());
+			set.add(fn);
+			return () => {
+				set.delete(fn);
+				if (!set.size) delete sL[k];
+			};
+		};
+		fn.off = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): V => {
+			this.#signalsSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
+		};
+		fn.emit = (k: S, s: S, m: S, r: S, v: A | UD): void => {
+			const set = this.#signalsSubRoot[r]?.[m]?.[s]?.[k];
+			if (!set) return;
+			for (const fn of set) fn(v);
+		};
+		return fn;
+	})();
+	public naked_signals = (() => {
+		const fn = () => {};
+		fn.get = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): A | UD => {
+				return this.#naked_signals[r]?.[m]?.[s]?.[k];
+			};
+			fn.hot = <Z = A,>(k: S): A | UD => this._naked_signals[k] as Z;
+			return fn;
+		})();
+		fn.set = (() => {
+			const fn = (v: UF<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): this => {
+				const rL = (this.#naked_signals[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const sL = (mL[s] ??= Object.create(null));
+				const next = rv(v);
+				sL[k] = next;
+				this.naked_signals.emit(k, s, m, r, next);
+				return this;
+			};
+			fn.hot = <Z = A,>(v: UF<A>, k: S) => {
+				const sL = this._naked_signals;
+				const next = rv(v);
+				sL[k] = next;
+				this.naked_signals.emit(k, this.s, this.m, this.r, next);
+				return next as Z;
+			};
+			return fn;
+		})();
+		fn.has = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				return !!this.#naked_signals[r]?.[m]?.[s] && k in this.#naked_signals[r][m][s];
+			};
+			fn.hot = (k: S): B => k in this._naked_signals;
+			return fn;
+		})();
+		fn.delete = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				const sL = this.#naked_signals[r]?.[m]?.[s];
+				if (!sL || !(k in sL)) return false;
+				delete sL[k];
+				this.naked_signals.emit(k, s, m, r, undefined);
+				return true;
+			};
+			fn.hot = (k: S): B => {
+				if (!(k in this._naked_signals)) return false;
+				delete this._naked_signals[k];
+				this.naked_signals.emit(k, this.s, this.m, this.r, undefined);
+				return true;
+			};
+			return fn;
+		})();
+		fn.on = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) => {
+			const rL = (this.#nakedSignalsSubRoot[r] ??= Object.create(null));
+			const mL = (rL[m] ??= Object.create(null));
+			const sL = (mL[s] ??= Object.create(null));
+			const set: Set<QuadSub<A>> = (sL[k] ??= new Set());
+			set.add(fn);
+			return () => {
+				set.delete(fn);
+				if (!set.size) delete sL[k];
+			};
+		};
+		fn.off = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): V => {
+			this.#nakedSignalsSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
+		};
+		fn.emit = (k: S, s: S, m: S, r: S, v: A | UD): void => {
+			const set = this.#nakedSignalsSubRoot[r]?.[m]?.[s]?.[k];
+			if (!set) return;
+			for (const fn of set) fn(v);
+		};
+		return fn;
+	})();
+	public context = (() => {
+		const fn = () => {};
+		fn.get = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): A | UD => {
+				return this.#context[r]?.[m]?.[s]?.[k];
+			};
+			fn.hot = <Z = A,>(k: S): A | UD => this._context[k] as Z;
+			return fn;
+		})();
+		fn.set = (() => {
+			const fn = (v: UF<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): this => {
+				const rL = (this.#context[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const sL = (mL[s] ??= Object.create(null));
+				const next = rv(v);
+				sL[k] = next;
+				this.context.emit(k, s, m, r, next);
+				return this;
+			};
+			fn.hot = <Z = A,>(v: UF<A>, k: S) => {
+				const sL = this._context;
+				const next = rv(v);
+				sL[k] = next;
+				this.context.emit(k, this.s, this.m, this.r, next);
+				return next as Z;
+			};
+			return fn;
+		})();
+		fn.has = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				return !!this.#context[r]?.[m]?.[s] && k in this.#context[r][m][s];
+			};
+			fn.hot = (k: S): B => k in this._context;
+			return fn;
+		})();
+		fn.delete = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				const sL = this.#context[r]?.[m]?.[s];
+				if (!sL || !(k in sL)) return false;
+				delete sL[k];
+				this.context.emit(k, s, m, r, undefined);
+				return true;
+			};
+			fn.hot = (k: S): B => {
+				if (!(k in this._context)) return false;
+				delete this._context[k];
+				this.context.emit(k, this.s, this.m, this.r, undefined);
+				return true;
+			};
+			return fn;
+		})();
+		fn.on = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) => {
+			const rL = (this.#contextSubRoot[r] ??= Object.create(null));
+			const mL = (rL[m] ??= Object.create(null));
+			const sL = (mL[s] ??= Object.create(null));
+			const set: Set<QuadSub<A>> = (sL[k] ??= new Set());
+			set.add(fn);
+			return () => {
+				set.delete(fn);
+				if (!set.size) delete sL[k];
+			};
+		};
+		fn.off = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): V => {
+			this.#contextSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
+		};
+		fn.emit = (k: S, s: S, m: S, r: S, v: A | UD): void => {
+			const set = this.#contextSubRoot[r]?.[m]?.[s]?.[k];
+			if (!set) return;
+			for (const fn of set) fn(v);
+		};
+		return fn;
+	})();
+	public atoms = (() => {
+		const fn = () => {};
+		fn.get = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): A | UD => {
+				return this.#atoms[r]?.[m]?.[s]?.[k];
+			};
+			fn.hot = <Z = A,>(k: S): A | UD => this._atoms[k] as Z;
+			return fn;
+		})();
+		fn.set = (() => {
+			const fn = (v: UF<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): this => {
+				const rL = (this.#atoms[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const sL = (mL[s] ??= Object.create(null));
+				const next = rv(v);
+				sL[k] = next;
+				this.atoms.emit(k, s, m, r, next);
+				return this;
+			};
+			fn.hot = <Z = A,>(v: UF<A>, k: S) => {
+				const sL = this._atoms;
+				const next = rv(v);
+				sL[k] = next;
+				this.atoms.emit(k, this.s, this.m, this.r, next);
+				return next as Z;
+			};
+			return fn;
+		})();
+		fn.has = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				return !!this.#atoms[r]?.[m]?.[s] && k in this.#atoms[r][m][s];
+			};
+			fn.hot = (k: S): B => k in this._atoms;
+			return fn;
+		})();
+		fn.delete = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				const sL = this.#atoms[r]?.[m]?.[s];
+				if (!sL || !(k in sL)) return false;
+				delete sL[k];
+				this.atoms.emit(k, s, m, r, undefined);
+				return true;
+			};
+			fn.hot = (k: S): B => {
+				if (!(k in this._atoms)) return false;
+				delete this._atoms[k];
+				this.atoms.emit(k, this.s, this.m, this.r, undefined);
+				return true;
+			};
+			return fn;
+		})();
+		fn.on = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) => {
+			const rL = (this.#atomsSubRoot[r] ??= Object.create(null));
+			const mL = (rL[m] ??= Object.create(null));
+			const sL = (mL[s] ??= Object.create(null));
+			const set: Set<QuadSub<A>> = (sL[k] ??= new Set());
+			set.add(fn);
+			return () => {
+				set.delete(fn);
+				if (!set.size) delete sL[k];
+			};
+		};
+		fn.off = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): V => {
+			this.#atomsSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
+		};
+		fn.emit = (k: S, s: S, m: S, r: S, v: A | UD): void => {
+			const set = this.#atomsSubRoot[r]?.[m]?.[s]?.[k];
+			if (!set) return;
+			for (const fn of set) fn(v);
+		};
+		return fn;
+	})();
+	public sauron = (() => {
+		const fn = () => {};
+		fn.get = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): A | UD => {
+				return this.#sauron[r]?.[m]?.[s]?.[k];
+			};
+			fn.hot = <Z = A,>(k: S): A | UD => this._sauron[k] as Z;
+			return fn;
+		})();
+		fn.set = (() => {
+			const fn = (v: UF<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): this => {
+				const rL = (this.#sauron[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const sL = (mL[s] ??= Object.create(null));
+				const next = rv(v);
+				sL[k] = next;
+				this.sauron.emit(k, s, m, r, next);
+				return this;
+			};
+			fn.hot = <Z = A,>(v: UF<A>, k: S) => {
+				const sL = this._sauron;
+				const next = rv(v);
+				sL[k] = next;
+				this.sauron.emit(k, this.s, this.m, this.r, next);
+				return next as Z;
+			};
+			return fn;
+		})();
+		fn.has = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				return !!this.#sauron[r]?.[m]?.[s] && k in this.#sauron[r][m][s];
+			};
+			fn.hot = (k: S): B => k in this._sauron;
+			return fn;
+		})();
+		fn.delete = (() => {
+			const fn = (k: S, s: S = this.s, m: S = this.m, r: S = this.r): B => {
+				const sL = this.#sauron[r]?.[m]?.[s];
+				if (!sL || !(k in sL)) return false;
+				delete sL[k];
+				this.sauron.emit(k, s, m, r, undefined);
+				return true;
+			};
+			fn.hot = (k: S): B => {
+				if (!(k in this._sauron)) return false;
+				delete this._sauron[k];
+				this.sauron.emit(k, this.s, this.m, this.r, undefined);
+				return true;
+			};
+			return fn;
+		})();
+		fn.on = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) => {
+			const rL = (this.#sauronSubRoot[r] ??= Object.create(null));
+			const mL = (rL[m] ??= Object.create(null));
+			const sL = (mL[s] ??= Object.create(null));
+			const set: Set<QuadSub<A>> = (sL[k] ??= new Set());
+			set.add(fn);
+			return () => {
+				set.delete(fn);
+				if (!set.size) delete sL[k];
+			};
+		};
+		fn.off = (fn: QuadSub<A>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): V => {
+			this.#sauronSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
+		};
+		fn.emit = (k: S, s: S, m: S, r: S, v: A | UD): void => {
+			const set = this.#sauronSubRoot[r]?.[m]?.[s]?.[k];
+			if (!set) return;
+			for (const fn of set) fn(v);
+		};
+		return fn;
+	})();
+	public async invokeHandlers(msg: SIG_BUS_Message): P<unknown> {
+		const set = this.root.se.getSubS(msg.s, msg.m, msg.r)[msg.k ?? "[NO_ADP_FOUND]"];
+		if (!set || !set.size) return { success: false };
+	
+		const results = await Promise.all(
+			[...set].map((h: A) => Promise.resolve(h(msg.p)).catch(() => ({ success: false })))
+		);
+	
+		if (results.length === 1) return results[0];
+	
+		const merged: Record<string, unknown> = {};
+		const collisions: { key: string; r: string }[] = [];
+	
+		for (const result of results) {
+			if (result === undefined || result === null) continue;
+			if (typeof result !== "object") {
+				merged["value"] = result;
+				continue;
 			}
+			for (const [key, value] of Object.entries(result as Record<string, unknown>)) {
+				if (key in merged) collisions.push({ key, r: msg.r });
+				merged[key] = value;
+			}
+		}
+	
+		if (collisions.length > 0) (merged as A)._cse_collisions = collisions;
+	
+		return Object.keys(merged).length === 0 ? { success: true } : merged;
+	}
+}
+class THE_MESH {
+	public r: S = "THE_WIZARD_ROOT_REG";
+	public m: S = "SAURON_MASTER_REG";
+	public s: S = "SAURON_SLAVE_REG";
+	public k: S = "__SAURON__";
+	public hub: DEATH_STAR;
+	public mesh_store: THE_MESH_STORE;
+	constructor(hub: DEATH_STAR=null) {
+		this.hub = hub;
+		this.r = hub.r;
+		this.m = hub.m;
+		this.s = hub.s;
+		this.k = hub.k;
+	}
+	public sub = (() => {
+		const fn = (handler: A, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			let handlers;
+			if (r === this.r && m === this.m && s === this.s) {
+				handlers = this._bear.get(k);
+				if (!handlers) {
+					handlers = new ST<Handler>();
+					this._bear.set(k, handlers);
+				}
+				handlers.add(handler);
+				return () => {
+					handlers.delete(handler);
+					if (!handlers.size) {
+						this._bear.delete(k);
+					}
+				};
+			} else {
+				// CHANNEL level - deepest
+				if (!SE.channels().has(r)) {
+					SE.channels().set(r, new Set());
+				}
+				SE.channels().get(r)!.add(handler);
+	
+				// SUB_CHANNEL level
+				if (!SE.sub_channels().has(m)) {
+					SE.sub_channels().set(m, new Map());
+				}
+				const subMap = SE.sub_channels().get(m)!;
+				if (!subMap.has(r)) {
+					subMap.set(r, new Set());
+				}
+				subMap.get(r)!.add(handler);
+	
+				// TRIP_CHANNEL level
+				if (!SE.trip_channels().has(s)) {
+					SE.trip_channels().set(s, new Map());
+				}
+				const tripMap = SE.trip_channels().get(s)!;
+				if (!tripMap.has(m)) {
+					tripMap.set(m, new Set());
+				}
+				tripMap.get(m)!.add(handler);
+	
+				// QUAD_CHANNEL level - first or lowest
+				if (!SE.quad_channels().has(k)) {
+					SE.quad_channels().set(k, new Map());
+				}
+				const quadMap = tr.quad_channels().get(k)!;
+				if (!quadMap.has(s)) {
+					quadMap.set(s, new Set());
+				}
+				quadMap.get(s)!.add(handler);
+	
+				/**if (this.DEVTOOLS_ACTIVE) {
+	 this.emitDevEvent({
+		 ts: Date.now(),
+		 type: 'multisub',
+		 k,
+		 s,
+		 m,
+		 r,
+		 msgId: 'UNKNOWN',
+		 detail: {
+			 success: '[✔][SUCCESS]',
+			 hierarchy: {
+				 k,
+				 s,
+				 m,
+				 r
+			 }
+		 },
+		 id: 'UNKNOWN',
+		 p: 'UNKNOWN',
+		 ttl: 'UNKNOWN',
+		 _ack: 'UNKNOWN',
+		 _adapter: 'UNKNOWN',
+		 priority: this.defaultPriority,
+		 tags: 'UNKNOWN',
+		 streamId: 'UNKNOWN',
+		 token: 'UNKNOWN',
+		 binary: 'UNKNOWN',
+		 error: 'NONE',
+		 adapter_id: 'UNKNOWN',
+	 });
+	} */
+				return () => {
+					// Clean up CHANNEL level
+					const channelSet = SE.channels().get(r);
+					if (channelSet) {
+						channelSet.delete(handler);
+						if (channelSet.size === 0) {
+							tr.channels().delete(r);
+						}
+					}
+	
+					// Clean up SUB_CHANNEL level
+					const currentSubMap = SE.sub_channels().get(m);
+					if (currentSubMap) {
+						const currentSubSet = currentSubMap.get(r);
+						if (currentSubSet) {
+							currentSubSet.delete(handler);
+							if (currentSubSet.size === 0) {
+								currentSubMap.delete(r);
+							}
+						}
+						if (currentSubMap.size === 0) {
+							this.root.se.sub_channels().delete(m);
+						}
+					}
+	
+					// Clean up TRIP_CHANNEL level
+					const currentTripMap = SE.trip_channels().get(s);
+					if (currentTripMap) {
+						const currentTripSet = currentTripMap.get(m);
+						if (currentTripSet) {
+							currentTripSet.delete(handler);
+							if (currentTripSet.size === 0) {
+								currentTripMap.delete(m);
+							}
+						}
+						if (currentTripMap.size === 0) {
+							tr.trip_channels().delete(s);
+						}
+					}
+	
+					// Clean up QUAD_CHANNEL level
+					const currentQuadMap = SE.quad_channels().get(k);
+					if (currentQuadMap) {
+						const currentQuadSet = currentQuadMap.get(s);
+						if (currentQuadSet) {
+							currentQuadSet.delete(handler);
+							if (currentQuadSet.size === 0) {
+								currentQuadMap.delete(s);
+							}
+						}
+						if (currentQuadMap.size === 0) {
+							tr.quad_channels().delete(k);
+						}
+					}
+				};
+			}
+		};
+		fn.nested = (handler: (data: any) => void, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			if (r === this.r && m === this.m && s === this.s) {
+				const _listeners = this._bear;
+				if (!_listeners.has(k)) {
+					_listeners.set(k, new Set());
+				}
+				_listeners.get(k)!.add(handler);
+				return () => {
+					const set = _listeners.get(k);
+					if (set) {
+						set.delete(handler);
+						if (set.size === 0) _listeners.delete(k);
+					}
+				};
+			} else {
+				const _listeners = this.map(s, m, r, "#BEAR");
+				if (!_listeners.has(k)) {
+					_listeners.set(k, new Set());
+				}
+				_listeners.get(k)!.add(handler);
+				return () => {
+					const set = _listeners.get(k);
+					if (set) {
+						set.delete(handler);
+						if (set.size === 0) _listeners.delete(k);
+					}
+				};
+			}
+		};
+		fn.nested3 = (p: P, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			if (r === this.r && m === this.m && s === this.s) {
+			} else {
+			}
+		};
+		return fn;
+	})();
+	public send = (() => {
+		const fn = <T = A,>(p: U, k: A, s: S = this.s, m: S = this.m, r: S = this.r, chain?: CHAIN,  adapter = "ws") => {
+			//const msg: SIG_BUS_Message = { id: this.hub.REGISTRY._sid(), r: r, m: m, s: s, k: k,  p: p, ts: Date.now(), _ack: false };
+			let v: A = this.DISPATCH({ id: this.hub.REGISTRY._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
+			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+			else {
+				const tMs = 5000;
+				return MaybePromise( (() => {
+						return new P<T>((resolve, reject) => {
+							let timer: RT<typeof setTimeout> | UD;
+							if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+							if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+						});
+					})(),
+				);
+			}
+			if (r === this.r && m === this.m && s === this.s) {
+				
+			} else {
 
-			// mailbox — replace the whole useEffect block:
-			this.hub.bus.sub(
-				(i: A) => {
-					const incoming = i.p;
-					if (incoming?.from === senderTokenRef.value) return;
-					queueRef.current!.run(async () => {
-						const current = this.state.get(k, { s: s, m: m, r: r });
-						const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-						this.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
-						return next;
-					});
+			}
+			
+		};
+		fn.gt = (() => {
+			const fn =<T = U, P = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r)  => {
+				const root = globalThis as any;
+				const rL = (root[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const channel = mL[s] ??= Object.create(null);
+				const handler = channel?.handler;
+				if (!handler) return undefined;
+				const v: A = handler(p, { r, m, s, k, p: p });
+				if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+				else {
+					const tMs = 5000;
+					return MaybePromise( (() => {
+							return new P<T>((resolve, reject) => {
+								let timer: RT<typeof setTimeout> | UD;
+								if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+								if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+							});
+						})(),
+					);
+				}
+			}
+			fn.hot = (() => {
+				const fn =<T = U, P = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
+					const channel = this.mesh_store._globalThis[k];
+					const handler = channel?.handler;
+					if (!handler) return undefined;
+					const v: A = handler(p, { r, m, s, k, p: p });
+					if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+					else {
+						const tMs = 5000;
+						return MaybePromise( (() => {
+								return new P<T>((resolve, reject) => {
+									let timer: RT<typeof setTimeout> | UD;
+									if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+									if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+								});
+							})(),
+						);
+					}
+				}
+				return fn;
+			})();
+			return fn;
+		})();
+		
+		fn.nested = (p: P, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			if (r === this.r && m === this.m && s === this.s) {
+				const _listeners = this._bear;
+				const set = _listeners.get(k);
+				if (!set) return;
+				for (const fn of set) {
+					fn(p);
+				}
+			} else {
+				const _listeners = this.map(s, m, r, "#BEAR");
+				const set = _listeners.get(k);
+				if (!set) return;
+				for (const fn of set) {
+					fn(p);
+				}
+			}
+		};
+		return fn;
+	})();
+	async *streamGen<P = A, R = A>(p: P, k: S, s: S = this.s, m: S = this.m, r: S = this.r, opts: { adapter?: S } = {}): AG<R, V, U> {
+		const replyTo = this.hub.REGISTRY._sid();
+		const queue: R[] = [];
+		let closed = false;
+		let failure: U;
+		let wake: (() => V) | UD;
+		const handlers = this.chs(k, s, m, r).get(k);
+		if (!handlers || !handlers.size) {
+			throw new Error(`[rift] no subscriber for k="${k}"`);
+		}
+		const reply = (value: R | Promise<R> | typeof END) => {
+			if (value === END) {
+				closed = true;
+			} else if (value instanceof Error) {
+				failure = value;
+			} else {
+				queue.push(value as R);
+			}
+			wake?.();
+			wake = undefined;
+		};
+		for (const handler of handlers) {
+			handler({ id: this.hub.REGISTRY._sid(), r: r ?? this.r, m: m ?? this.m, s: s ?? this.s, k, p: { p }, ts: Date.now(), _ack: false, replyTo, stream: true }, reply);
+		}
+		while (true) {
+			if (queue.length) {
+				yield queue.shift()!;
+				continue;
+			}
+			if (failure) throw failure;
+			if (closed) return;
+			await new P<V>((resolveWake) => {
+				wake = resolveWake;
+			});
+		}
+	}
+	public stream = (() => {
+		const fn = (p: A, onChunk: (chunk: A) => V, k: S, s: S = this.s, m: S = this.m, r: S = this.r): P<V> => {
+			const streamId = this.hub.REGISTRY._sid();// `[${r}][${m}][${s}][${k}][${_sid()}]`.replace(/[.\[\]]/g, match => (match === "." ? "_" : ""));
+			const result = new Promise<void>((resolve, reject) => {
+				let closed = false;
+				let closeSubscription: (() => V) | UD;
+				const finish = (error?: unknown) => {
+					if (closed) return;
+					closed = true;
+					closeSubscription?.();
+					if (error) { reject(error instanceof Error ? error : new Error(String(error))); }
+					else { resolve(); }
+				};
+				closeSubscription = this.j.sub(
+					(data: StreamEvent) => {
+						if (closed) return;
+	
+						switch (data.type) {
+							case "chunk": onChunk(data.data); break;
+							case "done": finish(); break;
+							case "error": finish(data.error); break;
+						}
+					}, k, s, m, r, );
+	
+				try { this.send({streamId, ...p}, k, s, m, r); }
+				catch (error) { finish(error); }
+			});
+			return result;
+		};
+		fn.native = (k?: string, s = this.s, m = this.m, r = this.r): WritableStream => {
+			return new WritableStream({ write: (chunk) => { this.send(chunk, k, s, m, r).send(); }, });
+		};
+		fn.openSync = (k: S, s?: S, m?: S, r = this.r, opts?: {windowSize?: N}) => {
+			// Like syncStream, but for continuous/unbounded emission — no known chunk count up front. Adds a bounded in-flight window so a fast sender backs off instead of flooding a slow receiver.
+			const cleanChannel = r.replace(/[\[\]]/g, "");
+			const streamId = this.hub.REGISTRY._sid()//`${cleanChannel}-${m}-${Math.random().toString(36).slice(2)}`.replace(/\./g, "-");
+			const windowSize = opts?.windowSize ?? 32;
+	
+			const unacked = new Map<number, {p: any; retries: number}>();
+			let nextSeq = 0;
+			let acknowledgedUpTo = -1;
+			const sendQueue: any[] = [];
+			let draining = false;
+	
+			const closeAckSub = this.sub((ackData: any) => {
+					if (typeof ackData?.seq !== "number") return;
+					unacked.delete(ackData.seq);
+					if (ackData.seq > acknowledgedUpTo) acknowledgedUpTo = ackData.seq;
+					drain(); // an ack frees a window slot — try sending more
+				},k, `sync.${streamId}:ack`, m, r, );
+	
+			const closeRetransmitSub = this.sub(async (reqData: any) => {
+					const missing = unacked.get(reqData?.seq);
+					if (missing) {missing.retries++;await this.send({streamId, seq: reqData.seq, data: missing.p, isRetry: true}, k, s, m, r);}
+				}, k, `sync.${streamId}:retransmit`, m, r, );
+	
+			const drain = async () => {
+				if (draining) return;
+				draining = true;
+				while (sendQueue.length > 0 && unacked.size < windowSize) {
+					const p = sendQueue.shift();
+					const seq = nextSeq++;
+					unacked.set(seq, {p, retries: 0});
+					await this.send({streamId, seq, data: p, isRetry: false}, k, s, m, r);
+				}
+				draining = false;
+			};
+	
+			return {/** Queue an op for send. Backs off automatically if the receiver hasn't acked enough of the window yet. */
+				push: (p: any) => {sendQueue.push(p);drain();},
+				pendingCount: () => unacked.size + sendQueue.length,
+				close: () => {closeAckSub();closeRetransmitSub();},
+			};
+		}; 
+		return fn;
+	})();
+	public handler = (() => {
+		const fn = (handler: (d: any) => any, k: string, s?: string, m?: string, r?: string, binary = false) => {
+			return this.sub(
+				async (inboundReq: any) => {
+					if (!inboundReq || !inboundReq.streamId) return;
+					const streamId = inboundReq.streamId;
+					let isCancelled = false;
+					let closeControlSubscription: (() => void) | null = null;
+					try {// 1. Await the control stream cancellation listener safely
+						closeControlSubscription = this.sub( () => { isCancelled = true; }, `stream.${streamId}:cancel`, s, m, r, );
+						const result = await handler(inboundReq);
+						let data = result;
+						if (result && typeof result === "object" && "ok" in result && "data" in result) { data = result.data; }
+						if (typeof data === "function") { data = data(); }
+						
+						if (data && typeof data[Symbol.asyncIterator] === "function") {// Core Async Generator Stream Loop
+							for await (const chunk of data) {
+								if (isCancelled) { if (typeof data.return === "function") { await data.return(); } break; }
+								await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
+							}
+							if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+							if (closeControlSubscription) closeControlSubscription();
+							return;
+						}// Sync Generator Stream Loop
+						if (data && typeof data[Symbol.iterator] === "function" && !Array.isArray(data)) {
+							for (const chunk of data) {
+								if (isCancelled) break;
+								await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
+							}
+							if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+							if (closeControlSubscription) closeControlSubscription();
+							return;
+						}// Array Handling Stream Loop
+						if (Array.isArray(data)) {
+							for (const chunk of data) {
+								if (isCancelled) break;
+								await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
+							}
+							if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+							if (closeControlSubscription) closeControlSubscription();
+							return;
+						}// Fallback Single Value Response
+						if (!isCancelled) {
+							await this.send({type: "chunk", data: data}, k, `stream.${streamId}`, m, r);
+							await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+						}
+						if (closeControlSubscription) closeControlSubscription();
+					} catch (err: any) {
+						if (closeControlSubscription) closeControlSubscription();
+						//SE._deadLetters().push({id: streamId, r: r || this.r, p: inboundReq, ts: Date.now(), error: err.message});
+						this.send({type: "error", error: err.message}, k, `stream.${streamId}`, m, r);
+					}
+				}, k, s, m, r,
+			);
+		};
+		fn.native = (k?: string, s = this.s, m = this.m, r = this.r) => {
+			let unsubscribe: (() => void) | null = null;
+			return new ReadableStream({
+				start: (controller) => { unsubscribe = this.sub( (data) => { try { controller.enqueue(data); } catch {}  }, k, s, m, r, ); },
+				cancel: () => { if (unsubscribe) { unsubscribe(); unsubscribe = null; } },
+			});
+		};
+		fn.openSync = (handler: (chunk: any, seq: number) => Promise<void> | void, k: string, s: SU = this.s, m: SU = this.m, r: SU = this.r): (() => void) => {
+			const expectedSeqMap = new Map<string, number>();
+			const bufferMap = new Map<string, Map<number, any>>();
+	
+			return this.sub(
+				async (inbound: any) => {
+					if (!inbound?.streamId) return;
+					const {streamId, seq, data} = inbound;
+	
+					if (!expectedSeqMap.has(streamId)) {
+						expectedSeqMap.set(streamId, 0);
+						bufferMap.set(streamId, new Map());
+					}
+					const expectedSeq = expectedSeqMap.get(streamId)!;
+					const buffer = bufferMap.get(streamId)!;
+	
+					if (seq === expectedSeq) {
+						await handler(data, seq);
+						expectedSeqMap.set(streamId, expectedSeq + 1);
+						await this.send({seq}, k, `sync.${streamId}:ack`, m, r);
+	
+						let next = expectedSeq + 1;
+						while (buffer.has(next)) {
+							await handler(buffer.get(next), next);
+							buffer.delete(next);
+							next++;
+							expectedSeqMap.set(streamId, next);
+							await this.send({seq: next - 1}, k, `sync.${streamId}:ack`, m, r);
+						}
+					} else if (seq > expectedSeq) {
+						buffer.set(seq, data);
+						for (let missing = expectedSeq; missing < seq; missing++) {
+							if (!buffer.has(missing)) {
+								await this.send({seq: missing}, k, `sync.${streamId}:retransmit`, m, r);
+							}
+						}
+					} else {
+						await this.send({seq}, k, `sync.${streamId}:ack`, m, r); // duplicate — re-ack, no reprocess
+					}
 				},
 				k,
 				s,
 				m,
 				r,
 			);
-
-			this.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
-
-			const setLive = (next: any) => {
-				const t = typeof next === "function" ? next() : next;
-				this.hub.bus.send({ value: t, from: senderTokenRef.value }, k, s, m, r);
-			};
-
-			return [state, setLive] as const;
 		};
 		return fn;
 	})();
-	// #endregion
-	private channels = new M<S, HandlerSet>();
-	private pending = new M<S, { resolve: (v: A) => V; reject: (e: A) => void; timer?: A }>();
-  
-	private seq = 0;
-	private selfId: S 
-    private defaultTimeout = 5000
-	private channelKey({ r, m, s, k }: Scope): S { return `${r}::${m}::${s}::${k}`; }
-	private id(): string { return `${this.selfId}_${Date.now().toString(36)}_${(this.seq++).toString(36)}`;	}
-	public sub<P = A, R = A>( handler: BusHandler<P, R>, k: S, s: S, m: S, r: S, ): () => void {
-		const key = this.channelKey({ r, m, s, k });
-	
-		let set = this.channels.get(key);
-		if (!set) {
-		  set = new Set();
-		  this.channels.set(key, set);
-		}
-	
-		set.add(handler as BusHandler);
-	
-		return () => {
-		  const current = this.channels.get(key);
-		  if (!current) return;
-	
-		  current.delete(handler as BusHandler);
-	
-		  if (current.size === 0) this.channels.delete(key);
+	public duplex = (() => {
+		const fn = async <A = any, B = any>(k: string, s = this.s, m = this.m, r = this.r) => {
+			const hub = {k, s, m, r}
+			return new duplex(hub)
+		}	 
+		fn.stream = (readConfig: { k: S; sl?: S; ms?: S; rt?: S }, writeConfig: { k?: S; sl?: S; ms?: S; rt?: S }): { readable: ReadableStream; writable: WritableStream } => {
+			return {
+				readable: this.handler(readConfig.k, readConfig.sl, readConfig.ms, readConfig.rt),
+				writable: this.stream(writeConfig.k, writeConfig.sl, writeConfig.ms, writeConfig.rt),
+			};
 		};
-	}
-	public send<Z = A, R = A>( payload: Z, k: S, s: S, m: S, r: S, opts: { timeout?: N; from?: S } = {}, ): P<R> {
-		const cid = this.id();
-		const timeout = opts.timeout ?? this.defaultTimeout;
+		fn.sx = <TUp = any, TDown = any>(k: string, s?: string, m?: string, r?: string, opts?: {windowSize?: number; livenessId?: string}) => {
+			const windowSize = opts?.windowSize ?? 32;
+			const up = this.stream.openSync(k, `${s}:up`, m, r, {windowSize});
+			const downHandlers = new Set<(chunk: TDown, seq: number) => void>();
+			const errorHandlers = new Set<(err: DuplexError) => void>();
+			const closeHandlers = new Set<() => void>();
+	 
+			let upClosed = false;
+			let downClosed = false;
+			let fatallyErrored = false;
+	 
+			let lastSeqSeen = -1;
+	 
+			const down = this.handler.openSync(
+				(chunk: TDown, seq: number) => {
+					if (fatallyErrored) return;
+					if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
+						reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
+					}
+					lastSeqSeen = seq;
+					downHandlers.forEach(h => h(chunk, seq));
+				},
+				k,
+				`${s}:down`,
+				m,
+				r,
+			);
+	 
+			// remote-reported errors arrive here — this is what makes error propagation BILATERAL,
+			// not just local: the other side explicitly tells us when something broke on their end
+			const errorSub = this.sub(
+				(err: DuplexError) => {
+					errorHandlers.forEach(h => h(err));
+					if (err.fatal) {
+						fatallyErrored = true;
+						teardown();
+					}
+				},
+				k,
+				`${s}:error`,
+				m,
+				r,
+			);
+	 
+			// remote-reported half-close — lets THIS side know the peer will send no more, so onData
+			// consumers can know to expect a natural end rather than silence-as-ambiguity
+			const remoteCloseSub = this.sub(
+				(dir: "up" | "down") => {
+					if (dir === "up") downClosed = true; // peer's up = our down, from our perspective
+					closeHandlers.forEach(h => h());
+				},
+				k,
+				`${s}:remote-close`,
+				m,
+				r,
+			);
+	 
+			const reportError = (err: DuplexError) => {
+				errorHandlers.forEach(h => h(err));
+				this.send(err, k, `${s}:error`, m, r); // propagate to the OTHER side too — bilateral, not local-only
+				if (err.fatal) {
+					fatallyErrored = true;
+					teardown();
+				}
+			};
+	 
+			let tornDown = false;
+			const teardown = () => {
+				if (tornDown) return;
+				tornDown = true;
+				up.close();
+				down();
+				errorSub();
+				remoteCloseSub();
+				downHandlers.clear();
+				errorHandlers.clear();
+				closeHandlers.clear();
+			};
+	 
+			return {
+				send: (p: TUp) => {
+					if (upClosed) {
+						reportError({dir: "up", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
+						return;
+					}
+					if (fatallyErrored) return;
+					try {
+						up.push(p);
+					} catch (err: any) {
+						reportError({dir: "up", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
+					}
+				},
+				onData: (handler: (chunk: TDown, seq: number) => void) => {
+					downHandlers.add(handler);
+					return () => downHandlers.delete(handler);
+				},
+				onError: (handler: (err: DuplexError) => void) => {
+					errorHandlers.add(handler);
+					return () => errorHandlers.delete(handler);
+				},
+				onRemoteClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => closeHandlers.delete(handler);
+				},
+				/** Half-close: stop sending, but keep receiving. Peer is notified so they know THIS side is done sending. */
+				closeUp: () => {
+					if (upClosed) return;
+					up.close();
+					upClosed = true;
+					this.send("up", k, `${s}:remote-close`, m, r);
+				},
+				/** Full close of both directions, notifies peer, tears down liveness tracking. */
+				close: () => {
+					if (!upClosed) this.send("up", k, `${s}:remote-close`, m, r);
+					upClosed = true;
+					downClosed = true;
+					teardown();
+				},
+				isFullyClosed: () => upClosed && downClosed,
+				isFatallyErrored: () => fatallyErrored,
+			};
+		};
+		fn.async = <TUp = any, TDown = any>(k = this.j.k, s = this.s, m = this.m, r = this.r, opts?: {windowSize?: number}) => {
+			const windowSize = opts?.windowSize ?? 32;
+	 
+			const up = this.stream.sync(k, `${s}:up`, m, r, {windowSize});
+	 
+			const downHandlers = new Set<(chunk: TDown, seq: number) => void>();
+			const errorHandlers = new Set<(err: DuplexError) => void>();
+			const closeHandlers = new Set<() => void>();
+	 
+			let upClosed = false;
+			let downClosed = false;
+			let fatallyErrored = false;
+			let tornDown = false;
+	 
+			let lastSeqSeen = -1;
+			let downUnsub: any;
+			let errorUnsub: any;
+			let remoteCloseUnsub: any;
+	 
+			const down = () => {
+				const stream = this.handler.sync(k, `${s}:down`, m, r); // Accept p as unknown, then cast to TDown
+				stream.onOrdered((p: unknown, seq: number) => {
+					if (fatallyErrored) return;
+					const chunk = p as TDown;
+					if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
+						reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
+					}
+	 
+					lastSeqSeen = seq;
+					downHandlers.forEach(h => h(chunk, seq));
+				});
+	 
+				downUnsub = () => stream.close();
+			};
+			const errorSub = () => {
+				errorUnsub = this.sub(
+					(err: DuplexError) => {
+						errorHandlers.forEach(h => h(err));
+						if (err.fatal) {
+							fatallyErrored = true;
+							teardown();
+						}
+					},
+					k,
+					`${m}:error`,
+					m,
+					r,
+				);
+			};
+			const remoteCloseSub = () => {
+				remoteCloseUnsub = this.sub(
+					(dir: "up" | "down") => {
+						if (dir === "up") downClosed = true;
+						closeHandlers.forEach(h => h());
+					},
+					k,
+					`${s}:remote-close`,
+					m,
+					r,
+				);
+			};
+			const reportError = (err: DuplexError) => {
+				errorHandlers.forEach(h => h(err));
+				this.send(err, k, `${s}:error`, m, r);
+				if (err.fatal) {
+					fatallyErrored = true;
+					teardown();
+				}
+			};
+			const teardown = () => {
+				if (tornDown) return;
+				tornDown = true;
+				up.close();
+				downUnsub?.();
+				errorUnsub?.();
+				remoteCloseUnsub?.();
+	 
+				downHandlers.clear();
+				errorHandlers.clear();
+				closeHandlers.clear();
+			};
+			down();
+			errorSub();
+			remoteCloseSub();
+			const dx = {
+				send: (p: TUp) => {
+					if (upClosed) {
+						reportError({dir: "up", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
+						return;
+					}
+					if (fatallyErrored) return;
+					try {
+						up.push(p);
+					} catch (err: any) {
+						reportError({dir: "up", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
+					}
+				},
+				onData: (handler: (chunk: TDown, seq: number) => void) => {
+					downHandlers.add(handler);
+					return () => downHandlers.delete(handler);
+				},
+				onError: (handler: (err: DuplexError) => void) => {
+					errorHandlers.add(handler);
+					return () => errorHandlers.delete(handler);
+				},
+				onRemoteClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => closeHandlers.delete(handler);
+				},
+				closeUp: () => {
+					if (upClosed) return;
+					up.close();
+					upClosed = true;
+					this.send("up", k, `${s}:remote-close`, m, r);
+				},
+				close: () => {
+					if (!upClosed) {
+						this.send("up", k, `${s}:remote-close`, m, r);
+					}
+					upClosed = true;
+					downClosed = true;
+					teardown();
+				},
+				isFullyClosed: () => upClosed && downClosed,
+				isFatallyErrored: () => fatallyErrored,
+			};
+			return dx;
+		};
+	    fn.open = <T = any,>(opts = {highWaterMark: 32}, k: string, s = this.s, m = this.m, r = this.r) => {
+			const streamId = this.hub.REGISTRY._sid()
+	 
+			const highWaterMark = opts?.highWaterMark ?? 32;
+	 
+			const queue: T[] = [];
+			const handlers = new Set<(chunk: T) => void>();
+			const drainHandlers = new Set<() => void>();
+			const closeHandlers = new Set<() => void>();
+			const errorHandlers = new Set<(err: any) => void>();
+	 
+			let writable = true;
+			let readable = true;
+			let draining = false;
+	 
+			const write = async (chunk: T): Promise<void> => {
+				if (!writable) { throw new Error("Stream is not writable"); }
+				queue.push(chunk);
+				if (queue.length >= highWaterMark) {
+					await new Promise<void>(resolve => {
+						const check = () => {
+							if (queue.length < highWaterMark) {
+								drainHandlers.delete(check);
+								resolve();
+							}
+						};
+	 
+						drainHandlers.add(check);
+						check();
+					});
+				}
+	 
+				await drain();
+			};
+			const drain = async () => {
+				if (draining) return;
+				draining = true;
+				try {
+					while (queue.length > 0 && writable) {
+						const chunk = queue.shift()!;
+						await this.send({streamId, data: chunk}, k, s, m, r);
+						drainHandlers.forEach(handler => handler());
+					}
+				} finally {
+					draining = false;
+				}
+			};
+			const unsubscribe = this.sub( async (packet: any) => {
+					if (packet?.streamId !== streamId) return;
+					if (packet.type === "data") { handlers.forEach(handler => { handler(packet.data); }); }
+					if (packet.type === "close") { readable = false; closeHandlers.forEach(handler => handler()); }
+					if (packet.type === "error") { errorHandlers.forEach(handler => { handler(packet.error); }); }
+			}, k, s, m, r, );
+			return {
+				write,
+				onData: (handler: (chunk: T) => void) => {
+					handlers.add(handler);
+					return () => { handlers.delete(handler); };
+				},
+				onDrain: (handler: () => void) => {
+					drainHandlers.add(handler);
+					return () => { drainHandlers.delete(handler); };
+				},
+				onClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => { closeHandlers.delete(handler); };
+				},
+				onError: (handler: (err: any) => void) => {
+					errorHandlers.add(handler);
+					return () => { errorHandlers.delete(handler); };
+				},
+				close: async () => {
+					if (!writable && !readable) return;
+					writable = false;
+					await this.j.send({streamId, type: "close"}, k, s, m, r);
+					unsubscribe();
+					closeHandlers.forEach(handler => handler());
+				},
+				abort: async (reason?: any) => {
+					writable = false;
+					readable = false;
+					await this.j.send({streamId, type: "error", error: reason}, k, s, m, r);
+					unsubscribe();
+					errorHandlers.forEach(handler => handler(reason));
+				},
+				writable: () => writable,
+				readable: () => readable,
+				buffered: () => queue.length,
+			};
+		};
+		return fn;
+	})();
+	public d_handler = (() => {
+		const fn = () => {}
+		fn.sx = <TUp = any, TDown = any>(k: string, s?: string, m?: string, r?: string, opts?: {windowSize?: number; livenessId?: string}) => {
+			const windowSize = opts?.windowSize ?? 32;
+			const down = this.stream.openSync(k, `${s}:down`, m, r, {windowSize});
+			const upHandlers = new Set<(chunk: TUp, seq: number) => void>();
+			const errorHandlers = new Set<(err: DuplexError) => void>();
+			const closeHandlers = new Set<() => void>();
 	
-		return new P<R>((resolve, reject) => {
-		  const timer = setTimeout(() => {
-			this.pending.delete(cid);
-			reject(new Error(`[mini-bus] request timed out: ${k} (${cid})`));
-		  }, timeout);
+			let downClosed = false;
+			let upClosed = false;
+			let fatallyErrored = false;
 	
-		  this.pending.set(cid, { resolve, reject, timer });
+			let lastSeqSeen = -1;
+			const up = this.handler.openSync(
+				(chunk: TUp, seq: number) => {
+					if (fatallyErrored) return;
+					if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
+						reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
+					}
+					lastSeqSeen = seq;
+					upHandlers.forEach(h => h(chunk, seq));
+				},
+				k,
+				`${s}:up`,
+				m,
+				r,
+			);
 	
-		  try {
-			this.dispatch({ id: cid, cid, r, m, s, k, p: payload, from: opts.from ?? this.selfId, replyTo: `${r}::${m}::${s}::${k}::reply`, ts: Date.now(), });
-		  } catch (err) {
-			clearTimeout(timer);
-			this.pending.delete(cid);
-			reject(err);
-		  }
-		});
-	}
-	public reply<R = A>( request: BusMessage, value: R | Promise<R>, ): void {
-		if (!request.cid) return;
+			const errorSub = this.sub(
+				(err: DuplexError) => {
+					errorHandlers.forEach(h => h(err));
+					if (err.fatal) {
+						fatallyErrored = true;
+						teardown();
+					}
+				},
+				k,
+				`${s}:error`,
+				m,
+				r,
+			);
 	
-		const pending = this.pending.get(request.cid);
-		if (!pending) return;
+			const remoteCloseSub = this.sub(
+				(dir: "up" | "down") => {
+					if (dir === "up") upClosed = true; // peer's up = our up, from THIS side's receiving perspective
+					closeHandlers.forEach(h => h());
+				},
+				k,
+				`${s}:remote-close`,
+				m,
+				r,
+			);
 	
-		this.pending.delete(request.cid);
+			const reportError = (err: DuplexError) => {
+				errorHandlers.forEach(h => h(err));
+				this.send(err, k, `${s}:error`, m, r);
+				if (err.fatal) {
+					fatallyErrored = true;
+					teardown();
+				}
+			};
 	
-		if (pending.timer) clearTimeout(pending.timer);
+			let tornDown = false;
+			const teardown = () => {
+				if (tornDown) return;
+				tornDown = true;
+				down.close();
+				up();
+				errorSub();
+				remoteCloseSub();
+				upHandlers.clear();
+				errorHandlers.clear();
+				closeHandlers.clear();
+			};
 	
-		Promise.resolve(value).then(pending.resolve, pending.reject);
-	  }
-	private dispatch(msg: BusMessage): void {
-		const handlers = this.channels.get(this.channelKey(msg));
-		if (!handlers) return;
+			return {
+				send: (p: TDown) => {
+					if (downClosed) {
+						reportError({dir: "down", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
+						return;
+					}
+					if (fatallyErrored) return;
+					try {
+						down.push(p);
+					} catch (err: any) {
+						reportError({dir: "down", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
+					}
+				},
+				onData: (handler: (chunk: TUp, seq: number) => void) => {
+					upHandlers.add(handler);
+					return () => upHandlers.delete(handler);
+				},
+				onError: (handler: (err: DuplexError) => void) => {
+					errorHandlers.add(handler);
+					return () => errorHandlers.delete(handler);
+				},
+				onRemoteClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => closeHandlers.delete(handler);
+				},
+				closeDown: () => {
+					if (downClosed) return;
+					down.close();
+					downClosed = true;
+					this.send("down", k, `${s}:remote-close`, m, r);
+				},
 	
-		for (const handler of Array.from(handlers)) {
-		  try {
-			const result = handler(msg);
+				close: () => {
+					if (!downClosed) this.send("down", k, `${s}:remote-close`, m, r);
+					downClosed = true;
+					upClosed = true;
+					teardown();
+				},
 	
-			// Auto-reply when the handler returns a value and the sender expects one.
-			if (msg.cid && result !== undefined) {
-			  this.reply(msg, result);
+				isFullyClosed: () => downClosed && upClosed,
+				isFatallyErrored: () => fatallyErrored,
+			};
+		};
+		return fn;
+	})();
+	
+	DISPATCH<T = A>(msg:A, replyTo:A, handlers:A, timeoutMs:A): P<T> {
+		// ── ASYNC PATH: QUEUE, NOT LOOP ──────────────────────
+		let settled = false;
+		let resolveFn: (v: T) => V;
+		let rejectFn: (e: U) => V;
+		let timer: A;
+		const settle = (value?: T, error?: U) => {
+			if (settled) return; // first settlement wins
+			settled = true;
+			this.hub.REGISTRY.delete(replyTo);
+			if (timer) clearTimeout(timer);
+			if (error !== undefined) rejectFn(error);
+			else resolveFn(value as T);
+		};
+		const promise = new Promise<T>((resolve, reject) => {
+			resolveFn = resolve;
+			rejectFn = reject;
+			if (timeoutMs) {
+				timer = setTimeout(() => {
+					settle(undefined, new Error(`[rift] wait() timed out after ${timeoutMs}ms`));
+				}, timeoutMs);
 			}
-		  } catch (err) {
-			if (msg.cid) this.reply(msg, Promise.reject(err));
-			else console.error("[mini-bus] handler error:", err);
-		  }
-		}
-	  }
+		});
+		this.hub.REGISTRY.set(replyTo, {
+			// Register BEFORE queueing — a synchronous reply()inside a queued task still lands correctly.
+			resolve: (v: T) => settle(v),
+			reject: (e: unknown) => settle(undefined, e),
+			timer,
+		});
+		const reply = (value: T | Promise<T>) => {
+			if (value instanceof Promise) {
+				value.then(
+					(v) => settle(v),
+					(e) => settle(undefined, e),
+				);
+			} else {
+				settle(value);
+			}
+		};
+		const tasks = [...handlers].map((handler) => () => {
+			// Queue EVERY handler — no early return, no skipped handlers.
+			const result = handler(msg, reply);
+
+			// Sync return → settle immediately (first wins).
+			if (result !== undefined && !(result instanceof Promise)) {
+				settle(result as T);
+			}
+			// Promise return → adopt into settle.
+			else if (result instanceof Promise) {
+				result.then(
+					(v) => settle(v as T),
+					(e) => settle(undefined, e),
+				);
+			}
+
+			return result;
+		});
+		queue({ concurrent: 100 })(tasks).catch(() => {});
+		return MaybePromise(promise);
+	}
+}
+class duplex {
+	public r: A = "THE_WIZARD_ROOT_REG";
+	public m: A = "SAURON_MASTER_REG";
+	public s: A = "SAURON_SLAVE_REG";
+	public k: A = "__SAURON__";
+	public abus: THE_MESH
+	public bbus: THE_MESH
+	constructor(hub: { k: S; s: S; m: S; r: S } = { k: "__SAURON__", s: "SAURON_SLAVE_REG", m: "SAURON_MASTER_REG", r: "THE_WIZARD_ROOT_REG", }) {
+		this.r = hub.r;
+		this.m = hub.m;
+		this.s = hub.s;
+		this.k = hub.k;
+		this.abus = new THE_MESH();
+		this.bbus = new THE_MESH();
+	}
+	public stream = (() => {
+		const fn = (k?: S, s = this.s, m = this.m, r = this.r) => {
+			return {
+				send: <T, P>(p: P, sendOpts?: { timeoutMs?: N }) => this.abus.stream( k, s, m, r),
+				sub: <P, R>(handler: hdr<P, R>) => this.abus.handler(k, s, m, r),
+			}
+		};
+		return fn;
+	})();
+	public handler = (() => {
+		const fn = (k?: S, s = this.s, m = this.m, r = this.r) => {
+			return {
+				send: <T, P>(p: P, sendOpts?: { timeoutMs?: N }) => this.abus.stream( k, s, m, r),
+				sub: <P, R>(handler: hdr<P, R>) => this.abus.handler(k, s, m, r),
+			}
+		};
+		return fn;
+	})();
 }
 // #endregion
-//                                                                                                            [DARTH VADER] BUS
+//                                                                                                  [DARTH VADER] DISRUPTOR BUS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class DARTH_VADER {
 	//                                                                                                                  [CONSTANTS]
@@ -4474,21 +6312,46 @@ class DARTH_VADER {
 		this.enqueue(channelId, payload, undefined);
 	}
     public send = (() => {
-		const fn =  <T = A> (payload: U, k: A, s: S | N, m: S | N, r: S | N) => {
+		const fn =  (payload: U, k: A, s: S | N, m: S | N, r: S | N) => {
             const channelId = this.getOrCreateChannel(r, m, s, k);
             while (this.msgCount >= this.capacity) { this.grow(); }
-            let resolve!: (value: U) => V;
-            let reject!: (reason?: U) => V;
-            const deferred: Deferred = { resolve: (v) => resolve(v), reject: (e) => reject(e), };
-            deferred.resolve = resolve;
-            deferred.reject = reject;
-    
-            let v: A = this.enqueue(channelId, payload, deferred);
+			let resolve!: (value: U) => V;
+			let reject!: (reason?: U) => V;
+		
+			let settled = false;
+			let rejected = false;
+			let result: U | undefined;
+			let promiseResolve!: (value: U) => V;
+			let promiseReject!: (reason?: U) => V;
+			const deferred: Deferred = {
+				resolve: (v) => {
+					if (settled) return;
+					settled = true;
+					result = v;
+					promiseResolve?.(v);
+				},
+				reject: (e) => {
+					if (settled) return;
+					settled = true;
+					rejected = true;
+					result = e;
+					promiseReject?.(e);
+				},
+			};
+            let v: A = this.enqueue(channelId, payload, deferred) as A;
             if (v !== undefined && !(v instanceof Promise)) {
-				return MaybePromise<T>(v);
+				return MaybePromise(v);
 			} else {
-                const promise = new Promise<U>((res, rej) => { resolve = res; reject = rej; });
-                return MaybePromise<T>(promise);
+				const promise = new Promise<U>((res, rej) => {
+					promiseResolve = res;
+					promiseReject = rej;
+			
+					if (settled) {
+						if (rejected) rej(result);
+						else res(result as U);
+					}
+				});
+				return MaybePromise(promise);
 			}
         }
         fn.switch = <T = A> (p: U, k: A, s: S = this.s, m: S = this.m, r: S = this.r,  adapter = "ws") => {
@@ -4892,7 +6755,6 @@ const queues: Record<Priority, Map<symbol | string, ScheduledTask[]>> = {
 	background: new Map(),
 	idle: new Map(),
 };
-type Slot<P> = { sequence: number; key: unknown; payload: P | undefined; tombstone: boolean };
 const nextPow2 = (n: number) => 1 << Math.ceil(Math.log2(Math.max(2, n)));
 class Disruptor<P> {
 	private readonly mask: number;
@@ -4941,81 +6803,6 @@ function decode<T>(value: T): T {
 	if (value === null || typeof value !== "object") return value;
 	return (typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value))) as T;
 }
-class MDisruptor<K = any, V = any> {
-	private ring: Disruptor<V>;
-	private index = new Map<K, number>();
-
-	constructor(initialCapacity = 256) {
-		this.ring = new Disruptor<V>(initialCapacity);
-	}
-
-	get size() {
-		return this.index.size;
-	}
-
-	get(key: K): V | undefined {
-		const seq = this.index.get(key);
-		if (seq === undefined) return undefined;
-		const slot = this.ring.read(seq);
-		if (!slot || slot.tombstone) return undefined;
-		return decode(slot.payload as V);
-	}
-
-	has(key: K): boolean {
-		const seq = this.index.get(key);
-		if (seq === undefined) return false;
-		const slot = this.ring.read(seq);
-		return !!slot && !slot.tombstone;
-	}
-
-	set(key: K, value: V): this {
-		this.growIfNeeded();
-		// Evict-and-carry: whatever currently sits in the slot we're about
-		// to claim gets relocated forward first if it's still a live key,
-		// so a full ring never loses data on wraparound.
-		while (true) {
-			const occupant = this.ring.peekNext();
-			const stillLive = occupant.sequence >= 0 && !occupant.tombstone && this.index.get(occupant.key as K) === occupant.sequence;
-			if (!stillLive) break;
-			const movedSeq = this.ring.publish(occupant.key, occupant.payload, false);
-			this.index.set(occupant.key as K, movedSeq);
-		}
-		const seq = this.ring.publish(key, encode(value), false);
-		this.index.set(key, seq);
-		return this;
-	}
-
-	delete(key: K): boolean {
-		// No need to touch the ring at all — removing the index entry is
-		// enough; the slot is reclaimed lazily the next time it's evicted.
-		return this.index.delete(key);
-	}
-
-	clear(): void {
-		this.index.clear();
-	}
-
-	entries(): [K, V][] {
-		const out: [K, V][] = [];
-		for (const key of this.index.keys()) {
-			const v = this.get(key);
-			if (v !== undefined) out.push([key, v]);
-		}
-		return out;
-	}
-
-	private growIfNeeded(): void {
-		if (this.index.size / this.ring.capacity < 0.75) return;
-		const grown = new Disruptor<V>(this.ring.capacity * 2);
-		for (const [key] of this.index) {
-			const v = this.get(key); // decode current value
-			if (v === undefined) continue;
-			const seq = grown.publish(key, encode(v), false);
-			this.index.set(key, seq);
-		}
-		this.ring = grown;
-	}
-}
 class Lane<V> {
 	private ring: Disruptor<V>;
 	private writes = 0;
@@ -5043,10 +6830,6 @@ class Lane<V> {
 		this.writes = 0;
 		this.ring = new Disruptor<V>(this.capacity);
 	}
-}
-interface IndexEntry {
-	lane: number;
-	seq: number;
 }
 class MTracer<K = any, V = any> {
 	private lanes: Lane<V>[];
@@ -6304,12 +8087,8 @@ export function getSS(key: S) {
 export async function get_ws_id(): Promise<string> {
 	let Bun: A = null;
 	let Deno: A = null;
-	if (typeof (globalThis as A).Deno !== "undefined") {
-		Deno = (globalThis as A).Deno;
-	}
-	if (typeof (globalThis as A).Bun !== "undefined") {
-		Bun = (globalThis as A).Bun;
-	}
+	if (typeof (globalThis as A).Deno !== "undefined") { Deno = (globalThis as A).Deno;	}
+	if (typeof (globalThis as A).Bun !== "undefined") {	Bun = (globalThis as A).Bun;	}
 	const hasBun = typeof (globalThis as A).Bun !== "undefined";
 	const hasDeno = typeof (globalThis as A).Deno !== "undefined";
 	const hasNode = typeof process !== "undefined" && !!process.versions?.node;
@@ -6318,14 +8097,11 @@ export async function get_ws_id(): Promise<string> {
 	const isElectron = false;
 	const isUnix = false;
 	const isWindows = true;
-	let WS_KEY = twx.WS_KEY;
-	let WS_ID = twx.WS_ID;
+	let WS_KEY = death_star.REGISTRY.get('WS_KEY');
+	let WS_ID = death_star.REGISTRY.get('WS_ID');
 	if (isBrowser) {
 		let id = getSS(WS_KEY);
-		if (!id) {
-			id = generateId();
-			setSS(WS_KEY, id);
-		}
+		if (!id) { id = generateId(); setSS(WS_KEY, id);		}
 		WS_ID = id;
 		return id;
 	}
@@ -6338,13 +8114,9 @@ export async function get_ws_id(): Promise<string> {
 		return id;
 	}
 	let cwd: string;
-	if (hasBun || hasNode) {
-		cwd = process.cwd();
-	} else if (hasDeno) {
-		cwd = Deno.cwd();
-	} else {
-		throw new Error("Unsupported environment");
-	}
+	if (hasBun || hasNode) { cwd = process.cwd(); } 
+	else if (hasDeno) {  cwd = Deno.cwd(); } 
+	else { throw new Error("Unsupported environment"); }
 
 	let filePath: string;
 
@@ -6382,7 +8154,6 @@ export async function get_ws_id(): Promise<string> {
 			return null;
 		}
 	};
-
 	const writeFile = async (data: string) => {
 		if (hasBun) {
 			await Bun.write(filePath, data);
@@ -6393,13 +8164,8 @@ export async function get_ws_id(): Promise<string> {
 			fs.writeFileSync(filePath, data, "utf8");
 		}
 	};
-
 	let id = await readFile();
-	if (id && !isNaN(Number(id))) {
-		WS_ID = id;
-		return id;
-	}
-
+	if (id && !isNaN(Number(id))) { WS_ID = id;		return id;	}
 	id = generateId();
 	await writeFile(id);
 	WS_ID = id;
@@ -6417,7 +8183,6 @@ async function deleteSS(key: string) {
 //                                                                                                                   [WAR ROOM] 
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 const rootRegistry = new M2<A, M2<A, M2<A, A>>>();
-
 export class WAR_ROOOM {
 	public r: A = "THE_WIZARD_ROOT_REG";
 	public m: A = "SAURON_MASTER_REG";
@@ -6619,150 +8384,20 @@ export class WAR_ROOOM {
 // #endregion
 //                                                                                                             [DEATH STAR] HUB
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-/*  ===========================================================================================================================
-	 Welcome to the dark side...
-     The counterpart to the traditional portion of the platform, where the light side gives you features... this does not.
-     But... There is something that the dark side has, that the light does not... True, raw... power. Literally as much as we
-     can acquire.
-     The signals solution bench comes in at being 40-1100x more performant than both preact AND alien...
-     The atoms solution... that will be a bit harder to bench because, no other atoms solution even advertises any sort
-     of performance metrics... across the board really. But I will install a few and bench them myself, so that is to come.
-     Other bench tests that will also have to be entirely done with zero help... 
-     Message queue / bus... I don't think this one is possible... because a bench test is not fair, unless all solutions
-     in question are ran on the same machine. I honestly don't know of any solutions that you do not have to pay for sooo, this
-     one is out.
-     Application state / context, this one will be easy enough. Just download and set up a very basic version of a couple
-     of platforms and run the same test on each.
-     All other solution I don't think... I can bench either due to industry availability... BUT that doesn't mean I will
-     not put everything on a bench anyways! So in total we have...
-     - signals: 40-1100x more performant than both preact AND alien...
-     - atoms: hitting 751 million ops per sec in the users usage path...
-     - app context / state
-     - hooks
-     - message queue / bus
-     - slab
-     - distributed reactive state
-     - spreadsheet engine
-     - same node / same app transport x3
-     - same node / different app transport 
-     - anti message queue
-     Now the reason why this is the dark side is because, each and every single solution... is entirely backed by disruptors.
-     Currently, I believe that there is 6 at the time of writing with an asterisk, because the atoms solution that number is
-     entirely dependant on user usage because there are disruptors available there too.
 
-     Now there will be one slow bit of code that could not be entirely converted, due to its use being used by several other 
-     parts of the application. Which is the portion of how the buses actually end up becoming a mesh. Each bus does not store
-     values within its own class / domain. Instead the message queues access a cross-node module instance where most back end
-     fns and the storage of all subscribers and other similar values are placed so that each bus has access to them. 
-
-     This portion is still optimized, just not at disruptor speed — it operates at 105M ops/sec, which is the same rate my M2 hits. 
-     The rest of the mesh paths run at 400-600M ops/sec, above that line.
-     I am looking into ways of drastically improving that number, but when you operate at these numbers and have nothing 
-     to go off of, its just a fucking roll of the dice. One little implementation detail could mean the difference between 4 mill 
-     and 900 mill. The best disruptor I have built to date, started life as a 400k ops per sec disruptor and currently sits at
-     1.2 billion(2.1 bill on a friends newer machine), same archtecture as when it was first built.
-     OTHER THAN THAT ONE SMALL PORTION OF CODE, everything else was entirely redone... even the reactive state portion ie the 
-     cloud... kinda, curious to see if I was able to code it and have it working first shot... I doubt it.
-    ============================================================================ ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [THE DARK SIDE] */
-class DRS {
-    public r: A = "THE_WIZARD_ROOT_REG";
-	public m: A = "SAURON_MASTER_REG";
-	public s: A = "SAURON_SLAVE_REG";
-	public k: A = "__SAURON__";
-	public hub: DEATH_STAR;
-	constructor(hub: DEATH_STAR) {
-		this.hub = hub;
-	}
-    public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
-		const existing = this.hub.bear.state.get(k, { s: s, m: m, r: r });
-		if (existing !== undefined) return existing;
-		const t = UF(v)
-		this.hub.bear.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
-		return t;
-	}
-	public useCell = (() => {
-		const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
-
-			const senderTokenRef = this.hub.bear.atom(this.hub.REGISTRY._sid());
-
-			this.hub.bear.sub( (i: A) => {
-					const incoming = i.p;
-					if (incoming?.from === senderTokenRef.value) return;
-					this.hub.bear.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
-					// set(k, incoming.value, false, s, m, r);
-					setState(incoming.value);
-			 }, k, s, m, 	r, ); // stay in sync with local writes too (including our own setLive below)
-			this.hub.bear.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
-			// sub(k, (newValue: any) => setState(newValue), s, m, r);
-
-			const setLive = (next: any) => {
-				const newValue = typeof next === "function" ? next(this.hub.bear.state.get(k, { s: s, m: m, r: r })) : next;
-				setState(newValue);
-				this.hub.bear.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
-				// set(k, newValue, true, s, m, r); // local write
-				this.hub.bear.send({ value: newValue, from: senderTokenRef.value }, k, s, m, r); // broadcast to the bus
-			};
-
-			return [state, setLive] as const;
-		};
-		fn.mailbox = (v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-			const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
-
-			const senderTokenRef = this.hub.bear.atom(this.hub.REGISTRY._sid());
-			const queueRef = this.hub.bear.atom<Queue | null>(null);
-
-			if (!queueRef.current) {
-				queueRef.current = new Queue(1);
-			}
-
-			// mailbox — replace the whole useEffect block:
-			this.hub.bear.sub( (i: A) => {
-			    const incoming = i.p;
-			    if (incoming?.from === senderTokenRef.value) return;
-			    queueRef.current!.run(async () => {
-						const current = this.hub.bear.state.get(k, { s: s, m: m, r: r });
-						const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-						this.hub.bear.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
-						return next;
-			    });
-			}, k, s, m, r, );
-
-			this.hub.bear.state.subscribe(k, (newValue: any) => setState(newValue), { s: s, m: m, r: r });
-
-			const setLive = (next: any) => {
-				const t = typeof next === "function" ? next() : next;
-				this.hub.bear.send({ value: t, from: senderTokenRef.value }, k, s, m, r);
-			};
-
-			return [state, setLive] as const;
-		};
-		return fn;
-	})();
-}
-class SPREADSHEET {
-    public r: A = "THE_WIZARD_ROOT_REG";
-	public m: A = "SAURON_MASTER_REG";
-	public s: A = "SAURON_SLAVE_REG";
-	public k: A = "__SAURON__";
-	public hub: DEATH_STAR;
-	public cell() {}
-	public useCell() {}
-	constructor(hub: DEATH_STAR) {
-		this.hub = hub;
-	}
-}
 export class DEATH_STAR {
 	public bus: DARTH_VADER; // bus
 	public signals: DARTH_MAUL; // signals
 	public state: RAVEN; // app context / state
 	public slab: EXOGUL; // slab
-	public drs: DRS; // slab
-	public spreadsheet: SPREADSHEET; // slab
+	public drs: DRS_ENGINE; // distrubted reactive state
+	public spreadsheet: SPREADSHEET_ENGINE; // ss ngin
 	public governor: GOVERNOR;
 	public REGISTRY: Registry;
 	public wr: WAR_ROOOM;
-	public bear: BEAR
+	public bear: BEAR // reg signals back state and app context
+	public bear_bus: THE_MESH_STORE // reg signals back state and app context
+	
 	//public MESH: Mesh;
 
 	public r: S = "THE_WIZARD_ROOT_REG";
@@ -6781,17 +8416,171 @@ export class DEATH_STAR {
 		this.signals = new DARTH_MAUL(this, capacity);
 		this.slab = new EXOGUL(this);
 		this.governor = new GOVERNOR(this);
-		this.drs = new DRS(this);
-		this.spreadsheet = new SPREADSHEET(this);
+		this.drs = new DRS_ENGINE(this);
+		this.spreadsheet = new SPREADSHEET_ENGINE(this);
 		this.bear = new BEAR(this)
+		this.bear_bus = new THE_MESH_STORE(this)
 	}
 }
 export const death_star = new DEATH_STAR();
+export class G_BUS<A extends string = string, S extends string = string> {
+	/**
+	FELKOR2.send
+	sec | M writes/s | best M/s | avg M/s | CPU %
+	 12 |    1146.44 |  1146.44 | 1146.44 | 100.0
+	PS F:\mq\src> bun run aa.ts
+	
+	FELKOR2.stream
+	sec | M writes/s | best M/s | avg M/s | CPU %
+	 12 |    1319.94 |  1319.94 | 1319.94 | 100.0
+	PS F:\mq\src> bun run aa.ts
+	
+	FELKOR2.iterator.publish
+	sec | M writes/s | best M/s | avg M/s | CPU %
+	 12 |     540.61 |   540.61 |  540.61 | 100.3
+	PS F:\mq\src> bun run aa.ts
+	
+	FELKOR2.duplex
+	sec | M writes/s | best M/s | avg M/s | CPU %
+	 12 |     898.32 |   898.32 |  898.32 | 100.0
+	 */
+	  public s: S;
+	  public m: S;
+	  public r: S;
+	  private channels: Record<S, BUS_CHANNEL>;
+	  constructor(s: S = "__BUS__" as S, m: S = "__BUS_MASTER__" as S, r: S = "__BUS_ROOT__" as S) {
+		  this.s = s;
+		  this.m = m;
+		  this.r = r;
+  
+		  const root = globalThis as any;
+  
+		  const rL = (root[r] ??= Object.create(null));
+		  const mL = (rL[m] ??= Object.create(null));
+		  this.channels = mL[s] ??= Object.create(null);
+	  }
+	  public send<T = U, P = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | Promise<T> | UD {
+		  const channel = this.channels[k];
+		  const handler = channel?.handler;
+		  if (!handler) return undefined;
+	
+		  return handler(p, { r, m, s, k, p: p });
+
+		  // const msg: SIG_BUS_Message = { r, m, s, k, p: { p }, ts: Date.now(), _ack: false, };
+		  // const result = handler(p, msg);
+	  }
+	  public sendStream<T = U, P = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | Promise<T> | UD {
+		  const channel = this.channels[k];
+		  const handler = channel?.handler;
+		  if (!handler) return undefined;
+		  const msg: SIG_BUS_Message = { r, m, s, k, p: p, _ack: false, };
+		  const result = handler(p, msg);
+		  const listeners = channel.push;
+		  if (listeners) { for (const listener of listeners) listener(msg); }
+		  return result as T | Promise<T> | UD;
+	  }
+	  public sub<P = U, T = U>(handler: BUS_HANDLER<P, T>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): () => V {
+		  const channel = (this.channels[k] ??= {});
+		  channel.handler = handler;
+		  return () => { if (channel.handler === handler) { channel.handler = undefined; }		};
+	  }
+	public stream( handler: (msg: SIG_BUS_Message) => V, k: S, s: S, m?: S, r?: S,): () => V;
+	public stream( k: S, s: S, m?: S, r?: S,): AsyncIterableIterator<SIG_BUS_Message>;
+	public stream( handlerOrSlave: ((msg: SIG_BUS_Message) => V) | S, k: S, s: S = this.s, m: S = this.m, r: S = this.r,): (() => V) | AsyncIterableIterator<SIG_BUS_Message> {
+		  const handler = typeof handlerOrSlave === "function" ? handlerOrSlave : undefined;
+		  const global = globalThis as any;
+		  const channel = (this.channels[k] ??= {});
+  
+		  if (!channel) throw new Error("Channel does not exist");
+  
+		  const listeners = (channel.push ??= new Set());
+  
+		  if (handler) {
+			  listeners.add(handler);
+  
+			  return () => {
+				  listeners.delete(handler);
+				  if (!listeners.size) channel.push = undefined;
+			  };
+		  }
+  
+		  const queue: SIG_BUS_Message[] = [];
+		  const waiters: Array<{ resolve: (value: IteratorResult<SIG_BUS_Message>) => void; }> = [];
+  
+		  let offset = 0;
+		  let closed = false;
+  
+		  const listener = (msg: SIG_BUS_Message) => {
+			  if (waiters.length) {
+				  waiters.shift()!.resolve({ value: msg, done: false });
+			  } else {
+				  queue.push(msg);
+			  }
+		  };
+  
+		  listeners.add(listener);
+  
+		  const close = () => {
+			  if (closed) return;
+			  closed = true;
+  
+			  listeners.delete(listener);
+			  if (!listeners.size) channel.push = undefined;
+  
+			  for (const waiter of waiters) {
+				  waiter.resolve({ value: undefined, done: true });
+			  }
+  
+			  waiters.length = 0;
+			  queue.length = 0;
+			  offset = 0;
+		  };
+  
+		  const iterator: AsyncIterableIterator<SIG_BUS_Message> = {
+			  next: (): Promise<IteratorResult<SIG_BUS_Message>> => {
+				  if (offset < queue.length) {
+					  const value = queue[offset++];
+  
+					  if (offset === queue.length) {
+						  queue.length = 0;
+						  offset = 0;
+					  }
+  
+					  return Promise.resolve({ value, done: false });
+				  }
+  
+				  if (closed) {
+					  return Promise.resolve({ value: undefined, done: true });
+				  }
+  
+				  return new Promise((resolve) => waiters.push({ resolve }));
+			  },
+  
+			  return: async () => {
+				  close();
+				  return { value: undefined, done: true };
+			  },
+  
+			  [Symbol.asyncIterator](): AsyncIterableIterator<SIG_BUS_Message> {
+				  return iterator;
+			  },
+		  };
+  
+		  return iterator;
+	  }
+	  public duplex(k: S, s: S = this.s, m: S = this.m, r: S = this.r) {
+		  return {
+			  send: <T = U, P = U>(p: P) => this.sendStream<T, P>(p, k, s, m, r),
+			  sub: <P = U, T = U>(handler: BUS_HANDLER<P, T>) => this.sub<P, T>(handler, k, s, m, r),
+			  stream: (handler?: (msg: SIG_BUS_Message) => V) => (handler ? this.stream( handler,k, s, m, r) : this.stream(k, s, m, r)),
+		  };
+	  }
+}
 // #endregion
 //                                                                                                                    USE STATE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkState<T = any, S = T>(initialValue?: T | (() => T), options: StateOptions<T, S> = {}, __sauron_id__ = _sid()) {
-	return death_star.state.createHook( "darkState", __sauron_id__, () => ({
+export function darkState<T = any, S = T>(initialValue?: T | (() => T), options: StateOptions<T, S> = {}, __sauron_id__ = this.hub.REGISTRY._sid()) {
+	return death_star.state.createHookCell( "darkState", __sauron_id__, () => ({
 			value: {
 				current: typeof initialValue === "function" ? (initialValue as () => T)() : initialValue,
 				derived: undefined as A,
@@ -6828,10 +8617,8 @@ export function darkState<T = any, S = T>(initialValue?: T | (() => T), options:
 // #endregion
 //                                                                                                                USE CALL BACK
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkCallback<T extends (...args: A[]) => A>(callback: T, deps?: A[], __sauron_id__ = _sid()): T {
-	return death_star.state.createHook(
-		"darkCallback",
-		__sauron_id__,
+export function darkCallback<T extends (...args: A[]) => A>(callback: T, deps?: A[], __sauron_id__ = this.hub.REGISTRY._sid()): T {
+	return death_star.state.createHookCell( "darkCallback", __sauron_id__,
 		(): CallbackHookState => ({ value: undefined, callback, deps: deps ?? [] }),
 		(s: HookState) => {
 			const state = s as CallbackHookState;
@@ -6849,10 +8636,8 @@ export function darkCallback<T extends (...args: A[]) => A>(callback: T, deps?: 
 // #endregion
 //                                                                                                                   USE EFFECT
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkEffect(effect: (signal?: AbortSignal) => void | (() => void), deps?: A[], __sauron_id__ = _sid()): void {
-	death_star.state.createHook(
-		"darkEffect",
-		__sauron_id__,
+export function darkEffect(effect: (signal?: AbortSignal) => void | (() => void), deps?: A[], __sauron_id__ = this.hub.REGISTRY._sid()): void {
+	death_star.state.createHookCell( "darkEffect", __sauron_id__,
 		(): HookState => {
 			const controller = new AbortController();
 			const cleanup = effect(controller.signal);
@@ -6890,7 +8675,7 @@ function _depsEqual(a: A[], b: A[]): boolean {
 // #endregion
 //                                                                                                                 USE INTERVAL
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkInterval(options: { timer?: number; autoStart?: boolean; execute: () => void }, __sauron_id__ = _sid()) {
+export function darkInterval(options: { timer?: number; autoStart?: boolean; execute: () => void }, __sauron_id__ = this.hub.REGISTRY._sid()) {
 	const autoStart = options.autoStart ? Boolean(options.autoStart) !== false : true;
 	const callback = options.execute ? options.execute : console.log(`interval triggered`);
 	const delay = options.timer ? options.timer : 30000;
@@ -6958,7 +8743,7 @@ export function darkInterval(options: { timer?: number; autoStart?: boolean; exe
 // #endregion
 //                                                                                                           USE DEFERRED VALUE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkDeferredValue<T>(value: T, __sauron_id__ = _sid()): T {
+export function darkDeferredValue<T>(value: T, __sauron_id__ = this.hub.REGISTRY._sid()): T {
 	return death_star.state.createHook(
 		"darkDeferredValue",
 		__sauron_id__,
@@ -6977,7 +8762,7 @@ export function darkDeferredValue<T>(value: T, __sauron_id__ = _sid()): T {
 // #endregion
 //                                                                                                        USE IMPERATIVE HANDLE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkImperativeHandle<T>(ref: { current: T | null }, init: () => T, deps?: A[], __sauron_id__ = _sid()): void {
+export function darkImperativeHandle<T>(ref: { current: T | null }, init: () => T, deps?: A[], __sauron_id__ = this.hub.REGISTRY._sid()): void {
 	return death_star.state.createHook(
 		"darkImperativeHandle",
 		__sauron_id__,
@@ -6997,7 +8782,7 @@ export function darkImperativeHandle<T>(ref: { current: T | null }, init: () => 
 // #endregion
 //                                                                                                                     USE MEMO
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkMemo<T>(factory: () => T, deps: A[], __sauron_id__ = _sid()): T {
+export function darkMemo<T>(factory: () => T, deps: A[], __sauron_id__ = this.hub.REGISTRY._sid()): T {
 	return death_star.state.createHook(
 		"darkMemo",
 		__sauron_id__,
@@ -7013,440 +8798,6212 @@ export function darkMemo<T>(factory: () => T, deps: A[], __sauron_id__ = _sid())
 }
 
 // #endregion
-// #endregion
 //                                                                                                                 ATOM HELPERS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function patch<T extends object>(self: { value: T }, partial: Partial<T>): T {
-	self.value = { ...self.value, ...partial };
-	return self.value;
+function mergeInto<T extends object>(target: T, source: object): T {
+	Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
+	return target;
 }
-export function update<T>(self: { value: T }, fn: (current: T) => T): T {
-	self.value = fn(self.value);
-	return self.value;
+function resolveFactory(raw: any): any {
+	return typeof raw === "function" ? raw : () => raw;
 }
-export function createHistory<T>(limit = 50) {
-	const past: T[] = [];
-	const future: T[] = [];
-	return {
-		push(value: T) { past.push(value); if (past.length > limit) past.shift(); future.length = 0; },
-		undo(current: T): T | undefined { if (!past.length) return undefined; future.push(current); return past.pop(); },
-		redo(current: T): T | undefined { if (!future.length) return undefined; past.push(current); return future.pop(); },
-		get canUndo() { return past.length > 0; },
-		get canRedo() { return future.length > 0; },
-	};
+const NINJA_STUB_BRAND = "__is_atom_stub__";
+function makeStub(trace?: any): any {
+	return new Proxy(() => makeStub(trace), {
+		get: (_t, prop) => (prop === NINJA_STUB_BRAND ? true : makeStub(trace)),
+		apply: () => makeStub(trace),
+	});
 }
-const def = new (class DEFINITION {
-	public MASTER_ATOM_KEYS = ["ATOM", "MODULE_ATOM", "CLOUD_ATOM", "SAURON_ATOM", "DRS_ATOM", "DUPLEX_ATOM", "SLAB_ATOM", "STREAM_ATOM", "S_CLASS_ATOM", "SPREADSHEET_ATOM", "SEND_ATOM", "VERTEX"] as const;
-	public MQ = {
-		RETRY: this.DEFINE_ATOM_KIND("retry"),
-		ACK: this.DEFINE_ATOM_KIND("ack"),
-		DEADLINE: this.DEFINE_ATOM_KIND("deadline"),
-		DEDUPE: this.DEFINE_ATOM_KIND("dedupe"),
-		DEPTH: this.DEFINE_ATOM_KIND("depth"),
-		WILDCARD: this.DEFINE_ATOM_KIND("wildcard"),
-		REPLY: this.DEFINE_ATOM_KIND("reply"),
-		WINDOW: this.DEFINE_ATOM_KIND("window"),
-		RESUME: this.DEFINE_ATOM_KIND("resume"),
-		CREDIT: this.DEFINE_ATOM_KIND("credit"),
-		CORRELATION: this.DEFINE_ATOM_KIND("correlation"),
-	} as const;
-	public ELECTRONS = {
-		ADAPTER_ELECTRON: this.DEFINE_ATOM_KIND("adapter"),
-		BEAM_CODEC_ELECTRON: this.DEFINE_ATOM_KIND("beam_codec"),
-		BINARY_ELECTRON: this.DEFINE_ATOM_KIND("binary"),
-		BYTE_CODE_VM: this.DEFINE_ATOM_KIND("byte_code_vm"),
-		CHANNEL_ELECTRON: this.DEFINE_ATOM_KIND("channel"),
-		CHANNELS_ELECTRON: this.DEFINE_ATOM_KIND("channels"),
-		CONCURRENCY_ELECTRON: this.DEFINE_ATOM_KIND("concurrency"),
-		DEADLETTER_ELECTRON: this.DEFINE_ATOM_KIND("deadletter"),
-		DESTRUCTION_ELECTRON: this.DEFINE_ATOM_KIND("destruction"),
-		ERROR_ELECTRON: this.DEFINE_ATOM_KIND("error"),
-		EVENT_ELECTRON: this.DEFINE_ATOM_KIND("event"),
-		EXTERNAL_SUBSCRIPTION_ELECTRON: this.DEFINE_ATOM_KIND("exterenal_sub"),
-		GATE_ELECTRON: this.DEFINE_ATOM_KIND("gate"),
-		GLOBAL_SUBSCRIPTION_ELECTRON: this.DEFINE_ATOM_KIND("global_sub"),
-		GOVERNOR_ELECTRON: this.DEFINE_ATOM_KIND("GOVERNOR"),
-		HOOK_ELECTRON: this.DEFINE_ATOM_KIND("hook"),
-		HTTP_TRANSPORT: this.DEFINE_ATOM_KIND("http_transport"),
-		INJECTION_CODEC_ELECTRON: this.DEFINE_ATOM_KIND("injection"),
-		METRICS_ELECTRON: this.DEFINE_ATOM_KIND("metrics"),
-		MIDDLEWARE_ELECTRON: this.DEFINE_ATOM_KIND("middlleware"),
-		RIFTS_ACCESS_ELECTRON: this.DEFINE_ATOM_KIND("rifts"),
-		REACTIVE_ELECTRON: this.DEFINE_ATOM_KIND("reactive"),
-		ROUTE_ELECTRON: this.DEFINE_ATOM_KIND("route"),
-		RUN_ON_ELECTRON: this.DEFINE_ATOM_KIND("run_on"),
-		SEALED_ERROR_ELECTRON: this.DEFINE_ATOM_KIND("sealed_error"),
-		SESSION_ELECTRON: this.DEFINE_ATOM_KIND("session"),
-		SHELL_ELECTRON: this.DEFINE_ATOM_KIND("reshelltry"),
-		SIGNAL_ELECTRON: this.DEFINE_ATOM_KIND("signal"),
-		SOA_QUAD_TIERED_REGISTRY_ELECTRON: this.DEFINE_ATOM_KIND("soa_registry"),
-		SUBSCRIPTION_ELECTRON: this.DEFINE_ATOM_KIND("subscription"),
-		TRANSFORM_ELECTRON: this.DEFINE_ATOM_KIND("transform"),
-		WAITER_ELECTRON: this.DEFINE_ATOM_KIND("waiter"),
-	} as const;
-	public NEUTRONS = {
-		COMPRESSION_NEUTRON: this.DEFINE_ATOM_KIND("compression"),
-		CONFLICT_NEUTRON: this.DEFINE_ATOM_KIND("conflict"),
-		CONTEXT_NEUTRON: this.DEFINE_ATOM_KIND("context"),
-		ENCRYPTION_NEUTRON: this.DEFINE_ATOM_KIND("encryption"),
-		GROUPS_NEUTRON: this.DEFINE_ATOM_KIND("groups"),
-		HISTORY_NEUTRON: this.DEFINE_ATOM_KIND("history"),
-		META_NEUTRON: this.DEFINE_ATOM_KIND("meta"),
-		OFFSEC_NEUTRON: this.DEFINE_ATOM_KIND("offsec"),
-		PERMISSIONS_NEUTRON: this.DEFINE_ATOM_KIND("permissions"),
-		PERSISTENCE_NEUTRON: this.DEFINE_ATOM_KIND("persistence"),
-		PRIORITY_NEUTRON: this.DEFINE_ATOM_KIND("priority"),
-		SNAPSHOT_NEUTRON: this.DEFINE_ATOM_KIND("snapshot"),
-		TAGS_NEUTRON: this.DEFINE_ATOM_KIND("tags"),
-		TIME_TRAVEL_NEUTRON: this.DEFINE_ATOM_KIND("time_travel"),
-		TTL_NEUTRON: this.DEFINE_ATOM_KIND("ttl"),
-	} as const;
-	public PROTONS = {
-		CONTRACTS_PROTON: this.DEFINE_ATOM_KIND("contract"),
-		REACTIVE_PROTON: this.DEFINE_ATOM_KIND("reactive"),
-		REGISTRY_PROTON: this.DEFINE_ATOM_KIND("registry"),
-		SCHEMA_PROTON: this.DEFINE_ATOM_KIND("schema"),
-		VALUES_REGISTRY_PROTON: this.DEFINE_ATOM_KIND("values_reg"),
-	} as const;
-	public DEFINE_ATOM_KIND(name: string): symbol {
-		return Symbol(name);
-	}
-	public PARTICLE_KEYS = {
-		...this.PROTONS,
-		...this.NEUTRONS,
-		...this.ELECTRONS,
-		...this.MQ,
-	} as const;
-})();
-function createLiveSelf(instanceId: S) {
-	const liveTarget: R<A> = {};
-	const selfProxy = new PX(liveTarget, {
-		get(target, key: S) {
-			return target[key];
+function withTypoGuard<T extends Record<string, any>>(result: T, label: string): T {
+	return new Proxy(result, {
+		get(target, prop, receiver) {
+			if (typeof prop === "symbol" || prop in target) return Reflect.get(target, prop, receiver);
+			throw new Error(`\n[${label} Typo Error] Property "${String(prop)}" does not exist on this ${label} definition.\n  -> Available definitions: [ ${Object.keys(target).join(", ")} ]\n`);
 		},
-		set(target, key: S, value: A) {
-			// reuse the existing Sauron store — same primitive `live`/`useLive` already build on
-			target[key] = value;
-			death_star.bear.cell.set(`${instanceId}:${key}`, value);
-			//  setPrev(sV, `${instanceId}:${key}`, value)
-			return true;
-		},
+	});
+}
+// ============================================================================
+//  ONE CELL PER MASTER INSTANCE — the platform primitives, nothing else.
+//      const { selfProxy, liveTarget } = createLiveSelf(instanceId)
+//      Object.assign(liveTarget, pass)
+//      const [o, o$] = root.DISRUPTOR.useCell.obj(liveTarget, label, category)
+//      o$.merge(result)
+//  liveTarget IS the cell value: the mailbox seeds the store with it and
+//  setLive sends that same object, so self and the cell are one object with
+//  one write path. Namespaces are one level: liveTarget.<name>.
+// ============================================================================
+function createLiveSelf(instanceId: string) {
+	const liveTarget: any = {};
+	const selfProxy = new Proxy(liveTarget, {
+		get: (t, k: any) => t[k],
+		set: (t, k: any, v: any) => { t[k] = v; death_star.bear.cell.set(`${instanceId}:${k}`, v); return true; },
 	});
 	return { selfProxy, liveTarget };
 }
-function mergeInto<T extends object>(target: T, source: object): T {
-	// defineProperties, not assign — this is what preserves get/set accessors
-	// as live accessors instead of flattening them into snapshots (the bug from last time)
-	Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
-	return target;
-} 
-function resolveFactory(raw: AnyFactory): AnyFactory {
-	if (typeof raw === "function") return raw;
-	return () => raw;
-}
-type StubHit = { category: S; key: S; prop: S };
-const STUB_HITS: StubHit[] = [];
-const NINJA_STUB_BRAND = "__is_atom_stub__";
-function isStub(value: A): B {
-	try {
-		return !!value && (typeof value === "object" || typeof value === "function") && value[NINJA_STUB_BRAND] === true;
-	} catch {
-		return false;
-	}
-}
-function makeStub(trace?: { category: S; key: S }): A {
-		return new Proxy(() => makeStub(trace), {
-		get: (_t, prop: S | SY) => {
-			if (prop === NINJA_STUB_BRAND) return true;
-			if (prop === Symbol.toPrimitive || prop === "toString" || prop === "valueOf") return () => "";
-			if (trace && typeof prop === "string") {
-				STUB_HITS.push({ ...trace, prop });
-			}
-			return makeStub(trace);
-		},
-		apply: () => {
-			if (trace) STUB_HITS.push({ ...trace, prop: "()" });
-			return makeStub(trace);
-		},
-	});
-}
-function NexusMirror(excludeName: S) {
-	return new Proxy(
-		{},
-		{
-			get: (_t: A, name: S) => {
-				if (name === excludeName) return makeStub({ category: excludeName, key: name });
-				return new Proxy([], {
-					get: (_s: A, prop: S | SY) => {
-						let arr = death_star.bear.cell(name);
-						if (!arr) return makeStub({ category: name, key: String(prop) });
-						if (prop in arr) return (arr as any)[prop];
-						return makeStub({ category: name, key: String(prop) });
-					},
-				});
-			},
-		},
-	);
-}
-function buildCtx(refs: A, selfProxy: A): SelfType {
-	let builtins = {
-		self: selfProxy,
+const OPEN_CELLS: any[] = []; // test-only window onto the cells
+// useCell.obj — the merge variant Illusionist uses:
+//   const [o, o$] = root.DISRUPTOR.useCell.obj(liveTarget, prim_label, categoryName)
+//   o$.merge(result)
+death_star.drs.useCell.obj = (liveTarget: any, label: string, category: string, s = death_star.s, m = death_star.m, r = death_star.r) => {
+	const [cell, setLive] = death_star.drs.useCell.mailbox(liveTarget, label, s, m, r);
+	const merge = (patch: any = {}) => {
+		const p = typeof patch === "function" ? patch(cell) : patch;
+		for (const k of Object.keys(p ?? {})) {
+			const v = p[k];
+			if (v && typeof v === "object" && !Array.isArray(v) && cell[k] && typeof cell[k] === "object" && !Array.isArray(cell[k])) Object.assign(cell[k], v);
+			else cell[k] = v;
+		}
+		cell._version = (cell._version ?? 0) + 1;
+		setLive(cell);
+		return cell;
 	};
-	return new Proxy(builtins, {
-		get: (target, key: S) => (key in target ? (target as A)[key] : (refs as A)[key]),
-	});
-}
-function withTypoGuard<T extends Record<S, A>>(result: T, label: S, allowedExtraKeys: S[] = ["freyr"]): T {
-	return new Proxy(result, {
-		get(target, prop, receiver) {
-			if (typeof prop === "symbol" || prop in target || allowedExtraKeys.includes(prop as string)) {
-				return Reflect.get(target, prop, receiver);
+	const o$ = { merge, set: setLive, key: label, category };
+	OPEN_CELLS.push({ cell, ...o$ });
+	return [cell, o$] as const;
+};
+// A bound atom's self: its own namespace, plus the master's root fields.
+// Nothing here stores state — it reads and writes liveTarget directly.
+function nsSelf(liveTarget: any, name: string, publish: () => void, useCell: () => any) {
+	const rec = () => (liveTarget[name] ??= {});
+	return new Proxy({}, {
+		get(_t, key: any) {
+			if (typeof key !== "string" || key === "then") return undefined;
+			if (key === "useCell") return useCell;
+			if (key in rec()) return rec()[key];
+			if (key in liveTarget) {
+				if (liveTarget[key]?._isNamespace) throw new Error(`[isolation] "${name}" cannot reach namespace "${key}"`);
+				return liveTarget[key];
 			}
-
-			const validKeys = Object.keys(target).join(", ");
-
-			throw new Error(`\n\x1b[31m[${label} Typo Error]\x1b[0m Property \x1b[33m"${String(prop)}"\x1b[0m does not exist on this ${label} definition.\n` + `  -> \x1b[32mDid you make a spelling mistake?\x1b[0m\n` + `  -> \x1b[35mAvailable definitions:\x1b[0m [ ${validKeys} ]\n` + `  -> \x1b[36mDefined at:\x1b[0m ${location}\n`);
+			return undefined;
 		},
+		set(_t, key: any, value: any) {
+			if (typeof key !== "string") return false;
+			rec()[key] = value;
+			publish();
+			return true;
+		},
+		has(_t, key: any) { return typeof key === "string" && (key in rec() || key in liveTarget); },
 	});
 }
-function createResolvingSelf() {
-	const draft: Record<string, any> = {};
-	const self = new Proxy(draft, {
-		get(target, key: string) {
-			return key in target ? target[key] : makeStub({ category: "self", key });
-		},
-	});
-	return { self, draft };
+// The atom's useCell: [own record, merge into own record].
+function cellHandle(record: () => any, publish: () => void) {
+	const merge = (patch: any) => {
+		const p = typeof patch === "function" ? patch(record()) : patch;
+		if (p && typeof p === "object") Object.assign(record(), p);
+		publish();
+	};
+	const h: any = [record(), merge];
+	h.get = (key?: string) => (key === undefined ? record() : record()[key]);
+	h.set = (key: any, value?: any) => {
+		if (typeof key === "string") merge({ [key]: value });
+		else if (key && typeof key === "object") merge(key);
+		return h;
+	};
+	return h;
 }
-function resolvePool<R extends Record<S, A>>(factory: (self: A) => R, passes: N = 3): R {
-	const { self, draft } = createResolvingSelf();
-	let out: R;
-	for (let i = 0; i < passes; i++) {
-		out = factory(self);
-		mergeInto(draft, out); // descriptor-based — accessors survive, same helper as before
-	}
-	return draft as R; // only the FINAL pass's result ever gets exposed/committed
+export function MASTER_ATOM(name: string, arg: any) { const f = resolveFactory(arg); death_star.bear.cell.set(name, f); return f; }
+export function BIND_ATOM(name: string, arg: any) { const f = resolveFactory(arg); death_star.bear.cell.set(name, f); return f; }
+export function ATOM_BINDABLE(factory: any) { return factory; }
+function requiredBindables() {
+	return { gate: GATE, subscription: SUBSCRIPTION, context: CONTEXT };
 }
-function createMaster(kind, kk, ss, mm, rr, initialValue) {
-	if (!def.MASTER_ATOM_KEYS.includes(kind)) throw new TypeError(`Unknown master atom: ${kind}`);
+function withoutKeys(obj: any, keys: string[]) {
+	const desc: any = Object.getOwnPropertyDescriptors(obj);
+	for (const k of keys) delete desc[k];
+	return desc;
+}
+function createMaster(kind: string, config: any) {
 	const kindFactory = resolveFactory(death_star.bear.cell(kind));
-	if (!kindFactory) throw new TypeError(`No behavior registered for master atom: ${kind}`);
+	if (!kindFactory) throw new TypeError(`Unknown master atom: ${kind}`);
 
-	const [value, setLive] = death_star.bear.useCell.mailbox(initialValue, kk, ss, mm, rr); // once — real subscribe
-
-	return { value, setLive, kindFactory }; // handed to the pool builder, not yet merged
-}
-export function ATOM_BINDABLE<T extends object>(factory: (ctx: { self: any }) => T): any {
-	const build = (instance: any): T => {
-		const self = new Proxy({}, {
-			get: (_t, key) => instance[key as string],
-			set: (_t, key, value) => { instance[key as string] = value; return true; },
-			has: (_t, key) => key in instance,
-		});
-		return factory({ self });
-	};
-	Object.defineProperty(build, "__build", { value: build, enumerable: false });
-	return build;
-}
-export function ATOM_CONTRACT<C extends AnyObject | Factory, M extends CONTRACT_MASTER<T>, B extends object = Record<S, never>, T = A>(arg1: S | C, arg2?: C) {
-	const instanceId = _sid();
-	const categoryName = typeof arg1 === "string" ? arg1 : `ATOM_CONTRACT${instanceId}`;
-	const rawConfig = (typeof arg1 === "string" ? arg2! : arg1) as AnyType;
-	if (rawConfig === undefined || rawConfig === null) throw new Error(`Self is required, define self in your props at ${location}`);
-	const factory = resolveFactory(rawConfig as Factory);
-	const refs = NexusMirror(categoryName);
+	const instanceId = `${kind}:${death_star.REGISTRY._sid}`;
 	const { selfProxy, liveTarget } = createLiveSelf(instanceId);
-	const pass = factory(buildCtx(refs, selfProxy));
-	const rr = pass.r ?? death_star.r;
-	const mm = pass.m ?? death_star.m;
-	const ss = pass.s ?? death_star.s;
-	const kk = pass.k ?? death_star.k;
-	Object.assign(liveTarget, pass);
-	const kind = pass.atom ?? "ATOM";
-	const contract = ((initialValue?: T) => {
-		const { value, setLive, kindFactory } = createMaster(kind, kk, ss, mm, rr, initialValue);
-	
-		const pool = resolvePool((self) => {
-			mergeInto(self, {
-				get value() { return value; },
-				set value(next) { setLive(next); },
-			});
-			mergeInto(self, kindFactory(buildCtx(NexusMirror(kind), self)));
-			mergeInto(self, { atom: kind, k: kk, s: ss, m: mm, r: rr });
-	
-			for (const [bindKey, ref] of Object.entries(pass.bindables ?? {}) as [string, ATOM_BINDABLE][]) {
-				mergeInto(self, { [bindKey]: ref({ self, k: kk, s: ss, m: mm, r: rr }) });
-			}
-			return self;
-		}, 3);
-	
-		return pool as ATOM_CONTRACT_INSTANCE<T, M, B>;
-	}) as ATOM_CONTRACT<T, M, B>;
-	Object.assign(contract, liveTarget);
-	death_star.bear.cell.set(categoryName, contract);
-	return withTypoGuard(contract, categoryName) //as unknown as MirrorImageFactory<C>;
+	const names = new Set<string>();
+	const refreshers: Record<string, () => void> = {};
+	let o$: any;
+
+	const publish = () => {
+		if (!o$) return; // still seeding: the first merge publishes the whole record
+		for (const f of Object.values(refreshers)) f();
+		o$.merge({});
+		for (const n of names) liveTarget[n]._version = liveTarget._version;
+	};
+
+	const bind = (name: string, factory: any, cfg: any) => {
+		if (name in liveTarget && !names.has(name)) throw new Error(`[COLLISION] bound atom "${name}" collides with master field "${name}"`);
+		names.add(name);
+		liveTarget[name] = Object.assign(liveTarget[name] ?? {}, { _isNamespace: true });
+		const useCell = () => cellHandle(() => liveTarget[name], publish);
+		const self = nsSelf(liveTarget, name, publish, useCell);
+		const ctx: any = { self, useCell, channel: (l: any) => death_star.bear.state.subscribe(instanceId, l), master: selfProxy, config: cfg, k: death_star.k, s: death_star.s, m: death_star.m, r: death_star.r };
+		const out = factory(ctx);
+		Object.defineProperties(liveTarget[name], withoutKeys(out, ["bindables", "refresh"]));
+		if (typeof out.refresh === "function") refreshers[name] = out.refresh;
+	};
+
+	const view = (name: string) => {
+		const rec = liveTarget[name];
+		return new Proxy(rec, {
+			get: (t, k: any) => (typeof t[k] === "function" ? t[k].bind(rec) : t[k]),
+			set: (t, k: any, v: any) => { t[k] = v; publish(); return true; },
+		});
+	};
+
+	const masterCtx = (cfg: any) => {
+		const ctx: any = { self: selfProxy, useCell: () => cellHandle(() => liveTarget, publish), channel: (l: any) => death_star.bear.state.subscribe(instanceId, l), config: cfg, master: selfProxy, k: death_star.k, s: death_star.s, m: death_star.m, r: death_star.r };
+		for (const name of names) ctx[name] = view(name);
+		return ctx;
+	};
+
+	// seed: config lives at the root, same level as the namespaces
+	for (const [key, v] of Object.entries(config)) {
+		if (key === "_version") throw new Error(`[COLLISION] "_version" is reserved by the cell`);
+		liveTarget[key] = v;
+	}
+
+	// open the cell on the seeded object — this IS the resource from here on
+	const [cell, handle] = death_star.drs.useCell.obj(liveTarget, instanceId, kind);
+	o$ = handle;
+
+	// 1. required bound atoms first — the master reads gate.sealed on read()
+	for (const [name, factory] of Object.entries(requiredBindables())) bind(name, factory, config);
+
+	// 2. probe for the master's own bindables list, then build those too
+	const probe = kindFactory(masterCtx(config));
+	for (const [name, factory] of Object.entries((probe as any).bindables ?? {})) bind(name, resolveFactory(factory), config);
+
+	// 3. re-run the factory now that every namespace exists (live views)
+	const built = kindFactory(masterCtx(config));
+
+	// 4. the master's own fields into the root
+	const masterFields = withoutKeys(built, ["bindables", "value"]);
+	for (const key of Object.keys(masterFields)) {
+		if (key === "_version") throw new Error(`[COLLISION] "_version" is reserved by the cell`);
+		if (names.has(key)) throw new Error(`[COLLISION] master field "${key}" collides with bound atom "${key}"`);
+	}
+	Object.defineProperties(liveTarget, masterFields);
+
+	// 5. the public surface: flat master ops + one handle per namespace
+	const api: any = { atom: kind };
+	for (const name of names) api[name] = view(name);
+	for (const fn of ["read", "write", "subscribe", "waitFor"]) if (fn in liveTarget) api[fn] = liveTarget[fn];
+	for (const key of Object.keys(masterFields)) {
+		if (key in api) continue;
+		if (typeof liveTarget[key] === "function") { api[key] = liveTarget[key]; continue; }
+		Object.defineProperty(api, key, { enumerable: true, get: () => liveTarget[key] });
+	}
+	api.version = () => cell._version;
+
+	publish(); // build is one publish: every namespace refreshes together
+	return withTypoGuard(api, instanceId.split(":")[1]);
 }
+export function ATOM_CONTRACT(arg1: any, arg2?: any): any {
+	const id = `${death_star.REGISTRY._sid}`;
+	const categoryName = typeof arg1 === "string" ? arg1 : `ATOM_CONTRACT${id}`;
+	const rawConfig = typeof arg1 === "string" ? arg2 : arg1;
+	if (rawConfig === undefined || rawConfig === null) throw new Error("Self is required");
+	const factory = resolveFactory(rawConfig);
+	const pass = factory({});
+	const kind = pass.atom ?? "ATOM";
+	// atomContract(7) and atomContract({ value: 7 }) both mean the same thing
+	const contract = ((config: any = {}) => {
+		const normalized = config && typeof config === "object" ? config : { value: config };
+		return createMaster(kind, normalized);
+	}) as any;
+	Object.assign(contract, pass);
+	death_star.bear.cell.set(categoryName, contract);
+	return contract;
+}
+
+
 
 // #endregion
-const liveContract = ATOM_CONTRACT(() => ({
+//                                                                                                   NEED TO BE COMPLETED ATOMS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+
+
+export const ADAPTER = BIND_ATOM("ADAPTER", ({ self, master, config }: any) => ({}));
+export const AW_SET = BIND_ATOM("AW_SET", ({ self, master, config }: any) => ({}));
+export const CASUAL_CURSOR = BIND_ATOM("CASUAL_CURSOR", ({ self, master, config }: any) => ({}));
+export const DELTA_STORE = BIND_ATOM("DELTA_STORE", ({ self, master, config }: any) => ({}));
+export const G_SET = BIND_ATOM("G_SET", ({ self, master, config }: any) => ({}));
+export const VERSION_VECTOR = BIND_ATOM("VERSION_VECTOR", ({ self, master, config }: any) => ({}));
+export const CIRCUIT_BREAKER = BIND_ATOM("CIRCUIT_BREAKER", ({ self, master, config }: any) => ({}));
+export const CQRS = BIND_ATOM("CQRS", ({ self, master, config }: any) => ({}));
+export const RAFT = BIND_ATOM("RAFT", ({ self, master, config }: any) => ({}));
+export const YJS = BIND_ATOM("YJS", ({ self, master, config }: any) => ({}));
+export const DIFFPATCH = BIND_ATOM("DIFFPATCH", ({ self, master, config }: any) => ({}));
+export const HYBRID_LOGICAL_CLOCK = BIND_ATOM("HYBRID_LOGICAL_CLOCK", ({ self, master, config }: any) => ({}));
+export const LWW = BIND_ATOM("LWW", ({ self, master, config }: any) => ({}));
+export const LWW_ELEMENTAL = BIND_ATOM("LWW_ELEMENTAL", ({ self, master, config }: any) => ({}));
+export const MV = BIND_ATOM("MV", ({ self, master, config }: any) => ({}));
+export const OPTIMISTIC = BIND_ATOM("OPTIMISTIC", ({ self, master, config }: any) => ({}));
+export const OR = BIND_ATOM("OR", ({ self, master, config }: any) => ({}));
+export const PN = BIND_ATOM("PN", ({ self, master, config }: any) => ({}));
+export const REVERSE_HEARTBEAT_MGR = BIND_ATOM("REVERSE_HEARTBEAT_MGR", ({ self, master, config }: any) => ({}));
+export const SEMAPHORE = BIND_ATOM("SEMAPHORE", ({ self, master, config }: any) => ({}));
+export const TOMBSTONE_COMPACTOR = BIND_ATOM("TOMBSTONE_COMPACTOR", ({ self, master, config }: any) => ({}));
+export const YIMIR = BIND_ATOM("YIMIR", ({ self, master, config }: any) => ({}));
+export const HYBRID_LOGICAL_CLOCK_CRDT = BIND_ATOM("HYBRID_LOGICAL_CLOCK_CRDT", ({ self, master, config }: any) => ({}));
+export const SOA_QUAD_TIERED_REGISTRY = BIND_ATOM("SOA_QUAD_TIERED_REGISTRY", ({ self, master, config }: any) => ({}));
+export const BINARY = BIND_ATOM("BINARY", ({ self, master, config }: any) => ({}));
+export const SIGNAL = BIND_ATOM("SIGNAL", ({ self, master, config }: any) => ({}));
+// export const GOVERNOR = BIND_ATOM("GOVERNOR", ({ self, master, config }: any) => ({}));
+export const BYTE_CODE_VM = BIND_ATOM("BYTE_CODE_VM", ({ self, master, config }: any) => ({}));
+export const CHANNEL = BIND_ATOM("CHANNEL", ({ self, master, config }: any) => ({}));
+export const CHANNELS = BIND_ATOM("CHANNELS", ({ self, master, config }: any) => ({}));
+export const MIDDLEWARE = BIND_ATOM("MIDDLEWARE", ({ self, master, config }: any) => ({}));
+export const BEAM_CODEC = BIND_ATOM("BEAM_CODEC", ({ self, master, config }: any) => ({}));
+export const GOVERNER = BIND_ATOM("GOVERNER", ({ self, master, config }: any) => ({}));
+export const INJECTION_CODEC = BIND_ATOM("INJECTION_CODEC", ({ self, master, config }: any) => ({}));
+export const RUN_ON = BIND_ATOM("RUN_ON", ({ self, master, config }: any) => ({}));
+export const SEALED_ERROR = BIND_ATOM("SEALED_ERROR", ({ self, master, config }: any) => ({}));
+export const SHELL = BIND_ATOM("SHELL", ({ self, master, config }: any) => ({}));
+export const TRANSFORM = BIND_ATOM("TRANSFORM", ({ self, master, config }: any) => ({}));
+export const SAURON = MASTER_ATOM("SAURON", ({ self, master, config }: any) => ({}));
+export const MSG_Q = MASTER_ATOM("MSG_Q", ({ self, master, config }: any) => ({}));
+
+// #endregion
+//                                                                                                                  MASTER ATOM
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+export const SLAB = BIND_ATOM("SLAB_ATOM", <X = U>({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+    capacity: config.capacity as number,
+
+    values: new Float64Array(config.capacity),
+    versions: new Uint32Array(config.capacity),
+    nextFree: new Int32Array(config.capacity),
+    refCount: new Int32Array(config.capacity),
+
+    freeHead: -1,
+    allocated: 0,
+
+    slab: new Uint8Array(config.slabCapacity ?? (1 << 20)),
+    slabTail: 0,
+
+    slabOffsets: new Int32Array(config.capacity).fill(-1),
+    slabLengths: new Int32Array(config.capacity).fill(0),
+
+    inUse: new Uint8Array(config.capacity),
+
+    initialized: (() => {
+        const capacity = config.capacity as number;
+
+        if (!pow2(capacity)) {
+            throw new Error("slotCapacity must be a power of two");
+        }
+
+        self.nextFree.fill(-1);
+
+        // Slot 0 is reserved as the control slot (version counter).
+        self.allocated = 1;
+        self.refCount[0] = 1;
+        self.versions[0] = 0;
+        self.inUse[0] = 1;
+
+        // Build initial free list (skip slot 0).
+        // Link slots 1..capacity-1 in reverse order so we pop from the front.
+        for (let i = capacity - 1; i >= 1; i--) {
+            self.nextFree[i] = self.freeHead;
+            self.freeHead = i;
+        }
+
+        return true;
+    })(),
+
+    writeBinary(slot: N, data: U8, epoch: N): V {
+        self.assertLive(slot);
+        self.assertEpoch(epoch);
+
+        const oldOffset = self.slabOffsets[slot];
+        const oldLength = self.slabLengths[slot];
+        const length = data.length;
+
+        // Reuse the existing allocation when it is large enough.
+        if (oldOffset >= 0 && length <= oldLength) {
+            self.slab.set(data, oldOffset);
+
+            if (length < oldLength) {
+                self.freeBytes(oldOffset + length, oldLength - length);
+            }
+
+            self.slabOffsets[slot] = length === 0 ? 0 : oldOffset;
+            self.slabLengths[slot] = length;
+            self.values[slot] = 0;
+            self.versions[slot] = epoch;
+            return;
+        }
+
+        // Allocate first: exhaustion leaves the old payload intact.
+        const offset = self.allocBytes(length);
+
+        self.slab.set(data, offset);
+
+        if (oldOffset >= 0 && oldLength > 0) {
+            self.freeBytes(oldOffset, oldLength);
+        }
+
+        self.slabOffsets[slot] = offset;
+        self.slabLengths[slot] = length;
+        self.values[slot] = 0;
+        self.versions[slot] = epoch;
+    },
+
+    readBinary(slot: N): U8 {
+        const { offset, length } = self.ref(slot);
+        return self.slab.subarray(offset, offset + length);
+    },
+
+    allocBytes(length: N): N {
+        if (length === 0) return 0;
+
+        // First-fit allocation from reclaimed ranges.
+        for (let i = 0; i < self.freeRanges.length; i++) {
+            const range = self.freeRanges[i];
+
+            if (range.length < length) continue;
+
+            const offset = range.offset;
+
+            if (range.length === length) {
+                self.freeRanges.splice(i, 1);
+            } else {
+                range.offset += length;
+                range.length -= length;
+            }
+
+            return offset;
+        }
+
+        if (length > self.slab.length - self.slabTail) {
+            throw new RangeError("STORAGE_RING: no contiguous slab range large enough");
+        }
+
+        const offset = self.slabTail;
+        self.slabTail += length;
+        return offset;
+    },
+
+    freeBytes(offset: N, length: N): V {
+        if (length === 0) return;
+
+        const ranges = self.freeRanges;
+        let index = 0;
+
+        while (index < ranges.length && ranges[index].offset < offset) {
+            index++;
+        }
+
+        ranges.splice(index, 0, { offset, length });
+
+        // Merge with the preceding range.
+        if (
+            index > 0 &&
+            ranges[index - 1].offset + ranges[index - 1].length === offset
+        ) {
+            ranges[index - 1].length += length;
+            ranges.splice(index, 1);
+            index--;
+        }
+
+        // Merge with the following range.
+        if (
+            index + 1 < ranges.length &&
+            ranges[index].offset + ranges[index].length === ranges[index + 1].offset
+        ) {
+            ranges[index].length += ranges[index + 1].length;
+            ranges.splice(index + 1, 1);
+        }
+
+        // Return a free suffix to the unused slab tail.
+        const last = ranges[ranges.length - 1];
+
+        if (last !== undefined && last.offset + last.length === self.slabTail) {
+            self.slabTail = last.offset;
+            ranges.pop();
+        }
+    },
+
+    assertLive(slot: N): V {
+        if (
+            !Number.isInteger(slot) ||
+            slot <= 0 ||
+            slot >= self.allocated ||
+            self.refCount[slot] <= 0
+        ) {
+            throw new RangeError(`STORAGE_RING: invalid or released slot ${slot}`);
+        }
+    },
+
+    assertEpoch(epoch: N): V {
+        if (
+            !Number.isInteger(epoch) ||
+            epoch < 0 ||
+            epoch > 0xffffffff
+        ) {
+            throw new RangeError("STORAGE_RING: epoch must be a uint32");
+        }
+    },
+
+    tick(): number {
+        return self.versions[0];
+    },
+
+    advance(): number {
+        return ++self.versions[0];
+    },
+
+    alloc(value = 0): number {
+        const slot = self.freeHead;
+        if (slot === -1) return -1;
+
+        // Remove from free list.
+        self.freeHead = self.nextFree[slot];
+        self.nextFree[slot] = -1;
+
+        // Initialize slot.
+        self.values[slot] = value;
+        self.refCount[slot] = 1;
+        self.inUse[slot] = 1;
+
+        // Clear slab allocation for this slot.
+        self.slabOffsets[slot] = -1;
+        self.slabLengths[slot] = 0;
+
+        self.allocated++;
+
+        return slot;
+    },
+
+    retain(slot: number): boolean {
+        if (slot < 0 || slot >= self.capacity) return false;
+        if (!self.inUse[slot]) return false;
+
+        if (self.refCount[slot] === 0x7FFFFFFF) {
+            throw new Error("Reference count overflow");
+        }
+
+        self.refCount[slot]++;
+        return true;
+    },
+
+    release(slot: number): boolean {
+        if (slot < 0 || slot >= self.capacity) return false;
+        if (!self.inUse[slot]) return false;
+
+        if (self.refCount[slot] <= 0) {
+            throw new Error("Reference count underflow");
+        }
+
+        self.refCount[slot]--;
+
+        if (self.refCount[slot] === 0) {
+            self.inUse[slot] = 0;
+
+            // Clear slab data.
+            self.slabOffsets[slot] = -1;
+            self.slabLengths[slot] = 0;
+            self.values[slot] = 0;
+
+            // Add to free list.
+            self.nextFree[slot] = self.freeHead;
+            self.freeHead = slot;
+
+            self.allocated--;
+
+            return true;
+        }
+
+        return false;
+    },
+
+    write(slot: number, value: number, epoch: number): boolean {
+        if (slot < 0 || slot >= self.capacity) return false;
+        if (!self.inUse[slot]) return false;
+        if (self.refCount[slot] <= 0) return false;
+
+        // Epoch validation: the slot's version must match the expected epoch.
+        if (self.versions[slot] !== epoch) return false;
+
+        self.values[slot] = value;
+        return true;
+    },
+
+    read(slot: number): number {
+        if (slot < 0 || slot >= self.capacity) return NaN;
+        if (!self.inUse[slot]) return NaN;
+
+        return self.values[slot];
+    },
+
+    version(slot: number): number {
+        if (slot < 0 || slot >= self.capacity) return -1;
+        return self.versions[slot];
+    },
+
+    ref(slot: number): { offset: number; length: number } {
+        if (slot < 0 || slot >= self.capacity) {
+            return { offset: -1, length: 0 };
+        }
+
+        return {
+            offset: self.slabOffsets[slot],
+            length: self.slabLengths[slot],
+        };
+    },
+
+    storeSlab(slot: number, data: Uint8Array | ArrayBuffer): boolean {
+        if (slot < 0 || slot >= self.capacity) return false;
+        if (!self.inUse[slot]) return false;
+
+        const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+        const len = bytes.length;
+
+        if (len === 0) {
+            // Zero-length: clear slab assignment.
+            self.slabOffsets[slot] = -1;
+            self.slabLengths[slot] = 0;
+            return true;
+        }
+
+        // Simple bump allocator: check if we have room.
+        if (self.slabTail + len > self.slab.length) {
+            // Could implement compaction here, but for now just fail.
+            return false;
+        }
+
+        const offset = self.slabTail;
+        self.slab.set(bytes, offset);
+        self.slabTail += len;
+
+        self.slabOffsets[slot] = offset;
+        self.slabLengths[slot] = len;
+
+        return true;
+    },
+
+    loadSlab(slot: number): Uint8Array | null {
+        if (slot < 0 || slot >= self.capacity) return null;
+        if (!self.inUse[slot]) return null;
+
+        const offset = self.slabOffsets[slot];
+        const length = self.slabLengths[slot];
+
+        if (offset < 0 || length <= 0) return null;
+
+        return self.slab.subarray(offset, offset + length);
+    },
+
+    growthSlab(minAdditional: number): void {
+        const newCapacity = Math.max(self.slab.length * 2, self.slabTail + minAdditional);
+        const newSlab = new Uint8Array(newCapacity);
+        newSlab.set(self.slab);
+        self.slab = newSlab;
+    },
+
+    needsCompaction(): boolean {
+        if (self.allocated <= 1) return false;
+
+        let liveBytes = 0;
+        for (let i = 1; i < self.capacity; i++) {
+            if (self.inUse[i] && self.slabLengths[i] > 0) {
+                liveBytes += self.slabLengths[i];
+            }
+        }
+
+        const deadBytes = self.slabTail - liveBytes;
+        return deadBytes > self.slabTail * 0.5;
+    },
+
+    compact(): void {
+        if (!self.needsCompaction()) return;
+
+        const newSlab = new Uint8Array(self.slab.length);
+        let newTail = 0;
+
+        for (let i = 1; i < self.capacity; i++) {
+            if (!self.inUse[i]) continue;
+
+            const length = self.slabLengths[i];
+            if (length <= 0) continue;
+
+            const oldOffset = self.slabOffsets[i];
+            newSlab.set(
+                self.slab.subarray(oldOffset, oldOffset + length),
+                newTail,
+            );
+
+            self.slabOffsets[i] = newTail;
+            newTail += length;
+        }
+
+        // Copy back into original slab buffer.
+        self.slab.set(newSlab.subarray(0, newTail), 0);
+        self.slabTail = newTail;
+    },
+
+    stats(): {
+        capacity: number;
+        allocated: number;
+        freeSlots: number;
+        slabUsed: number;
+        slabCapacity: number;
+        slabUtilization: number;
+    } {
+        return {
+            capacity: self.capacity,
+            allocated: self.allocated,
+            freeSlots: self.capacity - self.allocated,
+            slabUsed: self.slabTail,
+            slabCapacity: self.slab.length,
+            slabUtilization: self.slabTail / self.slab.length,
+        };
+    },
+
+    validate(): string[] {
+        const errors: string[] = [];
+
+        let freeCount = 0;
+        let current = self.freeHead;
+        const seen = new Set<number>();
+
+        while (current !== -1) {
+            if (current < 1 || current >= self.capacity) {
+                errors.push(`Free list contains invalid slot: ${current}`);
+                break;
+            }
+
+            if (seen.has(current)) {
+                errors.push(`Free list contains cycle at slot: ${current}`);
+                break;
+            }
+
+            seen.add(current);
+            freeCount++;
+            current = self.nextFree[current];
+        }
+
+        if (freeCount !== self.capacity - self.allocated) {
+            errors.push(
+                `Free list has ${freeCount} entries, expected ${self.capacity - self.allocated}`,
+            );
+        }
+
+        for (let i = 1; i < self.capacity; i++) {
+            if (!self.inUse[i]) continue;
+
+            const offset = self.slabOffsets[i];
+            const length = self.slabLengths[i];
+
+            if (offset === -1 && length !== 0) {
+                errors.push(`Slot ${i}: offset -1 but length ${length}`);
+            } else if (offset !== -1) {
+                if (offset < 0 || offset + length > self.slabTail) {
+                    errors.push(
+                        `Slot ${i}: slab range [${offset}, ${offset + length}) out of bounds (tail=${self.slabTail})`,
+                    );
+                }
+            }
+        }
+
+        return errors;
+    },
+
+    get used(): N {
+        return self.allocated - 1 - self.freeCount();
+    },
+
+    get freeCount(): N {
+        return self.freeHead === FREE_LIST_END ? 0 : self.walkFree();
+    },
+
+    get slabUsed(): N {
+        return self.liveBytes;
+    },
+
+    get slabFree(): N {
+        return self.slab.length - self.liveBytes;
+    },
+
+    walkFree(): N {
+        let n = 0;
+        let p = self.freeHead;
+
+        while (p !== FREE_LIST_END) {
+            n++;
+            p = self.nextFree[p];
+        }
+
+        return n;
+    },
+}));
+
+// #endregion
+//                                                                                                                  MASTER DRS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+export const DRS = MASTER_ATOM("DRS_ATOM", <X = U>({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    value: config.value as X,
+
+  
+
+    destroy(): V {
+        self.registry?.purgeAll();
+        self.registry = null;
+        BC().store.particle(self.s, self.m, self.r).delete(self.key)._REGISTRY_PROTON;
+    },
+
+    read(): X {
+        const r = self.registry;
+        if (r !== null) {
+            const gate = r.get(GATE_ELECTRON);
+            if (gate !== undefined && (gate as any).sealed) {
+                throw new SEALED_ERROR_ELECTRON(self.key);
+            }
+        }
+        return self.value;
+    },
+
+    write(next: X): B {
+        const r = self.registry;
+        if (r === null) {
+            self.value = next;
+            return true;
+        }
+
+        const gate = r.get(GATE_ELECTRON);
+        if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
+
+        const previous = self.value;
+        if (Object.is(previous, next)) return false;
+
+        self.value = next;
+
+        const subs = r.get(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD;
+        if (subs !== undefined) {
+            subs.notify({ key: self.key, previous, current: next });
+        }
+
+        return true;
+    },
+
+    subscribe(listener: LISTENER<X>): UNSUBSCRIBE {
+        const subs =
+            (self.shard(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD) ??
+            self.bind(new SUBSCRIPTION_ELECTRON<X>(self));
+
+        return subs.subscribe(listener);
+    },
+
+    waitFor() {},
+}));
+
+// #endregion
+//                                                                                                                          SUB
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// 
+export const SUB = MASTER_ATOM("SUB_ATOM", <T = any>({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    pipeline: undefined as PIPELINE<MQ_CTX<T>> | undefined,
+
+    send(message: T, signal?: SIGNAL): B {
+        const ctx: MQ_CTX<T> = {
+            atom: self,
+            message,
+            signal,
+            meta: undefined,
+        };
+
+        return self.dispatch("beforeSend", ctx, () => {
+            self.deliver(ctx);
+            return true;
+        });
+    },
+
+    dispatch(hook: HOOK, ctx: MQ_CTX<T>, terminal: () => V): V {
+        const p = self.pipeline ??= self.compile();
+        return p.run(hook, ctx, terminal);
+    },
+
+    deliver(ctx: MQ_CTX<T>): V {
+        // bare transport / queue / subscriber fanout
+    },
+
+    compile(): PIPELINE<MQ_CTX<T>> {
+        const r = self.registry;
+        const behaviours: BEHAVIOUR<MQ_CTX<T>>[] = [];
+
+        if (r !== null) {
+            for (const shard of r.shards()) {
+                if ("behaviours" in shard) {
+                    behaviours.push(...(shard as any).behaviours());
+                }
+            }
+        }
+
+        return compilePipeline(behaviours);
+    },
+}));
+// #endregion
+//                                                                                                                       STREAM
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const STREAM = MASTER_ATOM("STREAM_ATOM", <T = any>({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    pipeline: undefined as PIPELINE<STREAM_CTX<T>> | undefined,
+
+    send(message: T, signal?: SIGNAL): B {
+        const ctx: STREAM_CTX<T> = {
+            atom: self,
+            message,
+            signal,
+            meta: undefined,
+        };
+
+        return self.dispatch("beforeSend", ctx, () => {
+            self.deliver(ctx);
+            return true;
+        });
+    },
+
+    dispatch(hook: HOOK, ctx: STREAM_CTX<T>, terminal: () => V): V {
+        const p = self.pipeline ??= self.compile();
+        return p.run(hook, ctx, terminal);
+    },
+
+    deliver(ctx: STREAM_CTX<T>): V {
+        // bare transport / queue / subscriber fanout
+    },
+
+    compile(): PIPELINE<STREAM_CTX<T>> {
+        const r = self.registry;
+        const behaviours: BEHAVIOUR<STREAM_CTX<T>>[] = [];
+
+        if (r !== null) {
+            for (const shard of r.shards()) {
+                if ("behaviours" in shard) {
+                    behaviours.push(...(shard as any).behaviours());
+                }
+            }
+        }
+
+        return compilePipeline(behaviours);
+    },
+}));
+// #endregion
+//                                                                                                                  SPREADSHEET
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const SPREADSHEET = MASTER_ATOM("SPREADSHEET_ATOM", <X = U>({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    key: config.key,
+    value: config.value as X,
+    registry: null as REGISTRY_PROTON | null,
+
+    bind<S extends SPREADSHEET_ATOM>(atom: S, owner: OWNERSHIP = "bespoke"): S {
+        if (self.registry === null) {
+            self.registry = new REGISTRY_PROTON(self.key, { atoms: [{ atom, owner }] });
+        } else {
+            self.registry.bind(atom, owner);
+        }
+        return atom;
+    },
+
+    shard<S extends SPREADSHEET_ATOM>(ctor: ATOM_CLASS<S>): S | UD {
+        return self.registry?.get(ctor);
+    },
+
+    unbind(ctor: ATOM_CLASS<any>): B {
+        if (self.registry === null) return false;
+
+        const removed = self.registry.unbind(ctor);
+
+        // A registry with nothing in it is dropped, returning the cell to the bare fast path.
+        if (self.registry.size === 0) {
+            BC().store.particle(self.s, self.m, self.r).delete(self.key)._REGISTRY_PROTON;
+            self.registry = null;
+        }
+
+        return removed;
+    },
+
+    destroy(): V {
+        self.registry?.purgeAll();
+        self.registry = null;
+        BC().store.particle(self.s, self.m, self.r).delete(self.key)._REGISTRY_PROTON;
+    },
+
+    read(): X {
+        const r = self.registry;
+        if (r !== null) {
+            const gate = r.get(GATE_ELECTRON);
+            if (gate !== undefined && (gate as any).sealed) {
+                throw new SEALED_ERROR_ELECTRON(self.key);
+            }
+        }
+        return self.value;
+    },
+
+    write(next: X): B {
+        const r = self.registry;
+        if (r === null) {
+            self.value = next;
+            return true;
+        }
+
+        const gate = r.get(GATE_ELECTRON);
+        if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
+
+        const previous = self.value;
+        if (Object.is(previous, next)) return false;
+
+        self.value = next;
+
+        const subs = r.get(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD;
+        if (subs !== undefined) {
+            subs.notify({ key: self.key, previous, current: next });
+        }
+
+        return true;
+    },
+
+    subscribe(listener: LISTENER<X>): UNSUBSCRIBE {
+        const subs =
+            (self.shard(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD) ??
+            self.bind(new SUBSCRIPTION_ELECTRON<X>(self));
+
+        return subs.subscribe(listener);
+    },
+
+    waitFor() {},
+
+    kind: undefined as SY,
+    purge(): V {}, 
+}));
+// #endregion
+//                                                                                                                         SEND
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const SEND = MASTER_ATOM("SEND_ATOM", <T = any>({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    pipeline: undefined as PIPELINE<MQ_CTX<T>> | undefined,
+
+    send(message: T, signal?: SIGNAL): B {
+        const ctx: MQ_CTX<T> = {
+            atom: self,
+            message,
+            signal,
+            meta: undefined,
+        };
+
+        return self.dispatch("beforeSend", ctx, () => {
+            self.deliver(ctx);
+            return true;
+        });
+    },
+
+    dispatch(hook: HOOK, ctx: MQ_CTX<T>, terminal: () => V): V {
+        const p = self.pipeline ??= self.compile();
+        return p.run(hook, ctx, terminal);
+    },
+
+    deliver(ctx: MQ_CTX<T>): V {
+        // bare transport / queue / subscriber fanout
+    },
+
+    compile(): PIPELINE<MQ_CTX<T>> {
+        const r = self.registry;
+        const behaviours: BEHAVIOUR<MQ_CTX<T>>[] = [];
+
+        if (r !== null) {
+            for (const shard of r.shards()) {
+                if ("behaviours" in shard) {
+                    behaviours.push(...(shard as any).behaviours());
+                }
+            }
+        }
+
+        return compilePipeline(behaviours);
+    },
+}));
+// #endregion
+//                                                                                                                        CLOUD
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const CLOUD = MASTER_ATOM("CLOUD_ATOM", <X = U>({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    value: config.value as X,
+    registry: null as REGISTRY_PROTON | null,
+
+    bind: <S extends ATOM>(shard: S, owner: OWNERSHIP = "bespoke"): S => {
+        if (self.registry === null) {
+            self.registry = new REGISTRY_PROTON(self.key, {
+                shards: [{ shard, owner }],
+            });
+        } else {
+            self.registry.bind(shard, owner);
+        }
+
+        return shard;
+    },
+
+    shard: <S extends ATOM>(ctor: ATOM_CLASS<S>): S | UD =>
+        self.registry?.get(ctor),
+
+    unbind: (ctor: SHARD_CLASS<any>): B => {
+        if (self.registry === null) return false;
+
+        const removed = self.registry.unbind(ctor);
+
+        if (self.registry.size === 0) {
+            BC().store.particle(self.s, self.m, self.r)
+                .delete(self.k)._REGISTRY_PROTON;
+
+            self.registry = null;
+        }
+
+        return removed;
+    },
+
+    destroy: (): void => {
+        self.registry?.purgeAll();
+        self.registry = null;
+
+        BC().store.particle(self.s, self.m, self.r)
+            .delete(self.k)._REGISTRY_PROTON;
+    },
+
+    read: (): X => {
+        const registry = self.registry;
+
+        if (registry !== null) {
+            const gate = registry.get(GATE_ELECTRON);
+
+            if (gate !== undefined && (gate as any).sealed) {
+                throw new SEALED_ERROR_ELECTRON(self.k);
+            }
+        }
+
+        return self.value;
+    },
+
+    write: (next: X): B => {
+        const registry = self.registry;
+
+        if (registry === null) {
+            self.value = next;
+            return true;
+        }
+
+        const gate = registry.get(GATE_ELECTRON);
+
+        if (gate !== undefined && (gate.sealed || gate.frozen)) {
+            return false;
+        }
+
+        const previous = self.value;
+
+        if (Object.is(previous, next)) return false;
+
+        self.value = next;
+
+        const subs = registry.get(SUBSCRIPTION_ELECTRON) as
+            SUBSCRIPTION_ELECTRON<X> | UD;
+
+        if (subs !== undefined) {
+            subs.notify({
+                key: self.k,
+                previous,
+                current: next,
+            });
+        }
+
+        return true;
+    },
+
+    subscribe: (listener: LISTENER<X>): UNSUBSCRIBE => {
+        const subs =
+            (self.shard(SUBSCRIPTION_ELECTRON) as
+                SUBSCRIPTION_ELECTRON<X> | UD) ??
+            self.bind(new SUBSCRIPTION_ELECTRON<X>(self));
+
+        return subs.subscribe(listener);
+    },
+
+    waitFor: () => {},
+}));
+
+// #endregion
+//                                                                                                                       DUPLEX
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const DUPLEX = MASTER_ATOM("DUPLEX", <T>({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    pipeline: undefined as PIPELINE<MQ_CTX<T>> | undefined,
+
+    send: (message: T, signal?: ATOM): B => {
+        const ctx: MQ_CTX<T> = {
+            atom: self,
+            message,
+            signal,
+            meta: undefined,
+        };
+
+        return self.dispatch("beforeSend", ctx, () => {
+            self.deliver(ctx);
+            return true;
+        });
+    },
+
+    dispatch: (
+        hook: HOOK,
+        ctx: MQ_CTX<T>,
+        terminal: () => V,
+    ): V => {
+        const p = self.pipeline ??= self.compile();
+        return p.run(hook, ctx, terminal);
+    },
+
+    deliver: (ctx: MQ_CTX<T>): V => {
+        // bare transport / queue / subscriber fanout
+    },
+
+    compile: (): PIPELINE<MQ_CTX<T>> => {
+        const registry = self.registry;
+        const behaviours: BEHAVIOUR<MQ_CTX<T>>[] = [];
+
+        if (registry !== null) {
+            for (const shard of registry.shards()) {
+                if ("behaviours" in shard) {
+                    behaviours.push(...(shard as any).behaviours());
+                }
+            }
+        }
+
+        return compilePipeline(behaviours);
+    },
+}));
+// #endregion
+//                                                                                                                [MODULE_ATOM]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export type MODULE_VALUE = Function; // anything non-serializable lives here
+interface MODULE_SLOT {
+    value: MODULE_VALUE;
+    registeredAt: number;
+    owner: OWNERSHIP;
+    /** Optional hook fired right before the slot is replaced or removed. */
+    onUnload?: (value: MODULE_VALUE) => void;
+}
+export const MODULE = MASTER_ATOM("MODULE_ATOM", <T = any>({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    initial: undefined as T,
+    key: config.k ?? "__SIGNALS__",
+    module: undefined as T,
+    module_type: "class_fn_pool",
+    version: 0,
+    sealed: false,
+    frozen: true,
+    hasWritten: false,
+    persisted: false,
+
+    listeners: new Set<(change: Change<T>) => void>(),
+    waiters: new Set<(value: T) => void>(),
+    undoStack: undefined as HistoryEntry<T>[] | undefined,
+
+    conflict: undefined as ConflictPolicy | undefined,
+    historyIndex: 0,
+    history: undefined as AtomHistoryEntry<T>[] | undefined,
+    historyMax: 50,
+    lifecycle: undefined as SignalLifecycle | undefined,
+    async: undefined as AsyncSignalState<T> | undefined,
+    metrics: undefined as Metrics | undefined,
+    conflictStrategy: undefined as "latest" | "fail" | "accumulate" | undefined,
+
+    schema: undefined as SignalSchema | undefined,
+    contracts: new Map<string, AtomContract<T>>(),
+    causal: [] as CausalEntry[],
+    lastWriteSource: undefined as string | undefined,
+
+    batches: new Set<SignalKey>(),
+    batchQueue: new Map<SignalKey, unknown>(),
+    batchOpts: new Map<SignalKey, { triggerRender?: boolean }>(),
+
+    broadcast: true,
+    triggerRender: true,
+    boundary: "same-app" as Boundary,
+
+    initialize: (
+        initial: T,
+        options: MODULE_OPTIONS = {
+            module_type: "class_fn_pool",
+            broadcast: true,
+            frozen: true,
+        },
+    ): void => {
+        const ptype = options?.module_type
+            ? options.module_type
+            : self.module_type;
+        const shouldFreeze = options.frozen ?? self.frozen;
+
+        switch (ptype) {
+            case "fn":
+            case "comp":
+            case "node_module":
+                self.frozen = shouldFreeze;
+                self.module = initial;
+                self.initial = initial;
+                break;
+
+            case "class_fn_pool":
+            default:
+                self.frozen = false;
+                self.module = { ...initial };
+                self.initial = { ...initial };
+                break;
+        }
+
+        self.module_type = ptype;
+
+        if (options?.broadcast) self.broadcast = options.broadcast;
+        if (options?.module_type) self.module_type = options.module_type;
+        if (options?.schema) self.schema = options.schema;
+        if (options?.lifecycle) self.lifecycle = options.lifecycle;
+        if (options?.conflict) self.conflict = options.conflict;
+        if (options?.conflictStrategy) self.conflictStrategy = options.conflictStrategy;
+
+        if (options?.history) {
+            self.historyMax = Math.max(1, options.history.max ?? 50);
+            self.history = [{
+                k: 0,
+                value: initial,
+                timestamp: Date.now(),
+                source: "initial",
+            }];
+            self.historyIndex = 0;
+        }
+    },
+
+    read: (): T => self.module,
+
+    peek: (): T => self.module,
+
+    write: (
+        incoming: any | ((prev: T) => T),
+        options: AtomWriteOptions = {},
+    ): T => {
+        if (self.frozen) return self.peek();
+
+        const prev = self.module;
+        const resolved = incoming;
+
+        const next = self.module_type === "class_fn_pool"
+            ? resolved
+                ? { ...prev, ...resolved }
+                : prev
+            : resolved;
+
+        self.module = next;
+        self.hasWritten = true;
+        self.version += 1;
+        self.lastWriteSource = options.source ?? "write";
+        self.assertContracts(next, prev);
+
+        for (const l of self.listeners) {
+            try {
+                l(next);
+            } catch (e) {}
+        }
+
+        death_star.bus.send(self.key, next, self.s, self.m, self.r);
+
+        for (const w of self.waiters) {
+            try {
+                w(next);
+            } catch (e) {}
+        }
+
+        if (options.recordHistory !== false) {
+            self.recordHistory(prev, next, self.lastWriteSource);
+        }
+
+        self.recordCausal(next, self.lastWriteSource, options.cause);
+        self.waiters.clear();
+
+        self.notifyListeners({
+            key: self.key,
+            previous: prev,
+            current: next,
+            version: self.version,
+            timestamp: Date.now(),
+            source: self.lastWriteSource,
+        });
+
+        return next;
+    },
+
+    register: (name: string, val: any): T =>
+        self.write((prev: A) => ({ ...prev, [name]: val })),
+
+    unregister: (name: string): T =>
+        self.write((prev: A) => {
+            const { [name]: _gone, ...rest } = prev;
+            return rest;
+        }),
+
+    slot: (name: string): any => self.module[name],
+
+    on: (listener: RiftListener<any>): void => {
+        self.listeners.add(listener);
+        listener(self.module);
+    },
+
+    waitFor: (): Promise<T> =>
+        new Promise((resolve) => {
+            self.waiters.add(resolve);
+        }),
+
+    waitForSlot: async (name: string, timeoutMs = 0): Promise<any> => {
+        const existing = self.module[name];
+        if (existing !== undefined) return existing;
+
+        if (!timeoutMs) {
+            const next = await self.waitFor();
+            return (next as Record<string, any>)[name];
+        }
+
+        return Promise.race([
+            self.waitFor().then(
+                (next) => (next as Record<string, any>)[name],
+            ),
+            new Promise((_, reject) =>
+                setTimeout(
+                    () => reject(
+                        new Error(
+                            `[ModuleAtom] waitForSlot("${name}") timed out after ${timeoutMs}m`,
+                        ),
+                    ),
+                    timeoutMs,
+                ),
+            ),
+        ]);
+    },
+
+    inspect: (): T => ({ ...self.module }),
+
+    setSchema: (schema?: SignalSchema) => {
+        self.schema = schema;
+        return self;
+    },
+
+    setLifecycle: (lifecycle?: SignalLifecycle<T>) => {
+        self.lifecycle = lifecycle;
+        return self;
+    },
+
+    setConflict: (
+        conflict?: ConflictPolicy,
+        strategy?: "latest" | "fail" | "accumulate",
+    ) => {
+        self.conflict = conflict;
+        self.conflictStrategy = strategy;
+        return self;
+    },
+
+    setFrozen: (): void => {
+        self.frozen = true;
+    },
+
+    setUnfrozen: (): void => {
+        self.frozen = false;
+    },
+
+    setSealed: (): void => {
+        self.sealed = true;
+    },
+
+    setUnsealed: (): void => {
+        self.sealed = false;
+    },
+
+    setBoundary: (): void => {},
+
+    validate: (next: T): T => {
+        if (!self.schema) return next;
+        return death_star.signals._.validateSchema(self.schema, next);
+    },
+
+    assertContracts: (next: T, previous: T): void => {
+        for (const contract of self.contracts.values()) {
+            let valid = false;
+
+            try {
+                valid = contract.postcondition(next, previous);
+            } catch (error) {
+                console.error(
+                    `[Sauron] contract "${contract.name}" threw for "${String(self.key)}":`,
+                    error,
+                );
+            }
+
+            if (valid) continue;
+
+            const message =
+                `[Sauron] contract "${contract.name}" violated ` +
+                `on write to "${String(self.key)}"`;
+
+            if (contract.block) {
+                throw new Error(message);
+            }
+
+            console.error(message);
+        }
+    },
+
+    recordHistory: (previous: T, next: T, source?: string): void => {
+        if (!self.history) return;
+
+        self.history.splice(self.historyIndex + 1);
+
+        const last = self.history[self.history.length - 1];
+
+        self.history.push({
+            k: (last?.k ?? -1) + 1,
+            prev: previous,
+            value: next,
+            next,
+            timestamp: Date.now(),
+            source,
+            undone: false,
+        });
+
+        while (self.history.length > self.historyMax) {
+            self.history.shift();
+        }
+
+        self.historyIndex = self.history.length - 1;
+    },
+
+    getHistory: (): readonly AtomHistoryEntry<T>[] =>
+        self.history ?? [],
+
+    timeTravel: (steps = 1): T | undefined => {
+        if (!self.history?.length || steps <= 0) return undefined;
+
+        const idx = Math.max(
+            0,
+            Math.min(self.history.length - 1, self.historyIndex + steps),
+        );
+
+        if (idx === self.historyIndex) return undefined;
+
+        self.historyIndex = idx;
+        return self.replayHistory("time-travel");
+    },
+
+    back: (steps = 1): T | undefined =>
+        self.timeTravel(-Math.abs(steps)),
+
+    forward: (steps = 1): T | undefined =>
+        self.timeTravel(Math.abs(steps)),
+
+    goto: (sequence: number): T | undefined => {
+        if (!self.history?.length) return undefined;
+
+        const idx = self.history.findIndex(
+            (entry) => entry.k === sequence,
+        );
+
+        if (idx < 0 || idx === self.historyIndex) return undefined;
+
+        self.historyIndex = idx;
+        return self.replayHistory("time-travel.goto");
+    },
+
+    replayHistory: (source: string): T => {
+        const entry = self.history![self.historyIndex];
+
+        return self.write(entry.value as T, {
+            source,
+            cause: "time-travel",
+            triggerRender: true,
+            recordHistory: false,
+        });
+    },
+
+    recordCausal: (
+        value: T,
+        source?: string,
+        cause?: string,
+    ): void => {
+        self.causal.push({
+            value,
+            source,
+            cause,
+            timestamp: Date.now(),
+        } as CausalEntry);
+
+        if (self.causal.length > 100) {
+            self.causal.shift();
+        }
+    },
+
+    recordMetrics: (): void => {
+        if (!self.metrics) return;
+
+        self.metrics.writeCount += 1;
+        self.metrics.lastWrite = Date.now();
+    },
+	
+    notifyListeners: (change: Change<T>): void => {
+        const listeners = death_star.wr._listeners.get(self.key);
+        if (!listeners) return;
+
+        for (const listener of listeners) {
+            try {
+                listener(change);
+            } catch (error) {
+                console.error(
+                    `[Sauron:SIGNAL_CELL:${String(self.key)}] listener failed:`,
+                    error,
+                );
+            }
+        }
+    },
+
+    resolveWaiters: (value: T): void => {
+        const waiting = death_star.wr._waiters.get(self.key);
+        if (!waiting) return;
+
+        death_star.wr._waiters.delete(self.key);
+
+        for (const resolve of waiting) {
+            try {
+                resolve(value);
+            } catch (error) {
+                console.error(
+                    `[Sauron:SIGNAL_CELL:${String(self.key)}] waiter failed:`,
+                    error,
+                );
+            }
+        }
+    },
+
+    notifyExternalSubscribers: (): void => {
+        const subscribers = death_star.state._externalSubscribers.get(self.key);
+        if (!subscribers) return;
+
+        for (const callback of subscribers) {
+            try {
+                callback();
+            } catch (error) {
+                console.error(
+                    `[Sauron:SIGNAL_CELL:${String(self.key)}] external subscriber failed:`,
+                    error,
+                );
+            }
+        }
+    },
+}));
+// #endregion
+//                                                                                                      [MODULE_STORAGE_PROTON]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const MODULE_STORAGE = MASTER_ATOM(
+    "MODULE_STORAGE_PROTON",
+    ({ self, master, config }: any) => ({
+        k: config.k ?? "__SIGNALS__",
+        s: config.s ?? "SAURON_SLAVE_REG",
+        m: config.m ?? "SAURON_MASTER_REG",
+        r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+        slots: new Map<S, MODULE_SLOT>(),
+
+        addr: (
+            k: S = self.k,
+            s: S = self.s,
+            c?: CACHE,
+            m: S = self.m,
+            r: S = self.r,
+        ): S =>
+            c !== undefined
+                ? `[${r}][${m}][${c}][${s}][${k}]` as S
+                : `[${r}][${m}][${s}][${k}]` as S,
+
+        set: (
+            value: MDV,
+            k: S,
+            s: S,
+            c: S,
+            m: S,
+            r: S,
+            options: {
+                owner?: OWNERSHIP;
+                onUnload?: (v: MDV) => V;
+            } = {},
+        ): MDV => {
+            const key = self.addr(k, s, c, m, r);
+            const prev = self.slots.get(key);
+
+            prev?.onUnload?.(prev.value);
+
+            self.slots.set(key, {
+                value,
+                registeredAt: Date.now(),
+                owner: options.owner ?? "bespoke",
+                onUnload: options.onUnload,
+            });
+
+            return value;
+        },
+
+        get: (
+            k: S,
+            s: S,
+            m: S,
+            r: S,
+        ): MODULE_VALUE | undefined =>
+            self.slots.get(self.addr(k, s, undefined, m, r))?.value,
+
+        has: (
+            k: S,
+            s: S,
+            m: S,
+            r: S,
+        ): B =>
+            self.slots.has(self.addr(k, s, undefined, m, r)),
+
+        drop: (
+            k: S,
+            s: S,
+            m: S,
+            r: S,
+            force: B = false,
+        ): B => {
+            const key = self.addr(k, s, undefined, m, r);
+            const slot = self.slots.get(key);
+
+            if (!slot) return false;
+            if (slot.owner === "shared" && !force) return false;
+
+            slot.onUnload?.(slot.value);
+            self.slots.delete(key);
+
+            return true;
+        },
+
+        list: (
+            s: S,
+            m: S,
+            r: S,
+        ): Array<{ k: S; owner: OWNERSHIP; registeredAt: N }> => {
+            const prefix = `[${r}][${m}][${s}][`;
+            const out: Array<{
+                k: S;
+                owner: OWNERSHIP;
+                registeredAt: N;
+            }> = [];
+
+            for (const [key, slot] of self.slots) {
+                if (key.startsWith(prefix)) {
+                    out.push({
+                        k: key.slice(0, -1).slice(prefix.length) as S,
+                        owner: slot.owner,
+                        registeredAt: slot.registeredAt,
+                    });
+                }
+            }
+
+            return out;
+        },
+
+        inspect: (): Array<{ address: S; owner: OWNERSHIP; kind: S }> =>
+            [...self.slots.entries()].map(([address, slot]) => ({
+                address,
+                owner: slot.owner,
+                kind: typeof slot.value === "function"
+                    ? (slot.value.name || "anonymous-fn") as S
+                    : "object" as S,
+            })),
+
+        purge: (): void => {
+            for (const slot of self.slots.values()) {
+                slot.onUnload?.(slot.value);
+            }
+            self.slots.clear();
+        },
+    }),
+);
+// #endregion
+//                                                                                                                [MODULE_ATOM]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export type S_CLASS_VALUE = Function; // anything non-serializable lives here
+type MDV = S_CLASS_VALUE;
+
+interface MODULE_SLOT {
+    value: S_CLASS_VALUE;
+    registeredAt: N;
+    owner: OWNERSHIP;
+    /** Optional hook fired right before the slot is replaced or removed. */
+    onUnload?: (value: S_CLASS_VALUE) => V;
+}
+interface MODULE_OPTIONS {
+	module_type?: 'class_fn_pool' | "fn" | 'comp' | 'node_module' ;
+	schema?: SignalSchema;
+	conflict?: ConflictPolicy;
+	history?: { max: N };
+	lifecycle?: SignalLifecycle;
+	ttl?: N;
+	broadcast?: B;
+	conflictStrategy?: "latest" | "fail" | "accumulate";
+	frozen?: B;
+}
+export const S_CLASS_ATOM = BIND_ATOM("S_CLASS_ATOM", <T = any>({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    initial: undefined as T,
+    key: config.k ?? "__SIGNALS__",
+    module: undefined as T,
+    module_type: "class_fn_pool",
+    version: 0,
+    sealed: false,
+    frozen: true,
+    hasWritten: false,
+    persisted: false,
+
+    listeners: new Set<(change: Change<T>) => void>(),
+    waiters: new Set<(value: T) => void>(),
+    undoStack: undefined as HistoryEntry<T>[] | undefined,
+
+    conflict: undefined as ConflictPolicy | undefined,
+    historyIndex: 0,
+    history: undefined as AtomHistoryEntry<T>[] | undefined,
+    historyMax: 50,
+    lifecycle: undefined as SignalLifecycle | undefined,
+    async: undefined as AsyncSignalState<T> | undefined,
+    metrics: undefined as Metrics | undefined,
+    conflictStrategy: undefined as "latest" | "fail" | "accumulate" | undefined,
+
+    schema: undefined as SignalSchema | undefined,
+    contracts: new Map<string, AtomContract<T>>(),
+    causal: [] as CausalEntry[],
+    lastWriteSource: undefined as string | undefined,
+
+    batches: new Set<SignalKey>(),
+    batchQueue: new Map<SignalKey, unknown>(),
+    batchOpts: new Map<SignalKey, { triggerRender?: boolean }>(),
+
+    broadcast: true,
+    triggerRender: true,
+    boundary: "same-app" as Boundary,
+
+    initialize: (
+        initial: T,
+        options: MODULE_OPTIONS = {
+            module_type: "class_fn_pool",
+            broadcast: true,
+            frozen: true,
+        },
+    ): void => {
+        const ptype = options?.module_type
+            ? options.module_type
+            : self.module_type;
+        const shouldFreeze = options.frozen ?? self.frozen;
+
+        switch (ptype) {
+            case "fn":
+            case "comp":
+            case "node_module":
+                self.frozen = shouldFreeze;
+                self.module = initial;
+                self.initial = initial;
+                break;
+
+            case "class_fn_pool":
+            default:
+                self.frozen = false;
+                self.module = { ...initial };
+                self.initial = { ...initial };
+                break;
+        }
+
+        self.module_type = ptype;
+
+        if (options?.broadcast) self.broadcast = options.broadcast;
+        if (options?.module_type) self.module_type = options.module_type;
+        if (options?.schema) self.schema = options.schema;
+        if (options?.lifecycle) self.lifecycle = options.lifecycle;
+        if (options?.conflict) self.conflict = options.conflict;
+        if (options?.conflictStrategy) self.conflictStrategy = options.conflictStrategy;
+
+        if (options?.history) {
+            self.historyMax = Math.max(1, options.history.max ?? 50);
+            self.history = [{
+                k: 0,
+                value: initial,
+                timestamp: Date.now(),
+                source: "initial",
+            }];
+            self.historyIndex = 0;
+        }
+    },
+
+    read: (): T => self.module,
+
+    peek: (): T => self.module,
+
+    write: (
+        incoming: any | ((prev: T) => T),
+        options: AtomWriteOptions = {},
+    ): T => {
+        if (self.frozen) return self.peek();
+
+        const prev = self.module;
+        const resolved = incoming;
+
+        const next = self.module_type === "class_fn_pool"
+            ? resolved
+                ? { ...prev, ...resolved }
+                : prev
+            : resolved;
+
+        self.module = next;
+        self.hasWritten = true;
+        self.version += 1;
+        self.lastWriteSource = options.source ?? "write";
+        self.assertContracts(next, prev);
+
+        for (const l of self.listeners) {
+            try {
+                l(next);
+            } catch (e) {}
+        }
+
+        death_star.bus.send(self.key, next, self.s, self.m, self.r);
+
+        for (const w of self.waiters) {
+            try {
+                w(next);
+            } catch (e) {}
+        }
+
+        if (options.recordHistory !== false) {
+            self.recordHistory(prev, next, self.lastWriteSource);
+        }
+
+        self.recordCausal(next, self.lastWriteSource, options.cause);
+        self.waiters.clear();
+
+        self.notifyListeners({
+            key: self.key,
+            previous: prev,
+            current: next,
+            version: self.version,
+            timestamp: Date.now(),
+            source: self.lastWriteSource,
+        });
+
+        return next;
+    },
+
+    register: (name: string, val: any): T =>
+        self.write((prev: A) => ({ ...prev, [name]: val })),
+
+    unregister: (name: string): T =>
+        self.write((prev: A) => {
+            const { [name]: _gone, ...rest } = prev;
+            return rest;
+        }),
+
+    slot: (name: string): any => self.module[name],
+
+    on: (listener: RiftListener<any>): void => {
+        self.listeners.add(listener);
+        listener(self.module);
+    },
+
+    waitFor: (): Promise<T> =>
+        new Promise((resolve) => {
+            self.waiters.add(resolve);
+        }),
+
+    waitForSlot: async (name: string, timeoutMs = 0): Promise<any> => {
+        const existing = self.module[name];
+        if (existing !== undefined) return existing;
+
+        if (!timeoutMs) {
+            const next = await self.waitFor();
+            return (next as Record<string, any>)[name];
+        }
+
+        return Promise.race([
+            self.waitFor().then(
+                (next) => (next as Record<string, any>)[name],
+            ),
+            new Promise((_, reject) =>
+                setTimeout(
+                    () => reject(
+                        new Error(
+                            `[ModuleAtom] waitForSlot("${name}") timed out after ${timeoutMs}m`,
+                        ),
+                    ),
+                    timeoutMs,
+                ),
+            ),
+        ]);
+    },
+
+    inspect: (): T => ({ ...self.module }),
+
+    setSchema: (schema?: SignalSchema) => {
+        self.schema = schema;
+        return self;
+    },
+
+    setLifecycle: (lifecycle?: SignalLifecycle<T>) => {
+        self.lifecycle = lifecycle;
+        return self;
+    },
+
+    setConflict: (
+        conflict?: ConflictPolicy,
+        strategy?: "latest" | "fail" | "accumulate",
+    ) => {
+        self.conflict = conflict;
+        self.conflictStrategy = strategy;
+        return self;
+    },
+
+    setFrozen: (): void => {
+        self.frozen = true;
+    },
+
+    setUnfrozen: (): void => {
+        self.frozen = false;
+    },
+
+    setSealed: (): void => {
+        self.sealed = true;
+    },
+
+    setUnsealed: (): void => {
+        self.sealed = false;
+    },
+
+    setBoundary: (): void => {},
+
+    validate: (next: T): T => {
+        if (!self.schema) return next;
+        return death_star.signals._.validateSchema(self.schema, next);
+    },
+
+    assertContracts: (next: T, previous: T): void => {
+        for (const contract of self.contracts.values()) {
+            let valid = false;
+
+            try {
+                valid = contract.postcondition(next, previous);
+            } catch (error) {
+                console.error(
+                    `[Sauron] contract "${contract.name}" threw for "${String(self.key)}":`,
+                    error,
+                );
+            }
+
+            if (valid) continue;
+
+            const message =
+                `[Sauron] contract "${contract.name}" violated ` +
+                `on write to "${String(self.key)}"`;
+
+            if (contract.block) {
+                throw new Error(message);
+            }
+
+            console.error(message);
+        }
+    },
+
+    recordHistory: (previous: T, next: T, source?: string): void => {
+        if (!self.history) return;
+
+        self.history.splice(self.historyIndex + 1);
+
+        const last = self.history[self.history.length - 1];
+
+        self.history.push({
+            k: (last?.k ?? -1) + 1,
+            prev: previous,
+            value: next,
+            next,
+            timestamp: Date.now(),
+            source,
+            undone: false,
+        });
+
+        while (self.history.length > self.historyMax) {
+            self.history.shift();
+        }
+
+        self.historyIndex = self.history.length - 1;
+    },
+
+    getHistory: (): readonly AtomHistoryEntry<T>[] =>
+        self.history ?? [],
+
+    timeTravel: (steps = 1): T | undefined => {
+        if (!self.history?.length || steps <= 0) return undefined;
+
+        const idx = Math.max(
+            0,
+            Math.min(self.history.length - 1, self.historyIndex + steps),
+        );
+
+        if (idx === self.historyIndex) return undefined;
+
+        self.historyIndex = idx;
+        return self.replayHistory("time-travel");
+    },
+
+    back: (steps = 1): T | undefined =>
+        self.timeTravel(-Math.abs(steps)),
+
+    forward: (steps = 1): T | undefined =>
+        self.timeTravel(Math.abs(steps)),
+
+    goto: (sequence: number): T | undefined => {
+        if (!self.history?.length) return undefined;
+
+        const idx = self.history.findIndex(
+            (entry) => entry.k === sequence,
+        );
+
+        if (idx < 0 || idx === self.historyIndex) return undefined;
+
+        self.historyIndex = idx;
+        return self.replayHistory("time-travel.goto");
+    },
+
+    replayHistory: (source: string): T => {
+        const entry = self.history![self.historyIndex];
+
+        return self.write(entry.value as T, {
+            source,
+            cause: "time-travel",
+            triggerRender: true,
+            recordHistory: false,
+        });
+    },
+
+    recordCausal: (
+        value: T,
+        source?: string,
+        cause?: string,
+    ): void => {
+        self.causal.push({
+            value,
+            source,
+            cause,
+            timestamp: Date.now(),
+        } as CausalEntry);
+
+        if (self.causal.length > 100) {
+            self.causal.shift();
+        }
+    },
+
+    recordMetrics: (): void => {
+        if (!self.metrics) return;
+
+        self.metrics.writeCount += 1;
+        self.metrics.lastWrite = Date.now();
+    },
+
+    notifyListeners: (change: Change<T>): void => {
+        const listeners = death_star.wr._listeners.get(self.key);
+        if (!listeners) return;
+
+        for (const listener of listeners) {
+            try {
+                listener(change);
+            } catch (error) {
+                console.error(
+                    `[Sauron:SIGNAL_CELL:${String(self.key)}] listener failed:`,
+                    error,
+                );
+            }
+        }
+    },
+
+    resolveWaiters: (value: T): void => {
+        const waiting = death_star.wr._waiters.get(self.key);
+        if (!waiting) return;
+
+        death_star.wr._waiters.delete(self.key);
+
+        for (const resolve of waiting) {
+            try {
+                resolve(value);
+            } catch (error) {
+                console.error(
+                    `[Sauron:SIGNAL_CELL:${String(self.key)}] waiter failed:`,
+                    error,
+                );
+            }
+        }
+    },
+
+    notifyExternalSubscribers: (): void => {
+        const subscribers = death_star.state._externalSubscribers.get(self.key);
+        if (!subscribers) return;
+
+        for (const callback of subscribers) {
+            try {
+                callback();
+            } catch (error) {
+                console.error(
+                    `[Sauron:SIGNAL_CELL:${String(self.key)}] external subscriber failed:`,
+                    error,
+                );
+            }
+        }
+    },
+}));
+
+// #endregion
+//                                                                                                     [S_CLASS_STORAGE_PROTON]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const S_CLASS_STORAGE = MASTER_ATOM(
+    "S_CLASS_STORAGE_PROTON",
+    ({ self, master, config }: any) => ({
+        k: config.k ?? "__SIGNALS__",
+        s: config.s ?? "SAURON_SLAVE_REG",
+        m: config.m ?? "SAURON_MASTER_REG",
+        r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+        store: new Map<string, Record<string, any>>(),
+        addr: (
+            k: string,
+            sl: string,
+            ms: string,
+            rt: string,
+        ): string => `[${rt}][${ms}][${sl}][${k}]`,
+
+        set: (
+            k: string,
+            incoming: Record<string, any> | undefined,
+            sl: string,
+            ms: string,
+            rt: string,
+            bus: any,
+        ): Record<string, any> => {
+            const key = self.addr(k, sl, ms, rt);
+            const prev = self.store.get(key) ?? {};
+            const next = incoming ? { ...prev, ...incoming } : prev;
+
+            self.store.set(key, next);
+            bus.send.emit(k, next, sl, ms, rt);
+
+            return next;
+        },
+
+        get: (
+            k: string,
+            sl: string,
+            ms: string,
+            rt: string,
+        ): Record<string, any> | undefined =>
+            self.store.get(self.addr(k, sl, ms, rt)),
+
+        has: (
+            k: string,
+            sl: string,
+            ms: string,
+            rt: string,
+        ): boolean => self.store.has(self.addr(k, sl, ms, rt)),
+
+        inspect: (): Array<{ address: string; value: Record<string, any> }> =>
+            [...self.store.entries()].map(([address, value]) => ({
+                address,
+                value,
+            })),
+
+        clear: (): void => {
+            self.store.clear();
+        },
+
+        get size(): number {
+            return self.store.size;
+        },
+    }),
+);
+// #endregion
+//                                                                                                                  MASTER ATOM
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const ATOM = MASTER_ATOM('ATOM',({ self, config, gate, subscription, SEALED_ERROR, conflict }: any) => ({
+		k: config.k ?? "__SIGNALS__",
+		s: config.s ?? "SAURON_SLAVE_REG",
+		m: config.m ?? "SAURON_MASTER_REG",
+		r: config.r ?? "THE_WIZARD_ROOT_REG",
+		value: config.value as U,
+		read() {
+			const r = self.value;
+			if (r !== null) { if (GATE !== undefined && gate.sealed) throw new SEALED_ERROR.log(self.k); }
+			return self.value;
+		},
+		write1(next: U): B {
+			const r = self.registry;
+			if (r === null) { self.value = next; return true; }
+			if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
+			const previous = self.value;
+			if (Object.is(previous, next)) return false;
+			self.value = next;
+			if (subscription !== undefined) subscription.notify({ key: self.key, previous, current: next });
+			return true;
+		},
+		write(next) {
+			if (gate?.sealed || gate?.frozen) return false;
+			const current = self.value;
+			if (Object.is(current, next)) return false;
+		  
+			const decision = conflict.check({
+			  current,
+			  incoming: next,
+			  previous: self.previous ?? current,
+			});
+		  
+			if (!decision.accepted) {
+			  return false;
+			}
+		  
+			const resolved = decision.value;
+		  
+			if (Object.is(current, resolved)) return false;
+		  
+			self.useCell().set("value", resolved);
+		  
+			return true;
+		  },
+		subscribe(listener: LISTENER<A>): UNSUBSCRIBE { return subscription.subscribe(listener); },
+		waitFor() {},
+}));
+// #endregion
+//                                                                                                                MASTER VERTEX
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const VERTEX = MASTER_ATOM("VERTEX", ({ self,config, gate, subscription, SEALED_ERROR }: any) => ({
+    value: config.value as U,
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+    pid: 1,
+    slabRegistry: new Map<number, Uint8Array>(),
+    ...(() => {
+        const capacity = (() => {
+            const need = (value: U): N =>
+                Array.isArray(value) ? value.length + 1 :
+                value instanceof Map || value instanceof Set ? value.size + 1 : 2;
+
+            const size = need(self.value);
+
+            return size > 8192 ? 64 :
+                size <= 64 ? 64 :
+                size <= 128 ? 128 :
+                size <= 256 ? 256 :
+                size <= 1024 ? 1024 : 8192;
+        })();
+
+        const lane = new Int32Array(config.capacity ?? capacity).fill(-1);
+        const ops = new Uint8Array(config.capacity ?? capacity);
+        const posX = new Float32Array(config.capacity ?? capacity);
+        const posY = new Float32Array(config.capacity ?? capacity);
+        const val = new Int32Array(config.capacity ?? capacity);
+        const freePids = new Int32Array(config.capacity ?? capacity);
+
+        let freeHead = 0;
+        let freeTail = 0;
+        let laneLen = 0;
+        let nextId = 0;
+
+        const ids = new Map<S, N>();
+        const names: S[] = [];
+        const pids = new Map<S, N>();
+        const addresses = new Map<N, [N, N, N, N]>();
+        const listener: Array<ListenerFn | UD> = [];
+        const pidToHash = new Uint32Array(config.capacity ?? capacity);
+        const channelMap = new Int32Array(config.capacity ?? capacity);
+        const subChannelMap = new Int32Array(config.capacity ?? capacity);
+        const tripChannelMap = new Int32Array(config.capacity ?? capacity);
+        const dirtyPids = new Int32Array(config.capacity ?? capacity);
+
+        for (let i = 1; i < lane.length; i++) {
+            freePids[freeTail++] = i;
+        }
+
+        lane[0] = TRACER_PID;
+        val[TRACER_PID] = 0;
+        ops[TRACER_PID] = OP.NONE;
+        laneLen = 1;
+
+        return {
+            capacity: lane.length,
+            lane,
+            ops,
+            posX,
+            posY,
+            val,
+            freePids,
+            freeHead,
+            freeTail,
+            laneLen,
+            ids,
+            names,
+            pids,
+            addresses,
+            nextId,
+            listener,
+            pidToHash,
+            nextAllocatedPid: 1,
+            channelMap,
+            subChannelMap,
+            tripChannelMap,
+            dirtyPids,
+        };
+    })(),
+    need(value: U): N {        return Array.isArray(value) ? value.length + 1 : value instanceof Map || value instanceof Set ? value.size + 1 : 2;    },
+    BINARY_CODEC: new BINARY_CODEC(),
+    ...(() => {
+        const codec = new BINARY_CODEC();
+
+        return {
+            codec,
+            encodeToSlab(pid: N, value: A): N {
+                if (typeof value === "number") {
+                    self.slabRegistry.delete(pid);
+                    return value;
+                }
+
+                const bytes = codec.encode_msg(value);
+                self.slabRegistry.set(pid, bytes);
+                return bytes.byteLength;
+            },
+
+            clearSlab(pid: N): void {
+                self.slabRegistry.delete(pid);
+            },
+
+            hasSlab(pid: N): B {
+                return self.slabRegistry.has(pid);
+            },
+
+            readSlabValue<T>(pid: N): T | NU {
+                const bytes = self.slabRegistry.get(pid);
+                return bytes ? codec.decode_msg(bytes) as T : null;
+            },
+        };
+    })(),
+    ...(() => {
+        const codec = self.BINARY_CODEC;
+        const x = self.posX;
+        const y = self.posY;
+        const pid = self.pid;
+
+        const initialize = () => {
+            const value = self.value;
+            const v = codec.encode_msg(value);
+            const position = self.getPosition(pid);
+
+            if (self.need(value) > 8192) {
+                self.encodeToSlab(pid, v);
+                x[pid] = position.x;
+                y[pid] = position.y;
+                self.ops[pid] = OP.WRITE;
+                self.lane[self.laneLen++] = pid;
+            } else {
+                const vb = codec.encode_msg(v);
+                self.edit(position.x, position.y, vb, pid);
+            }
+        };
+
+        return { initialize };
+    })(),
+    check_size_and_edit(value: A): V {
+        const v = self.BINARY_CODEC.encode_msg(value);
+        const { x, y } = self.getPosition(self.pid);
+
+        if (self.need(value) > 8192) {
+            self.encodeToSlab(self.pid, v);
+            self.posX[self.pid] = x;
+            self.posY[self.pid] = y;
+            self.ops[self.pid] = OP.EDIT;
+            self.lane[self.laneLen++] = self.pid;
+        } else {
+            self.create(x, y, v, self.pid);
+        }
+    },
+    getX(pid: N): N { return self.posX[pid]; },
+    getY(pid: N): N { return self.posY[pid]; },
+    getPosition(pid: N): { x: N; y: N } { return { x: self.posX[pid], y: self.posY[pid] }; },
+    create(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.WRITE; self.lane[self.laneLen++] = pid; },
+    edit(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.EDIT; },
+    subscribeValue(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SUB; },
+    readValue(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.READ; },
+    effect(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.EFFECT; },
+    delete(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DELETE; },
+    compact(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.COMPACT; },
+    none(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.NONE; },
+    send(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SEND; },
+    sub(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SUB; },
+    duplex(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DUPLEX; },
+    stream(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.STREAM; },
+    drc(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DRC; },
+    reclaimPid(pid: N): V { self.posX[pid] = 0; self.posY[pid] = 0; self.val[pid] = 0; self.ops[pid] = OP.NONE; self.freePids[self.freeTail] = pid; self.freeTail = (self.freeTail + 1) % self.capacity; },
+    pass(): void {
+        const len = self.laneLen;
+        let writeIdx = 0;
+        let i = 0;
+        const unrolledLimit = len - (len % 4);
+
+        for (; i < unrolledLimit; i += 4) {
+            let pid = self.lane[i];
+
+            if (pid === TRACER_PID) {
+                self.val[TRACER_PID]++;
+                self.lane[writeIdx++] = pid;
+            } else if (self.ops[pid] === OP.DELETE) {
+                self.reclaimPid(pid);
+            } else {
+                self.ops[pid] = OP.NONE;
+                self.lane[writeIdx++] = pid;
+            }
+
+            pid = self.lane[i + 1];
+
+            if (pid === TRACER_PID) {
+                self.val[TRACER_PID]++;
+                self.lane[writeIdx++] = pid;
+            } else if (self.ops[pid] === OP.DELETE) {
+                self.reclaimPid(pid);
+            } else {
+                self.ops[pid] = OP.NONE;
+                self.lane[writeIdx++] = pid;
+            }
+
+            pid = self.lane[i + 2];
+
+            if (pid === TRACER_PID) {
+                self.val[TRACER_PID]++;
+                self.lane[writeIdx++] = pid;
+            } else if (self.ops[pid] === OP.DELETE) {
+                self.reclaimPid(pid);
+            } else {
+                self.ops[pid] = OP.NONE;
+                self.lane[writeIdx++] = pid;
+            }
+
+            pid = self.lane[i + 3];
+
+            if (pid === TRACER_PID) {
+                self.val[TRACER_PID]++;
+                self.lane[writeIdx++] = pid;
+            } else if (self.ops[pid] === OP.DELETE) {
+                self.reclaimPid(pid);
+            } else {
+                self.ops[pid] = OP.NONE;
+                self.lane[writeIdx++] = pid;
+            }
+        }
+
+        for (; i < len; i++) {
+            const pid = self.lane[i];
+
+            if (pid === TRACER_PID) {
+                self.val[TRACER_PID]++;
+                self.lane[writeIdx++] = pid;
+            } else if (self.ops[pid] === OP.DELETE) {
+                self.reclaimPid(pid);
+            } else {
+                self.ops[pid] = OP.NONE;
+                self.lane[writeIdx++] = pid;
+            }
+        }
+
+        self.laneLen = writeIdx;
+    },
+    get tick(): N { return self.val[TRACER_PID]; },
+    get length(): N { return self.laneLen; },
+    getLoadFactor(): N {
+        const activeCount = Math.max(0, self.laneLen - 1);
+        return activeCount / (self.capacity - 1);
+    },
+    read() {
+        const r = self.registry;
+        if (r !== null) {  if (gate !== undefined && gate.sealed)  throw new SEALED_ERROR.log(self.key);  }
+        return self.value;
+    },
+    write(next: A): B {
+        const r = self.registry;
+        if (r === null) { self.value = next; return true; }
+
+        if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
+        const previous = self.value;
+        if (Object.is(previous, next)) return false;
+        self.value = next;
+ 
+        if (subscription !== undefined)  subscription.notify({ key: self.key, previous, current: next });
+        return true;
+    },
+    subscribe(listener: LISTENER<A>): UNSUBSCRIBE {return subscription.subscribe(listener); },
+    waitFor() {},
+}));
+// #endregion
+//                                                                                                                     CONFLICT
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const CONFLICT = BIND_ATOM("CONFLICT", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    conflictStrategy: (config.conflictStrategy ?? "latest") as "latest" | "fail" | "accumulate",
+    conflict: config.conflict,
+
+    resolve<T>(current: T, incoming: T): T {
+        switch (self.conflictStrategy) {
+            case "fail":
+                throw new Error("SOUL_NEUTRON conflict: concurrent values cannot be merged");
+
+            case "accumulate":
+                if (typeof current === "number" && typeof incoming === "number") return (current + incoming) as T;
+                if (Array.isArray(current) && Array.isArray(incoming)) return [...current, ...incoming] as T;
+                if (typeof current === "string" && typeof incoming === "string") return (current + incoming) as T;
+                throw new TypeError("SOUL_NEUTRON accumulate conflict requires matching number, string, or array values");
+
+            case "latest":
+            default:
+                return incoming;
+        }
+    },
+}));
+// #endregion
+//                                                                                                                      CONTEXT
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const CONTEXT = BIND_ATOM("CONTEXT", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    store: new Map<S, A>(),
+
+    set(key: S, value: A): void {
+        self.store.set(key, value);
+        // if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('context_set', undefined, undefined, undefined, { key });
+    },
+
+    get(key: S): A | undefined {
+        return self.store.get(key);
+    },
+
+    /** Read with a fallback — context lookups always expect a default. */
+    getOr(key: S, fallback: A): A {
+        return self.store.has(key) ? self.store.get(key) as A : fallback;
+    },
+
+    has(key: S): B {
+        return self.store.has(key);
+    },
+
+    delete(key: S): B {
+        return self.store.delete(key);
+    },
+
+    keys(): S[] {
+        return [...self.store.keys()];
+    },
+
+    /** Full snapshot, for hand-off / persistence / diagnostics. */
+    snapshot(): Record<S, A> {
+        return Object.fromEntries(self.store);
+    },
+
+    /** Restore from a snapshot. Replaces the store wholesale. */
+    restore(snap: Record<S, A>): void {
+        self.store = new Map(Object.entries(snap));
+    },
+
+    /** Merge a partial snapshot over the current store (existing keys win unless overwrite). */
+    merge(snap: Record<S, A>, overwrite = false): void {
+        for (const [k, v] of Object.entries(snap)) {
+            if (!overwrite && self.store.has(k)) continue;
+            self.store.set(k, v);
+        }
+    },
+
+    /** Scoped read: return a sub-object of the store whose keys start with the prefix. */
+    scoped(prefix: S): Record<S, A> {
+        const out: Record<S, A> = {};
+        for (const [k, v] of self.store) {
+            if (k.startsWith(prefix)) out[k] = v;
+        }
+        return out;
+    },
+
+    purge(): void {
+        self.store.clear();
+    },
+}));
+// #endregion
+//                                                                                                                   ENCRYPTION
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const ENCRYPTION = BIND_ATOM("ENCRYPTION", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    encryptionConfigs: [] as EncryptionConfig[],
+
+    getEncryptionConfigs(): EncryptionConfig[] {
+        return [...self.encryptionConfigs];
+    },
+
+    configureEncryption(config: EncryptionConfig): void {
+        self.encryptionConfigs.push(config);
+    },
+}));
+// #endregion
+//                                                                                                                       GROUPS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const GROUPS = BIND_ATOM("GROUPS", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    groups: new Map<string, {
+        channels: Set<string>;
+        enabled: boolean;
+        middleware: ((msg: CSEMessage) => boolean | void)[];
+    }>(),
+
+    createGroup(name: string, channels: string[] = [], options?: GroupOptions): void {
+        self.groups.set(name, {
+            channels: new Set(channels),
+            enabled: options?.enabled ?? true,
+            middleware: options?.middleware ? [options.middleware] : [],
+        });
+    },
+
+    deleteGroup(name: string): void {
+        self.groups.delete(name);
+    },
+
+    enableGroup(name: string): void {
+        const g = self.groups.get(name);
+        if (!g) return;
+        g.enabled = true;
+    },
+
+    disableGroup(name: string): void {
+        const g = self.groups.get(name);
+        if (!g) return;
+        g.enabled = false;
+    },
+
+    addToGroup(name: string, rt: string): void {
+        const g = self.groups.get(name);
+        if (!g) return;
+        g.channels.add(rt);
+    },
+
+    removeFromGroup(name: string, rt: string): void {
+        const g = self.groups.get(name);
+        if (!g) return;
+        g.channels.delete(rt);
+    },
+
+    async groupBroadcast(
+        name: string,
+        p: any,
+        sl = self.sl,
+        ms = self.ms,
+        rt = self.rt,
+        ttl?: number,
+    ): Promise<void> {
+        const g = self.groups.get(name);
+        if (!g || !g.enabled) return;
+
+        await Promise.all(
+            [...g.channels].map(ch => self.broadcast(p, ch, sl, ms, rt, ttl)),
+        );
+    },
+
+    groupUse(name: string, fn: (msg: CSEMessage) => boolean | void): void {
+        const g = self.groups.get(name);
+        if (!g) return;
+        g.middleware.push(fn);
+    },
+
+    getAllGroups(): Record<string, {
+        channels: string[];
+        enabled: boolean;
+        middlewareCount: number;
+    }> {
+        const out: Record<string, {
+            channels: string[];
+            enabled: boolean;
+            middlewareCount: number;
+        }> = {};
+
+        for (const [name, g] of self.groups) {
+            out[name] = {
+                channels: [...g.channels],
+                enabled: g.enabled,
+                middlewareCount: g.middleware.length,
+            };
+        }
+
+        return out;
+    },
+}));
+// #endregion
+//                                                                                                                      HISTORY
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const HISTORY = BIND_ATOM("HISTORY", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    history: new Map<string, CSEMessage[]>(),
+    defaultLimit: 128,
+    limits: new Map<string, number>(),
+
+    /** Append one message. Returns the entry so callers can thread it onward. */
+    record(rt: string, msg: CSEMessage): CSEMessage {
+        let list = self.history.get(rt);
+        if (!list) {
+            list = [];
+            self.history.set(rt, list);
+        }
+
+        list.push(msg);
+
+        const limit = self.limits.get(rt) ?? self.defaultLimit;
+        if (list.length > limit) list.splice(0, list.length - limit);
+
+        return msg;
+    },
+
+    setChannelLimit(rt: string, limit: number): void {
+        self.limits.set(rt, limit);
+
+        const list = self.history.get(rt);
+        if (list && list.length > limit) {
+            list.splice(0, list.length - limit);
+        }
+    },
+
+    getChannelLimit(rt: string): number {
+        return self.limits.get(rt) ?? self.defaultLimit;
+    },
+
+    getRecentHistory(rt: string, limit = 3): CSEMessage[] {
+        return (self.history.get(rt) ?? []).slice(-limit);
+    },
+
+    getChannelHistory(rt: string): CSEMessage[] {
+        return [...(self.history.get(rt) ?? [])];
+    },
+
+    getAllHistoryChannels(): string[] {
+        return [...self.history.keys()];
+    },
+
+    getChannelDepth(rt: string): number {
+        return (self.history.get(rt) ?? []).length;
+    },
+
+    getHistorySizes(): Record<string, number> {
+        const out: Record<string, number> = {};
+        for (const [ch, list] of self.history) out[ch] = list.length;
+        return out;
+    },
+
+    clearChannel(rt: string): void {
+        self.history.delete(rt);
+    },
+
+    purge(): void {
+        self.history.clear();
+        self.limits.clear();
+    },
+}));
+// #endregion
+//                                                                                                                         META
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const META = BIND_ATOM("META", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    // ── your blob, organized ───────────────────────────────────────────────────────────────────
+    _batches: new Set<string | symbol>(),
+    _batchQueue: new Map<string | symbol, A>(),
+    _batchOpts: new Map<string | symbol, { triggerRender?: B }>(),
+    _globalListeners: new Set<(key: S | symbol, value: A) => void>(),
+    _global_subscribers: new Map<S, Set<() => void>>(),
+    _sys: new Map<S, SysEntry>(),
+    _sealed: new Set<S>(),
+    _frozen: new Set<S>(),
+    _keyContracts: new Map<S, Set<S>>(),
+    _conflicts: new Map<S, ConflictPolicy>(),
+    _conflictStrategies: new Map<S, "latest" | "fail" | "accumulate">(),
+    _causal: new Map<S, CausalEntry[]>(),
+    _scopes: new Map<S, SignalScope>(),
+    _msgHandlers: new Map<S, Set<(p: A) => void>>(),
+    _lastWriteSource: new Map<S, S>(),
+    _mainMap: new Map<A, S>(),
+    _tupleCache: new Map<S, S>(),
+    _weakMap: new WeakMap<object, S>(),
+    _boundaries: new WeakMap<object, S>(),
+
+    // ── sys entries ────────────────────────────────────────────────────────────────────────────
+    /** Register or update a system entry for this cell. */
+    setSys(name: S, entry: Partial<SysEntry> & { value?: A, source?:A }): SysEntry {
+        const prev = self._sys.get(name);
+        const next: SysEntry = {
+            name,
+            value: entry.value ?? prev?.value,
+            ts: Date.now(),
+            revision: (prev?.revision ?? 0) + 1,
+            source: entry.source ?? "meta",
+        } as A;
+        self._sys.set(name, next);
+        return next;
+    },
+
+    getSys(name: S): SysEntry | null {
+        return self._sys.get(name) ?? null;
+    },
+
+    deleteSys(name: S): B {
+        return self._sys.delete(name);
+    },
+
+    listSys(): S[] {
+        return [...self._sys.keys()];
+    },
+
+    // ── causal log ─────────────────────────────────────────────────────────────────────────────
+    /** Append a causal entry. Keep it cheap — callers pass what they know. */
+    recordCausal(key: S, cause: S, value?: A): void {
+        const list = self._causal.get(key) ?? [];
+        list.push({ cause, value, ts: Date.now() });
+
+        // hard cap so long-lived cells don't balloon
+        if (list.length > 256) list.splice(0, list.length - 256);
+
+        self._causal.set(key, list);
+    },
+
+    getCausal(key: S): CausalEntry[] {
+        return self._causal.get(key) ?? [];
+    },
+
+    clearCausal(key?: S): void {
+        if (key) self._causal.delete(key);
+        else self._causal.clear();
+    },
+
+    // ── last write provenance ──────────────────────────────────────────────────────────────────
+    noteWrite(key: S, source: S): void {
+        self._lastWriteSource.set(key, source);
+    },
+
+    whoWrote(key: S): S | null {
+        return self._lastWriteSource.get(key) ?? null;
+    },
+
+    // ── msg handlers ───────────────────────────────────────────────────────────────────────────
+    addMsgHandler(key: S, fn: (p: A) => void): () => void {
+        const set = self._msgHandlers.get(key) ?? new Set();
+        set.add(fn);
+        self._msgHandlers.set(key, set);
+        return () => set.delete(fn);
+    },
+
+    emitMsg(key: S, p: A): void {
+        for (const fn of self._msgHandlers.get(key) ?? []) {
+            try {
+                fn(p);
+            } catch (e) {
+                console.error(`[meta-shard] msg handler failed for "${key}":`, e);
+            }
+        }
+    },
+
+    // ── global listeners ───────────────────────────────────────────────────────────────────────
+    onGlobal(fn: (key: S | symbol, value: A) => void): () => void {
+        self._globalListeners.add(fn);
+        return () => self._globalListeners.delete(fn);
+    },
+
+    emitGlobal(key: S | symbol, value: A): void {
+        for (const fn of self._globalListeners) {
+            try {
+                fn(key, value);
+            } catch (e) {
+                console.error("[meta-shard] global listener failed:", e);
+            }
+        }
+    },
+
+    // ── inspect / purge ────────────────────────────────────────────────────────────────────────
+    inspect(): Record<S, A> {
+        return {
+            sys: Object.fromEntries(self._sys),
+            causalKeys: [...self._causal.keys()],
+            sealed: [...self._sealed],
+            frozen: [...self._frozen],
+            lastWriteSource: Object.fromEntries(self._lastWriteSource),
+            msgHandlerKeys: [...self._msgHandlers.keys()],
+            globalListenerCount: self._globalListeners.size,
+        };
+    },
+
+    purge(): void {
+        for (const map of [
+            self._batchQueue,
+            self._batchOpts,
+            self._global_subscribers,
+            self._sys,
+            self._keyContracts,
+            self._conflicts,
+            self._conflictStrategies,
+            self._causal,
+            self._scopes,
+            self._msgHandlers,
+            self._lastWriteSource,
+            self._mainMap,
+            self._tupleCache,
+        ] as Map<A, A>[]) {
+            map.clear();
+        }
+
+        self._batches.clear();
+        self._sealed.clear();
+        self._frozen.clear();
+        self._globalListeners.clear();
+        self._weakMap = new WeakMap();
+        self._boundaries = new WeakMap();
+    },
+}));
+// #endregion
+//                                                                                                                       OFFSEC
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface OFFSEC_AUDIT_ENTRY {
+    at: N;
+    what: S;
+    channel?: S;
+}
+export const OFFSEC = BIND_ATOM("OFFSEC", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    secrets: new Set<A>(),
+    audit: [] as OFFSEC_AUDIT_ENTRY[],
+    maxAudit: (config.maxAudit ?? 500) as N,
+
+    // ── secret marking ─────────────────────────────────────────────────────────────────────────
+    /** Mark a value (token, key, credential) as secret. Reference equality by default. */
+    markSecret(value: A): void {
+        self.secrets.add(value);
+    },
+
+    isSecret(value: A): B {
+        return self.secrets.has(value);
+    },
+
+    clearSecret(value: A): B {
+        return self.secrets.delete(value);
+    },
+
+    /**
+     * Deep-scan a message for marked secrets; replace with '[REDACTED]' before the message
+     * leaves the boundary. Mutates nothing — returns a copy when a hit occurs.
+     */
+    scrub<T>(payload: T): { clean: T; redacted: N } {
+        let redacted = 0;
+        const seen = new Set<object>();
+
+        const walk = (v: unknown): unknown => {
+            if (self.secrets.has(v as A)) {
+                redacted++;
+                return "[REDACTED]";
+            }
+
+            if (v === null || typeof v !== "object") return v;
+            if (seen.has(v as object)) return "[CYCLIC]";
+
+            seen.add(v as object);
+
+            if (Array.isArray(v)) return v.map(walk);
+
+            const out: Record<S, unknown> = {};
+            for (const [k, val] of Object.entries(v as Record<S, unknown>)) {
+                out[k] = walk(val);
+            }
+
+            return out;
+        };
+
+        const clean = walk(payload) as T;
+
+        if (redacted) {
+            self.audit.push({
+                at: Date.now(),
+                what: `scrubbed ${redacted} secret(s)`,
+            });
+
+            if (self.audit.length > self.maxAudit) self.audit.shift();
+        }
+
+        return { clean, redacted };
+    },
+
+    listAudit(): OFFSEC_AUDIT_ENTRY[] {
+        return [...self.audit];
+    },
+
+    purge(): void {
+        self.secrets.clear();
+        self.audit.length = 0;
+    },
+}));
+// #endregion
+//                                                                                                                  PERMISSIONS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const PERMISSIONS = BIND_ATOM("PERMISSIONS", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    permissions: new Map<string, ChannelPermissions>(),
+
+    setPermissions(rt: string, perms: ChannelPermissions): void {
+        self.permissions.set(rt, perms);
+    },
+
+    getPermissions(rt: string): ChannelPermissions | undefined {
+        return self.permissions.get(rt);
+    },
+
+    removePermissions(rt: string): B {
+        return self.permissions.delete(rt);
+    },
+
+    hasPermissions(rt: string): B {
+        return self.permissions.has(rt);
+    },
+
+    getAllPermissions(): Record<string, ChannelPermissions> {
+        return Object.fromEntries(self.permissions);
+    },
+
+    listProtectedChannels(): string[] {
+        return [...self.permissions.keys()];
+    },
+
+    /** Wildcard-aware lookup: exact wins, else longest matching prefix before `*`. */
+    resolvePermissions(rt: string): ChannelPermissions | undefined {
+        if (self.permissions.has(rt)) return self.permissions.get(rt);
+
+        let best: ChannelPermissions | undefined;
+        let bestLen = -1;
+
+        for (const [pattern, perms] of self.permissions) {
+            const star = pattern.indexOf("*");
+            if (star === -1) continue;
+
+            if (rt.startsWith(pattern.slice(0, star)) && star > bestLen) {
+                best = perms;
+                bestLen = star;
+            }
+        }
+
+        return best;
+    },
+
+    /** Check one capability. No permission set → allowed (open channel). */
+    check(
+        rt: string,
+        action: "read" | "write" | "send" | "subscribe" | "admin",
+        role?: S,
+    ): B {
+        const perms = self.resolvePermissions(rt);
+        if (!perms) return true;
+
+        if (role && perms.roles && perms.roles.length && !perms.roles.includes(role)) {
+            return false;
+        }
+
+        if (action === "read") return perms.read;
+        if (action === "write") return perms.write;
+
+        return perms[action] ?? perms.write;
+    },
+
+    purge(): void {
+        self.permissions.clear();
+    },
+}));
+// #endregion
+//                                                                                                                  PERSISTENCE
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const PERSISTENCE = BIND_ATOM("PERSISTENCE", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    durableOffsets: new Map<string, number>(),
+    persisted: config.persisted as B | undefined,
+    durableHistory: new Map<string, CSEMessage[]>(),
+
+    getDurableHistorySizes(): Record<string, number> {
+        const out: Record<string, number> = {};
+
+        for (const [ch, hist] of self.durableHistory) {
+            out[ch] = hist.length;
+        }
+
+        return out;
+    },
+
+    async replay(options: ReplayOptions, handler: CSEHandler): Promise<void> {
+        const history = self.durableHistory.get(options.rt) ?? [];
+        let slice = history;
+
+        if (options.fromOffset !== undefined) {
+            slice = slice.slice(options.fromOffset);
+        }
+
+        if (options.toOffset !== undefined) {
+            slice = slice.slice(0, options.toOffset);
+        }
+
+        if (options.fromTimestamp !== undefined) {
+            slice = slice.filter(m => m.ts !== undefined && m.ts >= options.fromTimestamp!);
+        }
+
+        if (options.toTimestamp !== undefined) {
+            slice = slice.filter(m => m.ts !== undefined && m.ts <= options.toTimestamp!);
+        }
+
+        for (const m of slice) {
+            handler(m.p);
+        }
+    },
+
+    subscribeDurable(
+        handler: CSEHandler,
+        options: DurableOptions,
+        k: string,
+        sl = self.sl,
+        ms = self.ms,
+        rt = self.rt,
+    ): () => void {
+        const key = `${rt}:${options.subscriberId}`;
+        const offset = self.durableOffsets.get(key) ?? options.fromOffset ?? 0;
+        const history = self.durableHistory.get(rt) ?? [];
+
+        history.slice(offset).forEach(m => handler(m.p));
+
+        return self.sub(
+            (p: unknown) => {
+                const h = self.durableHistory.get(rt) ?? [];
+                const nextOffset = h.length;
+
+                self.durableOffsets.set(key, nextOffset);
+                handler(p);
+            },
+            k,
+            sl,
+            ms,
+            rt,
+        );
+    },
+
+    getAllCheckpoints(): Record<string, number> {
+        return Object.fromEntries(self.durableOffsets);
+    },
+
+    async setCheckpoint(
+        subscriberId: string,
+        offset: number,
+        k: string,
+        sl?: string,
+        ms?: string,
+        rt?: string,
+    ): Promise<void> {
+        const key = `${rt}:${subscriberId}`;
+
+        self.durableOffsets.set(key, offset);
+
+        if (self.DEVTOOLS_ACTIVE) {
+            self.emitDevtoolsEvent(
+                "checkpoint_set",
+                rt,
+                ms || undefined,
+                undefined,
+                { subscriberId, offset },
+            );
+        }
+    },
+
+    async getCheckpoint(
+        subscriberId: string,
+        k: string,
+        sl?: string,
+        ms?: string,
+        rt?: string,
+    ): Promise<number | null> {
+        const key = `${rt}:${ms}:${subscriberId}`;
+
+        return self.durableOffsets.has(key)
+            ? self.durableOffsets.get(key)!
+            : null;
+    },
+}));
+// #endregion
+//                                                                                                                     PRIORITY
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const PRIORITY = BIND_ATOM("PRIORITY", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    queues: new Map<string, Array<{
+        priority: SIG_BUS_Priority;
+        weight: N;
+        seq: N;
+        item: A;
+        enqueuedAt: N;
+    }>>(),
+
+    queueDefaults: new Map<string, SIG_BUS_Priority>(),
+    defaultPriority: "normal" as SIG_BUS_Priority,
+    seq: 0,
+
+    setDefaultPriority(priority: SIG_BUS_Priority): void {
+        self.defaultPriority = priority;
+    },
+
+    getDefaultPriority(): SIG_BUS_Priority {
+        return self.defaultPriority;
+    },
+
+    setQueueDefault(queue: string, priority: SIG_BUS_Priority): void {
+        self.queueDefaults.set(queue, priority);
+    },
+
+    getQueueDefault(queue: string): SIG_BUS_Priority {
+        return self.queueDefaults.get(queue) ?? self.defaultPriority;
+    },
+
+    priorityWeight(p?: SIG_BUS_Priority): number {
+        return p === "high" ? 3 : p === "low" ? 1 : 2;
+    },
+
+    enqueue(queue: string, item: A, priority?: SIG_BUS_Priority): N {
+        const p = priority ?? self.getQueueDefault(queue);
+        let q = self.queues.get(queue);
+
+        if (!q) {
+            q = [];
+            self.queues.set(queue, q);
+        }
+
+        const entry = {
+            priority: p,
+            weight: self.priorityWeight(p),
+            seq: self.seq++,
+            item,
+            enqueuedAt: Date.now(),
+        };
+
+        q.push(entry);
+
+        if (self.DEVTOOLS_ACTIVE) {
+            self.emitDevtoolsEvent("priority_enqueued", undefined, undefined, queue, {
+                priority: p,
+                depth: q.length,
+            });
+        }
+
+        return entry.seq;
+    },
+
+    /** Highest weight wins; FIFO within the same weight (low seq = older = first). */
+    dequeue(queue: string): A | undefined {
+        const q = self.queues.get(queue);
+        if (!q || !q.length) return undefined;
+
+        let bestIdx = 0;
+
+        for (let i = 1; i < q.length; i++) {
+            const a = q[i], b = q[bestIdx];
+
+            if (a.weight > b.weight || (a.weight === b.weight && a.seq < b.seq)) {
+                bestIdx = i;
+            }
+        }
+
+        const [entry] = q.splice(bestIdx, 1);
+
+        if (self.DEVTOOLS_ACTIVE) {
+            self.emitDevtoolsEvent("priority_dequeued", undefined, undefined, queue, {
+                priority: entry.priority,
+                remaining: q.length,
+            });
+        }
+
+        return entry.item;
+    },
+
+    peek(queue: string): A | undefined {
+        const q = self.queues.get(queue);
+        if (!q || !q.length) return undefined;
+
+        let bestIdx = 0;
+
+        for (let i = 1; i < q.length; i++) {
+            const a = q[i], b = q[bestIdx];
+
+            if (a.weight > b.weight || (a.weight === b.weight && a.seq < b.seq)) {
+                bestIdx = i;
+            }
+        }
+
+        return q[bestIdx].item;
+    },
+
+    getDepth(queue: string): number {
+        return (self.queues.get(queue) ?? []).length;
+    },
+
+    listQueues(): string[] {
+        return [...self.queues.keys()];
+    },
+
+    getDepths(): Record<string, number> {
+        const out: Record<string, number> = {};
+
+        for (const [q, list] of self.queues) {
+            out[q] = list.length;
+        }
+
+        return out;
+    },
+
+    clearQueue(queue: string): void {
+        self.queues.delete(queue);
+    },
+
+    purge(): void {
+        self.queues.clear();
+        self.queueDefaults.clear();
+    },
+}));
+// #endregion
+//                                                                                                                     SNAPSHOT
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface SNAPSHOT_ENTRY<W = A> {
+    version: N;
+    value: W;
+    ts: N;
+    label?: S;
+}
+export const SNAPSHOT = BIND_ATOM("SNAPSHOT", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    version: 0,
+    history: [] as SNAPSHOT_ENTRY<W>[],
+    historyMax: (config.historyMax ?? 128) as N,
+    undoStack: [] as SNAPSHOT_ENTRY<W>[],
+    redoStack: [] as SNAPSHOT_ENTRY<W>[],
+    waiters: new Set<(value: W) => void>(),
+
+    /** Capture the current state. Call this from ATOM.write() after a successful write. */
+    capture(value: W, label?: S): SNAPSHOT_ENTRY<W> {
+        self.version++;
+
+        const entry: SNAPSHOT_ENTRY<W> = {
+            version: self.version,
+            value,
+            ts: Date.now(),
+            label,
+        };
+
+        self.history.push(entry);
+
+        if (self.history.length > self.historyMax) {
+            self.history.splice(0, self.history.length - self.historyMax);
+        }
+
+        self.redoStack.length = 0;
+
+        for (const resolve of self.waiters) {
+            resolve(value);
+        }
+
+        self.waiters.clear();
+
+        return entry;
+    },
+
+    /** Latest snapshot, or undefined if none. */
+    latest(): SNAPSHOT_ENTRY<W> | undefined {
+        return self.history[self.history.length - 1];
+    },
+
+    /** Fetch a snapshot by exact version number. */
+    byVersion(v: N): SNAPSHOT_ENTRY<W> | undefined {
+        return self.history.find(e => e.version === v);
+    },
+
+    /** Fetch the last N snapshots, oldest first. */
+    recent(n = 3): SNAPSHOT_ENTRY<W>[] {
+        return self.history.slice(-n);
+    },
+
+    /** All snapshots since a timestamp. */
+    since(ts: N): SNAPSHOT_ENTRY<W>[] {
+        return self.history.filter(e => e.ts >= ts);
+    },
+
+    count(): N {
+        return self.history.length;
+    },
+
+    /** Wait for the next capture (first one if none exist yet). */
+    waitForNext(timeoutMs = 0): Promise<W> {
+        const latest = self.latest();
+
+        if (latest) return Promise.resolve(latest.value);
+
+        return new Promise<W>((resolve, reject) => {
+            const waiter = (v: W) => resolve(v);
+
+            self.waiters.add(waiter);
+
+            if (timeoutMs > 0) {
+                setTimeout(() => {
+                    if (self.waiters.delete(waiter)) {
+                        reject(new Error("ATOM snapshot wait timed out"));
+                    }
+                }, timeoutMs);
+            }
+        });
+    },
+
+    /** Move an entry from history into the undo stack (used by TIME_TRAVEL). */
+    pushUndo(entry: SNAPSHOT_ENTRY<W>): void {
+        self.undoStack.push(entry);
+
+        if (self.undoStack.length > self.historyMax) {
+            self.undoStack.splice(0, self.undoStack.length - self.historyMax);
+        }
+    },
+
+    /** Move an entry from history into the redo stack (used by TIME_TRAVEL). */
+    pushRedo(entry: SNAPSHOT_ENTRY<W>): void {
+        self.redoStack.push(entry);
+
+        if (self.redoStack.length > self.historyMax) {
+            self.redoStack.splice(0, self.redoStack.length - self.historyMax);
+        }
+    },
+
+    purge(): void {
+        self.history.length = 0;
+        self.undoStack.length = 0;
+        self.redoStack.length = 0;
+        self.waiters.clear();
+        self.version = 0;
+    },
+}));
+// #endregion
+//                                                                                                                         TAGS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const TAGS = BIND_ATOM("TAGS", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    tagSubs: new Map<string, Set<CSEHandler>>(),
+    tagsByChannel: new Map<string, Set<string>>(),
+
+    // ── channel → tags ─────────────────────────────────────────────────────────────────────────
+    /** Declare the tags a channel carries. Replaces any previous tag set for that channel. */
+    tagChannel(channel: S, tags: S[]): void {
+        self.tagsByChannel.set(channel, new Set(tags));
+    },
+
+    untagChannel(channel: S): B {
+        return self.tagsByChannel.delete(channel);
+    },
+
+    getTagsForChannel(channel: S): S[] {
+        return [...(self.tagsByChannel.get(channel) ?? [])];
+    },
+
+    /** All channels carrying at least one of the given tags. */
+    channelsByTags(tags: S[]): S[] {
+        const want = new Set(tags);
+        const out: S[] = [];
+
+        for (const [ch, chTags] of self.tagsByChannel) {
+            for (const t of chTags) {
+                if (want.has(t)) {
+                    out.push(ch);
+                    break;
+                }
+            }
+        }
+
+        return out;
+    },
+
+    // ── subscriber side ─────────────────────────────────────────────────────────────────────────
+    subscribeByTag(tag: string, handler: CSEHandler): () => void {
+        const set = self.tagSubs.get(tag) ?? new Set<CSEHandler>();
+        set.add(handler);
+        self.tagSubs.set(tag, set);
+
+        return () => set.delete(handler);
+    },
+
+    unsubscribeByTag(tag: string, handler: CSEHandler): B {
+        return self.tagSubs.get(tag)?.delete(handler) ?? false;
+    },
+
+    listTags(): string[] {
+        return [...self.tagSubs.keys()];
+    },
+
+    // ── publish side ────────────────────────────────────────────────────────────────────────────
+    /** Fan a tagged message out to every handler subscribed to a tag the channel carries. */
+    publishByTag(msg: CSEMessage): N {
+        const tags = self.tagsByChannel.get(msg.r);
+        if (!tags || tags.size === 0) return 0;
+
+        let delivered = 0;
+
+        for (const tag of tags) {
+            const subs = self.tagSubs.get(tag);
+            if (!subs) continue;
+
+            for (const handler of [...subs]) {
+                try {
+                    handler(msg);
+                    delivered++;
+                } catch (e) {
+                    console.error(`[tags-NEUTRON] tag handler failed for "${tag}":`, e);
+                }
+            }
+        }
+
+        return delivered;
+    },
+
+    getTagsByChannel(): Record<string, string[]> {
+        const out: Record<string, string[]> = {};
+
+        for (const [ch, tags] of self.tagsByChannel) {
+            out[ch] = [...tags];
+        }
+
+        return out;
+    },
+
+    purge(): void {
+        self.tagSubs.clear();
+        self.tagsByChannel.clear();
+    },
+}));
+// #endregion
+//                                                                                                                  TIME_TRAVEL
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const TIME_TRAVEL = BIND_ATOM("TIME_TRAVEL", ({ self, master, config, SNAPSHOT }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    snapshots: null as typeof SNAPSHOT | null,
+    version: 0,
+    historyIndex: -1,
+    undoStack: [] as SNAPSHOT_ENTRY<W>[],
+    initial: undefined as W | undefined,
+    _time_travel_reverting: false,
+    autoTimers: new Set<ReturnType<typeof setInterval>>(),
+
+    /** Bind to the snapshot shard of the same cell. Call once after both shards are bound. */
+    attach(snapshots: typeof SNAPSHOT): void {
+        self.snapshots = snapshots;
+        self.version = snapshots.version;
+        self.historyIndex = snapshots.history.length - 1;
+        self.initial = snapshots.history[0]?.value;
+    },
+
+    /** Write a value back to the cell and record it as a proper version (fires subs like a normal write). */
+    replay: (entry: SNAPSHOT_ENTRY<W>): void => {
+        self._time_travel_reverting = true;
+
+        try {
+            self._writeThrough?.(
+                entry.value,
+                entry.label ? `time-travel:${entry.label}` : "time-travel",
+            );
+        } finally {
+            self._time_travel_reverting = false;
+        }
+    },
+
+    /** Injected by ATOM when the shard is bound — how restores become real writes. */
+    _writeThrough: undefined as ((value: W, cause?: S) => void) | undefined,
+
+    _current(): SNAPSHOT_ENTRY<W> | undefined {
+        return self.snapshots?.history[self.historyIndex];
+    },
+
+    back(): B {
+        if (!self.snapshots || self.historyIndex <= 0) return false;
+
+        self.historyIndex--;
+
+        const entry = self._current();
+        if (!entry) return false;
+
+        // The entry we stepped away from goes on redo.
+        const departed = self.snapshots.history[self.historyIndex + 1];
+        if (departed) self.snapshots.pushRedo(departed);
+
+        self.replay(entry);
+        return true;
+    },
+
+    forward(): B {
+        if (!self.snapshots) return false;
+
+        const nextEntry = self.snapshots.history[self.historyIndex + 1];
+        if (!nextEntry) return false;
+
+        self.historyIndex++;
+        self.replay(nextEntry);
+        return true;
+    },
+
+    goto(version: N): B {
+        if (!self.snapshots) return false;
+
+        const target = self.snapshots.byVersion(version);
+        if (!target) return false;
+
+        const idx = self.snapshots.history.indexOf(target);
+        if (idx < 0) return false;
+
+        const departed = self._current();
+        if (departed && idx < self.historyIndex) {
+            self.snapshots.pushRedo(departed);
+        }
+
+        self.historyIndex = idx;
+        self.replay(target);
+        return true;
+    },
+
+    auto_back(time = 2500): void {
+        const t = setInterval(() => {
+            if (!self.back()) clearInterval(t);
+        }, time);
+
+        self.autoTimers.add(t);
+    },
+
+    auto_forward(time = 2500): void {
+        const t = setInterval(() => {
+            if (!self.forward()) clearInterval(t);
+        }, time);
+
+        self.autoTimers.add(t);
+    },
+
+    /** Graft a foreign snapshot sequence onto this timeline (branch merge). */
+    graft(entries: SNAPSHOT_ENTRY<W>[]): N {
+        if (!self.snapshots) return 0;
+
+        let grafted = 0;
+
+        for (const e of entries) {
+            self.snapshots.history.push({
+                version: ++self.snapshots.version,
+                value: e.value,
+                ts: e.ts ?? Date.now(),
+                label: e.label ? `grafted:${e.label}` : "grafted",
+            });
+
+            grafted++;
+        }
+
+        self.historyIndex = self.snapshots.history.length - 1;
+        return grafted;
+    },
+
+    /** Stop all auto walkers. */
+    stopAuto(): void {
+        for (const t of self.autoTimers) clearInterval(t);
+        self.autoTimers.clear();
+    },
+
+    /** True while replay() is writing — ATOM.write() checks this to avoid re-capturing. */
+    get isReverting(): B {
+        return self._time_travel_reverting;
+    },
+
+    purge(): void {
+        self.stopAuto();
+        self.snapshots = null;
+        self.undoStack.length = 0;
+        self.historyIndex = -1;
+    },
+}));
+// #endregion
+//                                                                                                                          TTL
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface TTL_ENTRY { expiresAt: N; data?: A; }
+
+export const TTL = BIND_ATOM("TTL", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    entries: new Map<S, TTL_ENTRY>(),
+    onExpire: [] as ((key: S, data?: A) => void)[],
+    defaultTtlMs: (config.defaultTtlMs ?? 0) as N,
+
+    // ── write ──────────────────────────────────────────────────────────────────────────────────
+    set(key: S, data?: A, ttlMs?: N): TTL_ENTRY {
+        const ttl = ttlMs ?? self.defaultTtlMs;
+
+        if (!ttl || ttl <= 0) {
+            throw new Error("[ttl-shard] no ttl provided and no defaultTtlMs configured");
+        }
+
+        const entry: TTL_ENTRY = {
+            expiresAt: Date.now() + ttl,
+            data,
+        };
+
+        self.entries.set(key, entry);
+        return entry;
+    },
+
+    touch(key: S, ttlMs?: N): B {
+        const e = self.entries.get(key);
+        if (!e) return false;
+
+        e.expiresAt = Date.now() + (ttlMs ?? self.defaultTtlMs);
+        return true;
+    },
+
+    // ── read ───────────────────────────────────────────────────────────────────────────────────
+    /** Returns undefined if missing OR expired (and removes it lazily). */
+    get(key: S): A | undefined {
+        const e = self.entries.get(key);
+        if (!e) return undefined;
+
+        if (Date.now() >= e.expiresAt) {
+            self.entries.delete(key);
+            return undefined;
+        }
+
+        return e.data;
+    },
+
+    has(key: S): B {
+        const e = self.entries.get(key);
+        return !!e && Date.now() < e.expiresAt;
+    },
+
+    peek(key: S): A | undefined {
+        return self.entries.get(key)?.data;
+    },
+
+    timeToLiveMs(key: S): N | null {
+        const e = self.entries.get(key);
+        if (!e) return null;
+
+        return Math.max(0, e.expiresAt - Date.now());
+    },
+
+    // ── delete ─────────────────────────────────────────────────────────────────────────────────
+    delete(key: S): B {
+        return self.entries.delete(key);
+    },
+
+    // ── sweep ──────────────────────────────────────────────────────────────────────────────────
+    /** Removes expired entries, fires onExpire hooks. Returns count expired. */
+    sweep(): number {
+        const now = Date.now();
+        let n = 0;
+
+        for (const [key, e] of [...self.entries]) {
+            if (now >= e.expiresAt) {
+                self.entries.delete(key);
+                n++;
+
+                for (const fn of self.onExpire) {
+                    try {
+                        fn(key, e.data);
+                    } catch (err) {
+                        console.error(`[ttl-shard] onExpire failed for "${key}":`, err);
+                    }
+                }
+            }
+        }
+
+        return n;
+    },
+
+    /** Sweep on a cadence. Owns its own timer — call stopSweeper() to cancel. */
+    _sweeper: null as ReturnType<typeof setInterval> | null,
+
+    startSweeper(intervalMs = 30_000): void {
+        if (self._sweeper) return;
+        self._sweeper = setInterval(() => self.sweep(), intervalMs);
+    },
+
+    stopSweeper(): void {
+        if (self._sweeper) {
+            clearInterval(self._sweeper);
+            self._sweeper = null;
+        }
+    },
+
+    get size(): number {
+        return self.entries.size;
+    },
+
+    listKeys(): S[] {
+        return [...self.entries.keys()];
+    },
+
+    purge(): void {
+        self.stopSweeper();
+        self.entries.clear();
+        self.onExpire.length = 0;
+    },
+}));
+// #endregion
+//                                                                                                                     REACTIVE
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface RiftRecord<T = A> {
+    opened: B;
+    claimed: B;
+    value?: T;
+    createdAt: N;
+    openedAt?: N;
+}
+type StoreListener<T = A> = (v: RiftRecord<T>) => void;
+export const REACTIVE = BIND_ATOM("REACTIVE", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    records: new Map<S, RiftRecord<A>>(),
+    listeners: new Map<S, Set<StoreListener<A>>>(),
+
+    get<T = A>(key: S): RiftRecord<T> | undefined {
+        return self.records.get(key) as RiftRecord<T> | undefined;
+    },
+
+    set<T = A>(key: S, record: RiftRecord<T>): void {
+        self.records.set(key, record as RiftRecord<A>);
+
+        const subs = self.listeners.get(key);
+
+        if (subs) {
+            for (const l of [...subs]) {
+                try {
+                    l(record as RiftRecord<A>);
+                } catch {
+                    // one bad listener never kills the rest
+                }
+            }
+        }
+    },
+
+    sub<T = A>(key: S, fn: StoreListener<T>): () => void {
+        let subs = self.listeners.get(key);
+
+        if (!subs) {
+            subs = new Set();
+            self.listeners.set(key, subs);
+        }
+
+        subs.add(fn as StoreListener<A>);
+
+        return () => {
+            const s = self.listeners.get(key);
+            if (!s) return;
+
+            s.delete(fn as StoreListener<A>);
+
+            if (!s.size) self.listeners.delete(key);
+        };
+    },
+
+    delete(key: S): void {
+        self.records.delete(key);
+        self.listeners.delete(key);
+    },
+
+    clear(): void {
+        self.records.clear();
+        self.listeners.clear();
+    },
+
+    get size(): N {
+        return self.records.size;
+    },
+}));
+// #endregion
+//                                                                                                                       SCHEMA
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const SCHEMA = BIND_ATOM("SCHEMA", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    _schemas: new Map<string, CSESchema>(),
+
+    setChannelSchema(schema: CSESchema, rt: string): void {
+        self._schemas.set(rt, schema);
+    },
+
+    getChannelSchema(rt: string): CSESchema | undefined {
+        return self._schemas.get(rt);
+    },
+
+    removeChannelSchema(rt: string): B {
+        const had = self._schemas.delete(rt);
+        return had;
+    },
+
+    hasChannelSchema(rt: string): B {
+        return self._schemas.has(rt);
+    },
+
+    listChannelSchemas(): string[] {
+        return [...self._schemas.keys()];
+    },
+
+    getAllSchemas(): Record<string, CSESchema> {
+        return Object.fromEntries(self._schemas);
+    },
+
+    /** Wildcard-aware lookup: exact channel wins, else longest matching prefix before `*`. */
+    resolveSchema(rt: string): CSESchema | undefined {
+        if (self._schemas.has(rt)) return self._schemas.get(rt);
+
+        let best: CSESchema | undefined;
+        let bestLen = -1;
+
+        for (const [pattern, schema] of self._schemas) {
+            const star = pattern.indexOf("*");
+            if (star === -1) continue;
+
+            if (rt.startsWith(pattern.slice(0, star)) && star > bestLen) {
+                best = schema;
+                bestLen = star;
+            }
+        }
+
+        return best;
+    },
+
+    /**
+     * Validate a message against its channel schema. No schema → pass (open channel).
+     * Returns { ok, errors } — never throws.
+     */
+    checkSchema(rt: S, msg: CSEMessage): { ok: B; errors: S[] } {
+        const schema = self.resolveSchema(rt) as A;
+        if (!schema) return { ok: true, errors: [] };
+
+        const errors: S[] = [];
+        const payload = (msg.p ?? {}) as Record<S, A>;
+
+        for (const [field, rule] of Object.entries(schema.fields ?? {}) as A) {
+            const v = payload[field];
+
+            if (v === undefined || v === null) {
+                if (rule.required) errors.push(`missing required field "${field}"`);
+                continue;
+            }
+
+            if (rule.type !== "any") {
+                const actual = typeof v;
+
+                if (rule.type === "number" && actual !== "number") {
+                    errors.push(`field "${field}" expected number, got ${actual}`);
+                } else if (rule.type === "string" && actual !== "string") {
+                    errors.push(`field "${field}" expected string, got ${actual}`);
+                } else if (rule.type === "boolean" && actual !== "boolean") {
+                    errors.push(`field "${field}" expected boolean, got ${actual}`);
+                }
+            }
+        }
+
+        if (schema.validate) {
+            try {
+                const r = schema.validate(msg);
+
+                if (r !== true && r !== undefined) {
+                    errors.push(
+                        typeof r === "string"
+                            ? r
+                            : `validator rejected message on "${rt}"`,
+                    );
+                }
+            } catch (e) {
+                errors.push(`validator threw: ${e}`);
+            }
+        }
+
+        return { ok: errors.length === 0, errors };
+    },
+
+    purge(): void {
+        self._schemas.clear();
+    },
+}));
+// #endregion
+//                                                                                                              VALUES_REGISTRY
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const VALUES_REGISTRY = BIND_ATOM("VALUES_REGISTRY", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    instanceId: `instance_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    hasWritten: false,
+    lastWriteSource: undefined as string | undefined,
+    lastWriteAt: undefined as number | undefined,
+    writeCount: 0,
+
+    recordWrite(source = "write"): void {
+        self.hasWritten = true;
+        self.lastWriteSource = source;
+        self.lastWriteAt = Date.now();
+        self.writeCount++;
+    },
+
+    reset(): void {
+        self.hasWritten = false;
+        self.lastWriteSource = undefined;
+        self.lastWriteAt = undefined;
+        self.writeCount = 0;
+    },
+}));
+// #endregion
+//                                                                                                                  CONCURRENCY
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface BackpressureConfig {
+    /** Max items queued before SHOULD_BACKPRESSURE() fires. 0/undefined = never. */
+    maxQueueSize?: N;
+    /** Cooldown between drain attempts once throttling starts. */
+    throttleMs?: N;
+    /** Coalescing window (ms) before a staged group flushes even if size not reached. */
+    batchWaitMs?: N;
+    /** Hard deadline (ms) from FIRST item staged — flushes the group no matter what. */
+    batchMaxWaitMs?: N;
+    /** Items per coalesced group. */
+    batchSize?: N;
+    /** Default per-tier concurrency if a tier registers without options. */
+    defaultConcurrency?: N;
+    /** Default retry / timeout for tier tasks. */
+    retry?: N;
+    timeout?: N;
+}
+type COALESCED_GROUP = {
+    items: Array<{ msg: CSEMessage; resolve: (v: A) => void; reject: (e: A) => void }>;
+    flushed: B;
+};
+// ── CONCURRENCY_GOVERNOR (internal — AIMD engine lifted from BATCH, one per shard) ───────────────
+// Additive increase on healthy telemetry, multiplicative half-down on friction. Health from
+// event-loop lag + RSS + external breaker state. Semaphore with dynamic resize (SEMAPHORE
+// semantics), exposed so tier queues can consult `tryAcquire/release`.
+export const CONCURRENCY = BIND_ATOM("CONCURRENCY", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    current: Math.min(
+        config.maxConcurrency ?? 64,
+        Math.max(
+            config.minConcurrency ?? 1,
+            config.initialConcurrency ?? Math.max(4, Math.floor((config.maxConcurrency ?? 64) / 4)),
+        ),
+    ) as N,
+
+    min: (config.minConcurrency ?? 1) as N,
+    max: (config.maxConcurrency ?? 64) as N,
+    holders: new Set<symbol>(),
+    waiters: [] as Array<() => void>,
+    peak: 0 as N,
+
+    get active(): N {
+        return self.holders.size;
+    },
+
+    get concurrency(): N {
+        return self.current;
+    },
+
+    get peakConcurrency(): N {
+        return self.peak;
+    },
+
+    tryAcquire(): symbol | undefined {
+        if (self.holders.size >= self.current) return undefined;
+
+        const h = Symbol("governor-slot");
+        self.holders.add(h);
+
+        if (self.holders.size > self.peak) self.peak = self.holders.size;
+
+        return h;
+    },
+
+    async acquire(): Promise<symbol> {
+        const h = self.tryAcquire();
+        if (h) return h;
+
+        return new Promise<symbol>(resolve =>
+            self.waiters.push(() => resolve(self.tryAcquire()!)),
+        );
+    },
+
+    release(h: symbol): void {
+        self.holders.delete(h);
+
+        const next = self.waiters.shift();
+        if (next) next();
+    },
+
+    /** AIMD. Call from telemetry. */
+    evaluateResistance(signal: { latency: N; error: B; targetLatencyMs?: N }): void {
+        const target = signal.targetLatencyMs ?? 250;
+
+        if (signal.error || signal.latency > target * 1.5) {
+            self.multiplicativeDecrease();
+        } else if (signal.latency < target * 0.7) {
+            self.additiveIncrease();
+        }
+    },
+
+    additiveIncrease(): void {
+        if (self.current < self.max) self.resize(self.current + 1);
+    },
+
+    multiplicativeDecrease(): void {
+        if (self.current > self.min) {
+            self.resize(Math.max(self.min, Math.floor(self.current * 0.5)));
+        }
+    },
+
+    resize(n: N): void {
+        self.current = Math.max(self.min, Math.min(self.max, Math.floor(n)));
+
+        if (self.current > self.peak) self.peak = self.current;
+
+        // Wake waiters if capacity grew.
+        while (self.holders.size < self.current && self.waiters.length) {
+            self.waiters.shift()?.();
+        }
+    },
+}));
+// #endregion
+//                                                                                                                    CONTRACTS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface CONTRACT_PROTON {
+	name: S;
+	precondition?: (value: A) => boolean;
+	postcondition?: (value: A) => boolean;
+	invariant?: (snapshot: Record<S, A>) => boolean;
+	block?: B;
+}
+export interface CONTRACT_VIOLATION {
+	contract: S;
+	phase: 'pre' | 'post' | 'invariant';
+	value?: A;
+	message: S;
+	ts: N;
+}
+export const CONTRACTS = BIND_ATOM("CONTRACTS", ({ self, master, config }: any) => ({
+	useCell: (() => {
+		const fn = () => {};
+		return fn;
+	})(),
+	r: master.r,
+	m: master.m,
+	s: master.s,
+	k: config.k,
+	contracts: new Map<S, A>(),
+	_keyContracts: new Map() as Map<S, Set<S>>,
+	causal: [] as CONTRACT_VIOLATION[],
+	violations: [] as CONTRACT_VIOLATION[],
+	violationMax: 64,
+	_throwOnBlock: true as B,
+	add: (contract: A): (() => void) => {
+		self.contracts.set(contract.name, contract);
+		return () => self.contracts.delete(contract.name);
+	},
+	remove: (name: S): B => {
+		return self.contracts.delete(name);
+	},
+	get: (name: S): A | undefined => {
+		return self.contracts.get(name);
+	},
+	list: (): A[] => {
+		return [...self.contracts.values()];
+	},
+	bindKeyContracts: (keyContracts: Map<S, Set<S>>): void => {
+		self._keyContracts = keyContracts;
+	},
+	_record: (v: CONTRACT_VIOLATION, blocking: B): B => {
+		self.violations.push(v);
+		if (self.violations.length > self.violationMax) self.violations.splice(0, self.violations.length - self.violationMax);
+		if (blocking) throw new Error(`ATOM contract "${v.contract}" violated (${v.phase}): ${v.message}`);
+		console.warn(`ATOM contract "${v.contract}" violated (${v.phase}): ${v.message}`);
+		return false;
+	},
+	check: (value: A, phase: 'pre' | 'post'| 'invariant', snapshot?: Record<S, A>): B =>{
+		for (const c of self.contracts.values()) {
+			if (phase === 'pre' && c.precondition) {
+				try { if (!c.precondition(value)) return self._record({ contract: c.name, phase, value, message: 'precondition returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
+				catch (e) { return self._record({ contract: c.name, phase, value, message: `precondition threw: ${e}`, ts: Date.now() }, true); }
+			}
+			if (phase === 'post' && c.postcondition) {
+				try { if (!c.postcondition(value)) return self._record({ contract: c.name, phase, value, message: 'postcondition returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
+				catch (e) { return self._record({ contract: c.name, phase, value, message: `postcondition threw: ${e}`, ts: Date.now() }, true); }
+			}
+			if (phase === 'invariant' && c.invariant && snapshot) {
+				try { if (!c.invariant(snapshot)) return self._record({ contract: c.name, phase, value, message: 'invariant returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
+				catch (e) { return self._record({ contract: c.name, phase, value, message: `invariant threw: ${e}`, ts: Date.now() }, true); }
+			}
+		}
+		return true;
+	},
+	checkKey:(key: S, value: A, phase: 'pre' | 'post'): B =>{
+		for (const name of self._keyContracts.get(key) ?? []) {
+			const c = self.contracts.get(name);
+			if (!c) continue;
+			const check = phase === 'pre' ? c.precondition : c.postcondition;
+			if (!check) continue;
+			try {
+				if (!check(value)) return self._record({ contract: name, phase, value, message: `key contract failed for "${key}"`, ts: Date.now() }, !!c.block && self._throwOnBlock);
+			} catch (e) {
+				return self._record({ contract: name, phase, value, message: `key contract threw: ${e}`, ts: Date.now() }, true);
+			}
+		}
+		return true;
+	},
+	canWrite: (value: A): B=> { return self.check(value, 'pre'); },
+	didWrite:(value: A): B=> { return self.check(value, 'post'); },
+	listViolations:(): CONTRACT_VIOLATION[]=> { return [...self.violations]; },
+	clearViolations:(): void=> { self.violations.length = 0; },
+	purge:(): void=> { self.contracts.clear(); self.violations.length = 0; self._keyContracts.clear(); }
+}))
+// #endregion
+//                                                                                                            COMPRESSION_SHARD
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const COMPRESSION = BIND_ATOM("COMPRESSION", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+    compressionConfigs: [] as CompressionConfig[],
+
+    getCompressionConfigs(): CompressionConfig[] {
+        return [...self.compressionConfigs];
+    },
+
+    configureCompression(config: CompressionConfig): void {
+        self.compressionConfigs.push(config);
+    },
+}));
+// #endregion
+//                                                                                                                   DEADLETTER
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface DEADLETTER_WIRE {
+    enqueue(msg: CSEMessage): Promise<void> | void;
+}
+export const DEADLETTER = BIND_ATOM("DEADLETTER", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    root_cell_key: config.root_cell_key as A,
+    deadLetters: [] as CSEMessage[],
+    maxDeadLetters: (config.maxDeadLetters ?? 1000) as N,
+    wire: config.wire as DEADLETTER_WIRE | undefined,
+
+    /** Park a failed message. Oldest evicted when over max. */
+    record(msg: CSEMessage, reason?: S): void {
+        self.deadLetters.push({ ...msg, _ack: true } as CSEMessage);
+
+        if (self.deadLetters.length > self.maxDeadLetters) {
+            self.deadLetters.shift();
+        }
+    },
+
+    async listDeadLetters(
+        k?: S,
+        sl?: S,
+        ms?: S,
+        rt?: S,
+    ): Promise<CSEMessage[]> {
+        if (!rt && !ms && !sl && !k) return [...self.deadLetters];
+
+        return self.deadLetters.filter(
+            m =>
+                (!rt || m.rt === rt) &&
+                (!ms || m.ms === ms) &&
+                (!sl || m.sl === sl) &&
+                (!k || m.k === k),
+        );
+    },
+
+    async requeueDeadLetter(id: S, ttl?: N): Promise<void> {
+        const idx = self.deadLetters.findIndex(m => m.id === id);
+        if (idx === -1) return;
+
+        const msg = self.deadLetters.splice(idx, 1)[0];
+        msg.ttl = ttl ?? msg.ttl;
+
+        await self.wire?.enqueue(msg);
+    },
+
+    purgeDeadLetter(id: S): B {
+        const idx = self.deadLetters.findIndex(m => m.id === id);
+        if (idx === -1) return false;
+
+        self.deadLetters.splice(idx, 1);
+        return true;
+    },
+
+    count(): N {
+        return self.deadLetters.length;
+    },
+
+    purge(): void {
+        self.deadLetters.length = 0;
+    },
+}));
+// #endregion
+//                                                                                                                  DESTRUCTION
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface DESTRUCTION_RECORD {
+    key: A;
+    cause: S;
+    at: N;
+    reviver?: () => A;
+}
+export const DESTRUCTION = BIND_ATOM("DESTRUCTION", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    beforeDestruct: [] as ((key: A) => void)[],
+    afterDestruct: [] as ((record: DESTRUCTION_RECORD) => void)[],
+    records: [] as DESTRUCTION_RECORD[],
+    destroyed: false as B,
+    blocked: false as B,
+
+    // ── hooks ──────────────────────────────────────────────────────────────────────────────────
+    onBefore(fn: (key: A) => void): () => void {
+        self.beforeDestruct.push(fn);
+
+        return () => {
+            self.beforeDestruct = self.beforeDestruct.filter(f => f !== fn);
+        };
+    },
+
+    onAfter(fn: (record: DESTRUCTION_RECORD) => void): () => void {
+        self.afterDestruct.push(fn);
+
+        return () => {
+            self.afterDestruct = self.afterDestruct.filter(f => f !== fn);
+        };
+    },
+
+    /** Veto a pending destruction (e.g. in a beforeDestruct hook, or upfront). */
+    block(): void {
+        self.blocked = true;
+    },
+
+    unblock(): void {
+        self.blocked = false;
+    },
+
+    // ── the kill switch ────────────────────────────────────────────────────────────────────────
+    /**
+     * Runs the full destruction sequence.
+     * Returns the record on success, null when blocked or already destroyed.
+     * `reviver` is a factory the record keeps so the cell can be rebuilt later.
+     */
+    destroy(cause = "unknown", reviver?: () => A): DESTRUCTION_RECORD | null {
+        if (self.destroyed) return null;
+        if (self.blocked) return null;
+
+        const record: DESTRUCTION_RECORD = {
+            key: self.root_cell,
+            cause,
+            at: Date.now(),
+            reviver,
+        };
+
+        for (const fn of self.beforeDestruct) {
+            try {
+                fn(self.root_cell);
+            } catch (e) {
+                console.error("[destruction-shard] beforeDestruct hook failed:", e);
+            }
+        }
+
+        self.destroyed = true;
+        self.records.push(record);
+
+        for (const fn of self.afterDestruct) {
+            try {
+                fn(record);
+            } catch (e) {
+                console.error("[destruction-shard] afterDestruct hook failed:", e);
+            }
+        }
+
+        return record;
+    },
+
+    resurrect(): A | null {
+        if (!self.destroyed) return null;
+
+        const last = self.records[self.records.length - 1];
+        self.destroyed = false;
+        self.blocked = false;
+
+        return last?.reviver?.() ?? null;
+    },
+
+    isDestroyed(): B {
+        return self.destroyed;
+    },
+
+    clearRecords(): void {
+        self.records.length = 0;
+    },
+
+    purge(): void {
+        self.beforeDestruct.length = 0;
+        self.afterDestruct.length = 0;
+        self.records.length = 0;
+    },
+}));
+// #endregion
+//                                                                                                                        ERROR
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export type MODULE_PATH = S;
+interface ERROR_EMISSION {
+    module: MODULE_PATH;
+    code: S;
+    message: S;
+    detail?: A;
+    ts: N;
+}
+class ORC_SHOUT {
+	c = {
+		emerald: { 10: "#002c22", 9: "#004f3b", 8: "#016630", 7: "#007a55", 6: "#009966", 5: "#00bc7d" },
+		blue: { 10: "", 9: "", 8: "", 7: "", 6: "", 5: "" },
+	};
+	t = {
+		deep: {
+			bg: "#020817",
+			txt: "#f8fafc",
+			size: 12,
+			title_size: 14,
+			title_txt: "#94a3b8",
+			payload_key: "#a4ed2c",
+			payload_value: "#f8fafc",
+			font: "monospace",
+			border: "2px solid #101727",
+			borderRadius: "6px",
+			padding: "8px 16px",
+			svg: "",
+		},
+		vintage: {
+			bg: "#001B29",
+			txt: "#e9e1ba",
+			size: 12,
+			title_size: 14,
+			title_txt: "#ada785",
+			payload_key: "#29c3a0",
+			payload_value: "#fafafa",
+			font: "monospace",
+			border: "2px solid #112932",
+			borderRadius: "6px",
+			padding: "8px 16px",
+			svg: "",
+		},
+		error: {
+			bg: "#09090B",
+			txt: "#e7000b",
+			size: 12,
+			title_size: 14,
+			title_txt: "#9f0712",
+			payload_key: "#a4ed2c",
+			payload_value: "#f8fafc",
+			font: "monospace",
+			border: "2px solid #e7000b",
+			borderRadius: "6px",
+			padding: "8px 16px",
+			svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
+		},
+		warn: {
+			bg: "#09090B",
+			txt: "#e17100",
+			size: 12,
+			title_size: 14,
+			title_txt: "#973c00",
+			payload_key: "#a4ed2c",
+			payload_value: "#f8fafc",
+			font: "monospace",
+			border: "2px solid #e17100",
+			borderRadius: "6px",
+			padding: "8px 16px",
+			svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e17100" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+		},
+		success: {
+			bg: "#09090B",
+			txt: "#009966",
+			size: 12,
+			title_size: 14,
+			title_txt: "#016630",
+			payload_key: "#a4ed2c",
+			payload_value: "#f8fafc",
+			font: "monospace",
+			border: "2px solid #009966",
+			borderRadius: "6px",
+			padding: "8px 16px",
+			svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009966" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/></svg>`,
+		},
+		info: {
+			bg: "#09090B",
+			txt: "#155dfc",
+			size: 12,
+			title_size: 14,
+			title_txt: "#193cb8",
+			payload_key: "#a4ed2c",
+			payload_value: "#f8fafc",
+			font: "monospace",
+			border: "2px solid #155dfc",
+			borderRadius: "6px",
+			padding: "8px 16px",
+			svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#155dfc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
+		},
+	};
+	log(msg: string | string[], p?: any, theme = this.t.deep) {
+		const isArray = Array.isArray(msg);
+		const title = isArray ? msg[0] : msg;
+		const paragraphs = isArray ? msg.slice(1) : [];
+
+		const containerStyle = `
+              background: ${theme.bg};
+              ${theme.border ? `border: ${theme.border};` : ""}
+              ${theme.borderRadius ? `border-radius: ${theme.borderRadius};` : ""}
+              ${theme.padding ? `padding: ${theme.padding};` : ""}
+              font-family: ${theme.font};
+              display: block;
+              margin: 4px 0;
+          `;
+
+		const titleWithIcon = theme?.svg ? `${theme?.svg} ${title}` : title;
+		const titleStyle = `
+              color: ${theme.title_txt};
+              font-size: ${theme.title_size}px;
+              font-weight: bold;
+              font-family: ${theme.font};
+              display: flex;
+              align-items: center;
+              gap: 8px;
+          `;
+
+		const paragraphStyle = `
+              color: ${theme.txt};
+              font-size: ${theme.size}px;
+              font-family: ${theme.font};
+              margin-top: 4px;
+          `;
+
+		const keyStyle = `
+              color: ${theme.payload_key};
+              font-weight: bold;
+              font-family: ${theme.font};
+          `;
+		const valueStyle = `
+              color: ${theme.payload_value};
+              font-family: ${theme.font};
+          `;
+
+		let payloadStr = "";
+		if (p && typeof p === "object") {
+			const entries = Object.entries(p);
+			payloadStr = entries.map(([key, value]) => `%c${key}: %c${JSON.stringify(value, null, 2)}`).join("\n");
+		}
+
+		const logParts = [`%c${titleWithIcon}`, ...paragraphs.map((p) => `%c${p}`), payloadStr ? `\n${payloadStr}` : ""].filter(Boolean).join("\n");
+
+		const styles = [containerStyle + titleStyle, ...paragraphs.map(() => paragraphStyle), ...(payloadStr ? [keyStyle, valueStyle] : [])];
+
+		console.log(logParts, ...styles);
+	}
+}
+const os = new ORC_SHOUT()
+export const ERROR = BIND_ATOM("ERROR", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    /** History lives here regardless of emission — history is cheap, display is gated. */
+    error_history: [] as ERROR_EMISSION[],
+    HISTORY_CAP: 512,
+
+    // ── runtime-editable controls ─────────────────────────────────────────────────────────────
+    /** Master kill-switch. false → nothing emits, history still accrues. */
+    ENABLED: true as B,
+
+    /** Emission only in dev mode unless this is explicitly flipped on. */
+    ENABLE_IN_PRODUCTION: false as B,
+
+    /**
+     * Surgical control. null = every module emits.
+     * Record<string, boolean> = only listed modules emit, with true/false overriding.
+     */
+    SURGICAL_LOGS: (config.surgical ?? null) as Record<MODULE_PATH, B> | null,
+
+    /** Theme passed through to the LOGGER. Default = the error theme. */
+    theme: (os.t),
+
+    /** "TERMINAL" | "FILE" — pipes through the LOGGER's configured sink. */
+    PIPE_TO_FILE_OR_TERMINAL: "TERMINAL" as "TERMINAL" | "FILE",
+
+    /** Set at wiring time by the platform; falls back to plain console when absent. */
+    logger: os.log,
+
+    // ── the single emission point ─────────────────────────────────────────────────────────────
+    /** Every error-producing call site in every shard funnels through here. */
+    emit(module: MODULE_PATH, code: S, message: S, detail?: A): ERROR_EMISSION {
+        const entry: ERROR_EMISSION = { module, code, message, detail, ts: Date.now() };
+
+        self.error_history.push(entry);
+
+        if (self.error_history.length > self.HISTORY_CAP) {
+            self.error_history.splice(0, self.error_history.length - self.HISTORY_CAP);
+        }
+
+        if (self.shouldEmit(module)) {
+            const title = `[${String(self.root_cell_key)}] ${module} · ${code}`;
+
+            if (self.logger) {
+                self.logger.theme = self.theme;
+                self.logger.drop_log([title, message], detail);
+            } else if (self.shouldEmit(module)) {
+                console.error(`${title}\n  ${message}`, detail ?? "");
+            }
+        }
+
+        return entry;
+    },
+
+    /** Surgical gate: master switch → dev/production → per-module toggle. */
+    shouldEmit(module: MODULE_PATH): B {
+        if (!self.ENABLED) return false;
+        if (self.ENABLE_IN_PRODUCTION === false && death_star.state.get("DEV_MODE") !== true) return false;
+        if (self.SURGICAL_LOGS === null) return true;
+
+        // exact match wins, then longest-prefix match (section-level control)
+        if (module in self.SURGICAL_LOGS) return self.SURGICAL_LOGS[module];
+
+        let best: S | null = null;
+
+        for (const prefix of Object.keys(self.SURGICAL_LOGS)) {
+            if (module.startsWith(prefix + ".") && (best === null || prefix.length > best.length)) {
+                best = prefix;
+            }
+        }
+
+        return best !== null ? self.SURGICAL_LOGS[best] : false;
+    },
+
+    // ── convenience emitters used by the call sites below ────────────────────────────────────
+    sealed(detail?: A) {
+        return self.emit("GATE", "GATE_SEALED", "CELL IS SEALED — CHANGE SEALED TO FALSE TO RESUME WRITES", detail);
+    },
+
+    frozen(detail?: A) {
+        return self.emit("GATE", "GATE_FROZEN", "CELL IS FROZEN — VIEWABLE BUT NOT EDITABLE", detail);
+    },
+
+    asleep(detail?: A) {
+        return self.emit("GATE", "GATE_ASLEEP", "CELL IS ASLEEP — WILL NOT BE AVAILABLE UNTIL ITS CONFIGURED WAKE TIME", detail);
+    },
+
+    shardNotFound(name: S, detail?: A) {
+        return self.emit("REGISTRY", "SHARD_NOT_FOUND", `NO SHARD LABELED "${name}" RELATIVE TO THIS CELL — REVIEW YOUR CONTRACT`, detail);
+    },
+
+    contractViolation(contract: S, detail?: A) {
+        return self.emit("CONTRACTS", "CONTRACT_VIOLATION", `CONTRACT VIOLATION: ${contract}`, detail);
+    },
+
+    schemaViolation(topic: S, detail?: A) {
+        return self.emit("SCHEMA", "SCHEMA_VIOLATION", `SCHEMA VIOLATION ON TOPIC "${topic}"`, detail);
+    },
+
+    permissionDenied(ch: S, detail?: A) {
+        return self.emit("PERMISSIONS", "PERMISSION_DENIED", `PERMISSION DENIED ON CHANNEL "${ch}"`, detail);
+    },
+
+    /** Flip an entire section or a single module. */
+    setSection(path: MODULE_PATH, on: B): void {
+        (self.SURGICAL_LOGS ??= {})[path] = on;
+    },
+
+    clearSurgical(): void {
+        self.SURGICAL_LOGS = null;
+    },
+
+    // ── diagnostics ───────────────────────────────────────────────────────────────────────────
+    recent(limit = 20): ERROR_EMISSION[] {
+        return self.error_history.slice(-limit);
+    },
+
+    byModule(module: MODULE_PATH): ERROR_EMISSION[] {
+        return self.error_history.filter(e => e.module === module);
+    },
+
+    byCode(code: S): ERROR_EMISSION[] {
+        return self.error_history.filter(e => e.code === code);
+    },
+
+    purge(): void {
+        self.error_history.length = 0;
+    },
+}));
+// #endregion
+//                                                                                                                        EVENT
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+type EVENT_LISTENER = (payload?: A) => void;
+export const EVENT = BIND_ATOM("EVENT", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    events: new Map<S, Set<EVENT_LISTENER>>(),
+    wildcard: new Set<(event: S, payload?: A) => void>(),
+
+    on(event: S, fn: EVENT_LISTENER): () => void {
+        const set = self.events.get(event) ?? new Set<EVENT_LISTENER>();
+        set.add(fn);
+        self.events.set(event, set);
+
+        return () => set.delete(fn);
+    },
+
+    once(event: S, fn: EVENT_LISTENER): () => void {
+        const off = self.on(event, (p: A) => {
+            off();
+            fn(p);
+        });
+
+        return off;
+    },
+
+    onAny(fn: (event: S, payload?: A) => void): () => void {
+        self.wildcard.add(fn);
+        return () => self.wildcard.delete(fn);
+    },
+
+    off(event: S, fn?: EVENT_LISTENER): void {
+        if (!fn) self.events.delete(event);
+        else self.events.get(event)?.delete(fn);
+    },
+
+    emit(event: S, payload?: A): number {
+        let delivered = 0;
+
+        for (const fn of self.wildcard) {
+            try {
+                fn(event, payload);
+                delivered++;
+            } catch (e) {
+                console.error(`[event-shard] wildcard listener failed for "${event}":`, e);
+            }
+        }
+
+        for (const fn of [...(self.events.get(event) ?? [])]) {
+            try {
+                fn(payload);
+                delivered++;
+            } catch (e) {
+                console.error(`[event-shard] listener failed for "${event}":`, e);
+            }
+        }
+
+        return delivered;
+    },
+
+    async emitAsync(event: S, payload?: A): Promise<number> {
+        let delivered = 0;
+
+        for (const fn of self.wildcard) {
+            try {
+                await fn(event, payload);
+                delivered++;
+            } catch (e) {
+                console.error(`[event-shard] wildcard listener failed for "${event}":`, e);
+            }
+        }
+
+        for (const fn of [...(self.events.get(event) ?? [])]) {
+            try {
+                await fn(payload);
+                delivered++;
+            } catch (e) {
+                console.error(`[event-shard] listener failed for "${event}":`, e);
+            }
+        }
+
+        return delivered;
+    },
+
+    listenerCount(event?: S): number {
+        if (event) return self.events.get(event)?.size ?? 0;
+
+        let n = self.wildcard.size;
+
+        for (const set of self.events.values()) {
+            n += set.size;
+        }
+
+        return n;
+    },
+
+    eventNames(): S[] {
+        return [...self.events.keys()];
+    },
+
+    purge(): void {
+        self.events.clear();
+        self.wildcard.clear();
+    },
+}));
+// #endregion
+//                                                                                                        EXTERNAL_SUBSCRIPTION
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const EXTERNAL_SUBSCRIPTION = BIND_ATOM("EXTERNAL_SUBSCRIPTION", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    externalSubscribers: new Set<LISTENER<W>>(),
+
+    subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
+        self.externalSubscribers.add(listener);
+
+        return () => {
+            self.externalSubscribers.delete(listener);
+        };
+    },
+
+    notify(change: CHANGE<W>): void {
+        for (const listener of self.externalSubscribers) {
+            try {
+                listener(change);
+            } catch (error) {
+                console.error(`[soul-shard] listener failed for "${String(change.key)}":`, error);
+            }
+        }
+    },
+
+    get size(): number {
+        return self.externalSubscribers.size;
+    },
+
+    purge(): void {
+        self.externalSubscribers.clear();
+    },
+}));
+// #endregion
+//                                                                                                                         GATE
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const GATE = BIND_ATOM("GATE", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    sealed: (config.sealed ?? false) as B,
+    frozen: (config.frozen ?? false) as B,
+    sleep: config.sleep as N | undefined,
+
+    get asleep(): B {
+        return self.sleep !== undefined && Date.now() < self.sleep;
+    },
+
+    seal(): V {
+        self.sealed = true;
+    },
+
+    unseal(): V {
+        self.sealed = false;
+    },
+
+    freeze(): V {
+        self.frozen = true;
+    },
+
+    unfreeze(): V {
+        self.frozen = false;
+    },
+
+    sleepUntil(timestamp: N): V {
+        self.sleep = timestamp;
+    },
+
+    wake(): V {
+        self.sleep = undefined;
+    },
+
+    canRead(): B {
+        return !self.asleep;
+    },
+
+    canWrite(): B {
+        return !self.sealed && !self.frozen && !self.asleep;
+    },
+}));
+export interface GATE_ACCESS {
+    /** Reads the cell's GATE_SHARD if one is bound. Undefined = bare fast path = always open. */
+    gateOf(cell: ATOM | null | UD): typeof GATE | UD;
+    isSealed(cell: ATOM | null | UD): B;
+    isFrozen(cell: ATOM | null | UD): B;
+}
+export function makeGateAccess(): GATE_ACCESS {
+    return {
+        gateOf(cell) {
+            return cell?.read();
+        },
+
+        isSealed(cell) {
+            return cell?.read()?.sealed ?? false;
+        },
+
+        isFrozen(cell) {
+            return cell?.read()?.frozen ?? false;
+        },
+    };
+}
+// #endregion
+//                                                                                                          GLOBAL_SUBSCRIPTION
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const GLOBAL_SUBSCRIPTION = BIND_ATOM("GLOBAL_SUBSCRIPTION", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    globalListeners: new Set<LISTENER<W>>(),
+
+    subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
+        self.globalListeners.add(listener);
+
+        return () => {
+            self.globalListeners.delete(listener);
+        };
+    },
+
+    notify(change: CHANGE<W>): void {
+        for (const listener of self.globalListeners) {
+            try {
+                listener(change);
+            } catch (error) {
+                console.error(`[soul-ELECTRON] listener failed for "${String(change.key)}":`, error);
+            }
+        }
+    },
+
+    get size(): number {
+        return self.globalListeners.size;
+    },
+
+    purge(): void {
+        self.globalListeners.clear();
+    },
+}));
+// #endregion
+//                                                                                                                         HOOK
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface HOOK_ENTRY {
+    value: A;
+    teardown?: () => void;
+    registeredAt: N;
+}
+export const HOOK = BIND_ATOM("HOOK", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    hooks: new Map<S, HOOK_ENTRY>(),
+    factories: new Map<S, () => A>(),
+
+    /** Register a hook factory. The factory runs once, lazily, on first read. */
+    register(name: S, factory: () => A): void {
+        self.factories.set(name, factory);
+        // if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('hook_registered', undefined, undefined, undefined, { name });
+    },
+
+    /** Read the hook's value, computing it on first access. */
+    use(name: S): A {
+        const existing = self.hooks.get(name);
+        if (existing) return existing.value;
+
+        const factory = self.factories.get(name);
+        if (!factory) throw new Error(`[hook-ELECTRON] no hook registered as "${name}"`);
+
+        const value = factory();
+        self.hooks.set(name, { value, registeredAt: Date.now() });
+
+        // if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('hook_computed', undefined, undefined, undefined, { name });
+
+        return value;
+    },
+
+    isComputed(name: S): B {
+        return self.hooks.has(name);
+    },
+
+    /** Drop the memoized value; the next use() re-runs the factory. Returns whether an entry existed. */
+    reset(name: S): B {
+        const entry = self.hooks.get(name);
+        if (!entry) return false;
+
+        self.hooks.delete(name);
+
+        try {
+            entry.teardown?.();
+        } catch (e) {
+            console.error(`[hook-ELECTRON] teardown failed for "${name}":`, e);
+        }
+
+        return true;
+    },
+
+    /** Drop the factory and the value. The hook is gone until re-registered. */
+    unregister(name: S): void {
+        self.reset(name);
+        self.factories.delete(name);
+    },
+
+    list(): S[] {
+        return [...self.factories.keys()];
+    },
+
+    purge(): void {
+        for (const entry of self.hooks.values()) {
+            try {
+                entry.teardown?.();
+            } catch (e) {
+                console.error("[hook-ELECTRON] teardown failed during purge:", e);
+            }
+        }
+
+        self.hooks.clear();
+        self.factories.clear();
+    },
+}));
+// #endregion
+//                                                                                                               HTTP_TRANSPORT
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+import { BINARY_CODEC } from "./comps/binary";
+import { BUS_CRYPTO } from "./comps/DISRUPTOR_CRYPTO";
+export interface HttpEnvelope {
+    rt: string;
+    ms: string;
+    sl: string;
+    key: string;
+    payload: unknown;
+    seq?: number;
+    ts?: number;
+    id?: string;
+}
+export interface HttpTransportOptions {
+    /** Shared bearer token. Checked on every inbound request. */
+    token: string;
+    /** Outbound: request timeout, ms. */
+    timeoutMs?: number;
+    /** Outbound: first retry backoff, ms. Doubles, capped. */
+    backoffMs?: number;
+    maxBackoffMs?: number;
+    /** Outbound: max attempts per send. 1 = no retry. */
+    maxAttempts?: number;
+    /** The CBOR codec (BINARY_DISRUPTOR's encode_msg/decode_msg). */
+    codec: typeof BINARY_CODEC;
+    /** Called on any send failure after retries, or protocol violation. */
+    onError?: (err: unknown) => void;
+}
+const seqId = (() => {
+    let n = 0;
+    return (): string => `t${Date.now().toString(36)}-${(++n).toString(36)}`;
+})();
+export const HTTP_TRANSPORT = BIND_ATOM("HTTP_TRANSPORT", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    token: config.token as string,
+    timeoutMs: (config.timeoutMs ?? 10_000) as number,
+    backoffMs: (config.backoffMs ?? 100) as number,
+    maxBackoffMs: (config.maxBackoffMs ?? 5_000) as number,
+    maxAttempts: (config.maxAttempts ?? 3) as number,
+    codec: BINARY_CODEC as typeof BINARY_CODEC,
+    onError: (config.onError ?? (() => {})) as (err: unknown) => void,
+
+    /** Inbound dispatcher — set at attach(). Receives decoded envelopes. */
+    dispatch: null as ((env: HttpEnvelope) => Promise<unknown> | unknown) | null,
+
+    // ── OUTBOUND: send an envelope to another IP ─────────────────────────────
+    async send(
+        endpoint: string,
+        env: HttpEnvelope,
+    ): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+        const envelope: Required<Pick<HttpEnvelope, "ts" | "id">> & HttpEnvelope = {
+            ts: Date.now(),
+            id: seqId(),
+            ...env,
+        };
+
+        const body = self.codec.encode_msg(envelope);
+
+        let attempt = 0;
+        let lastErr: unknown = null;
+
+        while (attempt < self.maxAttempts) {
+            attempt++;
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: "POST",
+                    headers: {
+                        "content-type": "application/octet-stream",
+                        authorization: `Bearer ${self.token}`,
+                    },
+                    body: body as unknown as BodyInit,
+                    signal: AbortSignal.timeout(self.timeoutMs),
+                });
+
+                if (!res.ok) {
+                    lastErr = new Error(`[http-transport] endpoint ${endpoint} responded ${res.status}`);
+
+                    // 4xx = caller's fault, retrying will not help. Stop now.
+                    if (res.status >= 400 && res.status < 500) break;
+                    // 5xx / network: retry with backoff
+                } else {
+                    const raw = new Uint8Array(await res.arrayBuffer());
+                    const decoded = self.codec.decode_msg(raw);
+
+                    if (decoded === null) {
+                        lastErr = new Error(`[http-transport] endpoint ${endpoint} returned undecodable ack`);
+                    } else {
+                        return decoded as { ok: boolean; result?: unknown; error?: string };
+                    }
+                }
+            } catch (err) {
+                lastErr = err;
+                // network-level failure: retry with backoff
+            }
+
+            if (attempt < self.maxAttempts) {
+                await new Promise(r =>
+                    setTimeout(
+                        r,
+                        Math.min(self.backoffMs * 2 ** (attempt - 1), self.maxBackoffMs),
+                    ),
+                );
+            }
+        }
+
+        self.onError(lastErr);
+
+        return {
+            ok: false,
+            error: lastErr instanceof Error ? lastErr.message : String(lastErr),
+        };
+    },
+
+    // ── INBOUND: accept POSTs from the wire ──────────────────────────────────
+    /**
+     * Wire this into any runtime's http server. `handler` must:
+     *   • match on the path (transport does not route — the host decides)
+     *   • read the full request body into a Uint8Array
+     *   • call this.receive(bytes) and send back the returned ack frame
+     * Node: http.createServer((req, res) => { if (transport.matches(req)) { ... res.end(ack) } })
+     * Bun: Bun.serve({ fetch: (req) => transport.matchesBun(req) ? new Response(ack) : undefined })
+     * Deno: same shape as Bun via req.arrayBuffer()
+     */
+    attach(dispatch: (env: HttpEnvelope) => Promise<unknown> | unknown): void {
+        self.dispatch = dispatch;
+    },
+
+    /** Path/content-type matcher for host servers. */
+    matches(pathname: string, method: string): boolean {
+        return method === "POST" && pathname === "/bus";
+    },
+
+    /**
+     * The one method a host server calls: bytes in → ack bytes out.
+     * Auth is checked BEFORE dispatch. Dispatch happens inside try/catch —
+     * a throwing handler becomes an error frame, never a crash.
+     */
+    async receive(bytes: Uint8Array, authHeader: string | null): Promise<Uint8Array> {
+        const ack = (ok: boolean, result?: unknown, error?: string): Uint8Array =>
+            self.codec.encode_msg({ ok, result, error });
+
+        if (authHeader !== `Bearer ${self.token}`) {
+            return ack(false, undefined, "unauthorized");
+        }
+
+        const env = self.codec.decode_msg(bytes);
+
+        if (env === null || typeof env !== "object") {
+            return ack(false, undefined, "undecodable envelope");
+        }
+
+        const e = env as Partial<HttpEnvelope>;
+
+        if (
+            typeof e.rt !== "string" ||
+            typeof e.ms !== "string" ||
+            typeof e.sl !== "string" ||
+            typeof e.key !== "string"
+        ) {
+            return ack(false, undefined, "malformed envelope: rt/ms/sl/key required");
+        }
+
+        if (!self.dispatch) {
+            return ack(false, undefined, "no dispatcher attached");
+        }
+
+        try {
+            const result = await self.dispatch(env as HttpEnvelope);
+            return ack(true, result);
+        } catch (err) {
+            return ack(
+                false,
+                undefined,
+                err instanceof Error ? err.message : String(err),
+            );
+        }
+    },
+}));
+// #endregion
+//                                                                                                                      METRICS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const METRICS = BIND_ATOM("METRICS", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+
+    adapters: {
+        metrics: new Map<string, {
+            id: string;
+            total: number;
+            failures: number;
+            totalLatency: number;
+            disabled: boolean;
+            lastWindow: number;
+            lastCount: number;
+        }>(),
+    },
+
+    seen: new Set<string>(),
+
+    getSeenCount(): number {
+        return self.seen.size;
+    },
+
+    getMessageCount(rt: string): number {
+        return self.messageCount.get(rt) ?? 0;
+    },
+
+    messageCount: new Map<string, number>(),
+
+    getAdapterMetrics(): AdapterMetrics[] {
+        const now = Date.now();
+        const out: AdapterMetrics[] = [];
+
+        for (const m of self.adapterMetrics.values()) {
+            const windowSec = Math.max(1, (now - m.lastWindow) / 1000);
+            const throughput = m.lastCount / windowSec;
+            const failureRate = m.total === 0 ? 0 : m.failures / m.total;
+            const latencyMs = m.total === 0 ? 0 : m.totalLatency / m.total;
+
+            out.push({
+                id: m.id,
+                latencyMs,
+                failureRate,
+                throughputPerSec: throughput,
+                healthy: !m.disabled && failureRate < 0.5,
+                disabled: m.disabled,
+            });
+
+            m.lastWindow = now;
+            m.lastCount = 0;
+        }
+
+        return out;
+    },
+
+    _queueMetrics: {
+        totalEnqueued: 0,
+        totalDropped: 0,
+        totalProcessed: 0,
+        peakSize: 0,
+        currentSize: 0,
+    },
+}));
+// #endregion
+//                                                                                                                 RIFTS_ACCESS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const RIFTS_ACCESS = BIND_ATOM("RIFTS_ACCESS", ({ self, master, config }: any) => ({
+    k: config.k ?? "__MODULE_ATOM__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    initial: config.options?.module_type === "class_fn_pool" || !config.options?.module_type ? { ...config.initial } : config.initial,
+    module: config.options?.module_type === "class_fn_pool" || !config.options?.module_type ? { ...config.initial } : config.initial,
+    module_type: config.options?.module_type ?? "class_fn_pool",
+    version: 0,
+    sealed: false,
+    frozen: (config.options?.module_type ?? "class_fn_pool") === "class_fn_pool"        ? false        : config.options?.frozen ?? true,
+    hasWritten: false,
+    persisted: false,
+    listeners: new Set<(change: Change<A>) => void>(),
+    waiters: new Set<(value: A) => void>(),
+    undoStack: undefined as HistoryEntry[] | undefined,
+    conflict: config.options?.conflict as ConflictPolicy | undefined,
+    historyIndex: 0,
+    history: config.options?.history ? [{ k: 0, value: config.initial, timestamp: Date.now(), source: "initial", }] : undefined,
+    historyMax: config.options?.history ? Math.max(1, config.options.history.max ?? 50) : 50,
+    lifecycle: config.options?.lifecycle as SignalLifecycle | undefined,
+    async: undefined as AsyncSignalState | undefined,
+    metrics: undefined as Metrics | undefined,
+    conflictStrategy: config.options?.conflictStrategy as        "latest" | "fail" | "accumulate" | undefined,
+    schema: config.options?.schema as SignalSchema | undefined,
+    contracts: new Map<string, AtomContract<A>>(),
+    causal: [] as CausalEntry[],
+    lastWriteSource: undefined as string | undefined,
+    batches: new Set<SignalKey>(),
+    batchQueue: new Map<SignalKey, unknown>(),
+    batchOpts: new Map<SignalKey, { triggerRender?: boolean }>(),
+
+    triggerRender: true,
+    boundary: "same-app" as Boundary,
+    read<T = A>(): T { return self.module;    },
+    peek<T = A>(): T { return self.module;    },
+    write<T = A>( incoming: any | ((prev: T) => T), options: AtomWriteOptions = {}, ): T {
+        if (self.frozen) return self.peek();
+        const prev = self.module;
+        const resolved = incoming;
+        const next = self.module_type === "class_fn_pool" ? resolved ? { ...prev, ...resolved } : prev : resolved;
+        self.module = next;
+        self.hasWritten = true;
+        self.version += 1;
+        self.lastWriteSource = options.source ?? "write";
+        self.assertContracts(next, prev);
+
+        for (const l of self.listeners) { try { l(next); } catch (e) {} }
+        death_star.bus.send(next,self.k,self.s, self.m, self.r, );
+ 
+        for (const w of self.waiters) { try { w(next); } catch (e) {} }
+        if (options.recordHistory !== false) { self.recordHistory(prev, next, self.lastWriteSource); }
+        self.recordCausal(next, self.lastWriteSource, options.cause);
+        self.waiters.clear();
+
+        self.notifyListeners({
+            key: self.key,
+            previous: prev,
+            current: next,
+            version: self.version,
+            timestamp: Date.now(),
+            source: self.lastWriteSource,
+        });
+
+        return next;
+    },
+    register<T = A>(name: string, val: any): T { return self.write((prev: A) => ({ ...prev, [name]: val }));    },
+    unregister<T = A>(name: string): T {
+        return self.write((prev: A) => {
+            const { [name]: _gone, ...rest } = prev;
+            return rest;
+        });
+    },
+    slot(name: string): any { return self.module[name]; },
+    on(listener: RiftListener<any>): void { self.listeners.add(listener); listener(self.module); },
+    waitFor<T = A>(): Promise<T> { return new Promise(resolve => { self.waiters.add(resolve); });    },
+    async waitForSlot(name: string, timeoutMs = 0): Promise<any> {
+        const existing = self.module[name];
+        if (existing !== undefined) return existing;
+
+        if (!timeoutMs) {
+            const next = await self.waitFor();
+            return (next as Record<string, any>)[name];
+        }
+
+        return Promise.race([
+            self.waitFor().then(next => (next as Record<string, any>)[name]),
+            new Promise((_, reject) =>
+                setTimeout(
+                    () => reject(
+                        new Error(`[ModuleAtom] waitForSlot("${name}") timed out after ${timeoutMs}ms`),
+                    ),
+                    timeoutMs,
+                ),
+            ),
+        ]);
+    },
+    inspect<T = A>(): T { return { ...self.module }; },
+    setSchema(schema?: SignalSchema) { self.schema = schema; return self; },
+    setLifecycle<T = A>(lifecycle?: SignalLifecycle<T>) { self.lifecycle = lifecycle; return self; },
+    setConflict( conflict?: ConflictPolicy, strategy?: "latest" | "fail" | "accumulate", ) {
+        self.conflict = conflict;
+        self.conflictStrategy = strategy;
+        return self;
+    },
+    setFrozen(): void { self.frozen = true; },
+    setUnfrozen(): void { self.frozen = false; },
+    setSealed(): void { self.sealed = true; },
+    setUnsealed(): void { self.sealed = false; },
+    setBoundary() {},
+    validate<T = A>(next: T): T {
+        if (!self.schema) return next;
+        return death_star.signals._.validateSchema(self.schema, next);
+    },
+
+    assertContracts<T = A>(next: T, previous: T): void {
+        for (const contract of self.contracts.values()) {
+            let valid = false;
+
+            try {
+                valid = contract.postcondition(next, previous);
+            } catch (error) {
+                console.error(
+                    `[Sauron] contract "${contract.name}" threw for "${String(self.key)}":`,
+                    error,
+                );
+            }
+
+            if (valid) continue;
+
+            const message =
+                `[Sauron] contract "${contract.name}" violated ` +
+                `on write to "${String(self.key)}"`;
+
+            if (contract.block) {
+                throw new Error(message);
+            }
+
+            console.error(message);
+        }
+    },
+
+    recordHistory<T = A>(previous: T, next: T, source?: string): void {
+        if (!self.history) return;
+
+        self.history.splice(self.historyIndex + 1);
+
+        const last = self.history[self.history.length - 1];
+
+        self.history.push({
+            k: (last?.k ?? -1) + 1,
+            prev: previous,
+            value: next,
+            next,
+            timestamp: Date.now(),
+            source,
+            undone: false,
+        });
+
+        while (self.history.length > self.historyMax) {
+            self.history.shift();
+        }
+
+        self.historyIndex = self.history.length - 1;
+    },
+
+    getHistory<T = A>(): readonly AtomHistoryEntry<T>[] {
+        return self.history ?? [];
+    },
+
+    timeTravel<T = A>(steps = 1): T | undefined {
+        if (!self.history?.length || steps <= 0) return undefined;
+
+        const idx = Math.max(
+            0,
+            Math.min(self.history.length - 1, self.historyIndex + steps),
+        );
+
+        if (idx === self.historyIndex) return undefined;
+
+        self.historyIndex = idx;
+        return self.replayHistory("time-travel");
+    },
+
+    back<T = A>(steps = 1): T | undefined {
+        return self.timeTravel(-Math.abs(steps));
+    },
+
+    forward<T = A>(steps = 1): T | undefined {
+        return self.timeTravel(Math.abs(steps));
+    },
+
+    goto<T = A>(sequence: number): T | undefined {
+        if (!self.history?.length) return undefined;
+
+        const idx = self.history.findIndex(entry => entry.k === sequence);
+        if (idx < 0 || idx === self.historyIndex) return undefined;
+
+        self.historyIndex = idx;
+        return self.replayHistory("time-travel.goto");
+    },
+
+    replayHistory<T = A>(source: string): T {
+        const entry = self.history![self.historyIndex];
+
+        return self.write(entry.value as T, {
+            source,
+            cause: "time-travel",
+            triggerRender: true,
+            recordHistory: false,
+        });
+    },
+
+    recordCausal<T = A>(value: T, source?: string, cause?: string): void {
+        self.causal.push({
+            value,
+            source,
+            cause,
+            timestamp: Date.now(),
+        } as CausalEntry);
+
+        if (self.causal.length > 100) {
+            self.causal.shift();
+        }
+    },
+
+    recordMetrics(): void {
+        if (!self.metrics) return;
+
+        self.metrics.writeCount += 1;
+        self.metrics.lastWrite = Date.now();
+    },
+
+    notifyListeners<T = A>(change: Change<T>): void {
+        const listeners = self._listeners.get(self.key);
+        if (!listeners) return;
+
+        for (const listener of listeners) {
+            try {
+                listener(change);
+            } catch (error) {
+                console.error(
+                    `[Sauron:SIGNAL_CELL:${String(self.key)}] listener failed:`,
+                    error,
+                );
+            }
+        }
+    },
+
+    resolveWaiters<T = A>(value: T): void {
+        const waiting = self._waiters.get(self.key);
+        if (!waiting) return;
+
+        self._waiters.delete(self.key);
+
+        for (const resolve of waiting) {
+            try {
+                resolve(value);
+            } catch (error) {
+                console.error(
+                    `[Sauron:SIGNAL_CELL:${String(self.key)}] waiter failed:`,
+                    error,
+                );
+            }
+        }
+    },
+
+    notifyExternalSubscribers(): void {
+        const subscribers = self._externalSubscribers.get(self.key);
+        if (!subscribers) return;
+
+        for (const callback of subscribers) {
+            try {
+                callback();
+            } catch (error) {
+                console.error(
+                    `[Sauron:SIGNAL_CELL:${String(self.key)}] external subscriber failed:`,
+                    error,
+                );
+            }
+        }
+    },
+}));
+// #endregion
+//                                                                                                                        ROUTE
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const ROUTE = BIND_ATOM("ROUTE", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    routeRules: [] as RouteRule[],
+
+    toRegex(pattern: S): RegExp {
+        return new RegExp(
+            "^" +
+                pattern
+                    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+                    .replace(/\*\*/g, ".*")
+                    .replace(/\*/g, "[^.]+") +
+                "$",
+        );
+    },
+
+    addRouteRule(rule: RouteRule): void {
+        self.routeRules.push(rule);
+
+        if (self.DEVTOOLS_ACTIVE) {
+            self.emitDevtoolsEvent("route_added", undefined, undefined, undefined, {
+                name: rule.name,
+            });
+        }
+    },
+
+    removeRouteRule(name: S): void {
+        self.routeRules = self.routeRules.filter(r => r.name !== name);
+
+        if (self.DEVTOOLS_ACTIVE) {
+            self.emitDevtoolsEvent("route_removed", undefined, undefined, undefined, { name });
+        }
+    },
+
+    listRouteRules(): RouteRule[] {
+        return [...self.routeRules];
+    },
+
+    /** First matching enabled rule wins. Returns the rewritten target(s); adapter defaults to same_boundary. */
+    resolve(rt: S, ms: S, sl: S, k: S): RouteTarget[] {
+        for (const rule of self.routeRules) {
+            if (rule.enabled === false) continue;
+            if (!self.toRegex(rule.match).test(rt)) continue;
+
+            const target: RouteTarget = {
+                adapter: rule.adapter ?? "same_boundary",
+                rt: rule.target?.rt ?? rt,
+                ms: rule.target?.ms ?? ms,
+                sl: rule.target?.sl ?? sl,
+                k: rule.target?.k ?? k,
+               // priority: rule.priority,
+            };
+
+            if (self.DEVTOOLS_ACTIVE) {
+                self.emitDevtoolsEvent("route_resolved", rt, ms, undefined, {
+                    rule: rule.name,
+                    adapter: target.adapter,
+                });
+            }
+
+            return [target];
+        }
+
+        // no rule: the identity target — same address, same boundary (PATCH 4's fallback)
+        return [{ adapter: "same_boundary", rt, ms, sl, k }];
+    },
+
+    purge(): void {
+        self.routeRules.length = 0;
+    },
+}));
+// #endregion
+//                                                                                                                      SESSION
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const SESSION = BIND_ATOM("SESSION", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    _cse_token: (config.cse_token ?? null) as S | null,
+    _sessionId: null as S | null,
+    _sessionToken: null as S | null,
+    _session_started_at: null as N | null,
+    _session_expires_at: null as N | null,
+    _auth_vized: false as B,
+    _auth_initialized: false as B,
+    _sessionTtlMs: (config.sessionTtlMs ?? 1000 * 60 * 60 * 12) as N,
+
+    // ── crypto ─────────────────────────────────────────────────────────────────────────────────
+    computeHmacSha256(secret: S, data: S): S {
+        if (BUS_CRYPTO) {
+            const key = BUS_CRYPTO.to_utf8_bytes(secret);
+            const mac = BUS_CRYPTO.hash_hmac(key, data);
+            return BUS_CRYPTO.to_hex(BUS_CRYPTO.from_base64(mac));
+        }
+
+        return "";
+    },
+
+    // ── lifecycle ──────────────────────────────────────────────────────────────────────────────
+    /**
+     * Stand the session up. Reads CSE_TOKEN from .env when no token was injected.
+     * No token anywhere? The session still runs, but UNAUTHORIZED (matches the bus's stance).
+     */
+    async initAuth(): Promise<void> {
+        if (self._auth_initialized) return;
+
+        if (!self._cse_token && typeof process !== "undefined") {
+            try {
+            //   if (dotenv) dotenv.config();
+            } catch {
+                // env loader optional
+            }
+
+            const sk = (typeof process !== "undefined" && process.env?.CSE_TOKEN) || null;
+            if (sk && sk.length >= 5) self._cse_token = sk;
+        }
+
+        self._newSession();
+        self._auth_initialized = true;
+    },
+
+    _newSession(): void {
+        const now = Date.now();
+
+        if (self._cse_token && BUS_CRYPTO) {
+            self._sessionId = BUS_CRYPTO.to_hex(BUS_CRYPTO.random_bytes(16));
+            self._sessionToken = self.computeHmacSha256(self._cse_token, self._sessionId);
+        } else {
+            // degraded mode: still unique, just not cryptographically bound
+            self._sessionId = `sess_${now}_${Math.random().toString(36).slice(2)}`;
+            self._sessionToken = null;
+        }
+
+        self._session_started_at = now;
+        self._session_expires_at = now + self._sessionTtlMs;
+        self._auth_vized = !!self._sessionToken;
+    },
+
+    /** Rotate the session id + token. Anything wrapped before is invalid after this. */
+    renew(): void {
+        self._newSession();
+    },
+
+    /** Force-expire. secureUnwrap() will reject everything until renew() or initAuth(). */
+    expire(): void {
+        self._session_expires_at = Date.now() - 1;
+        self._auth_vized = false;
+    },
+
+    isValid(): B {
+        return self._session_expires_at !== null && Date.now() < self._session_expires_at;
+    },
+
+    get expired(): B {
+        return !self.isValid();
+    },
+
+    get isSecure(): B {
+        return self._cse_token !== null && self._sessionToken !== null;
+    },
+
+    // ── wrap / unwrap ──────────────────────────────────────────────────────────────────────────
+    /** Wrap a payload with the cell's session identity. */
+    secureWrap(p: A) {
+        return {
+            sessionId: self._sessionId,
+            token: self._sessionToken,
+            ts: Date.now(),
+            p,
+        };
+    },
+
+    /** Unwrap + verify. Tampered, stale, or foreign session → null. */
+    async secureUnwrap(msg: A): Promise<A | null> {
+        if (!msg?.sessionId || !msg?.token) return null;
+        if (msg.sessionId !== self._sessionId) return null; // not our session
+        if (!self.isValid()) return null; // our session but expired
+
+        const expected = await self.computeHmacSha256(
+            self._cse_token ?? "",
+            msg.sessionId,
+        );
+
+        if (self._sessionToken && msg.token !== expected) return null;
+
+        return msg.p;
+    },
+
+    purge(): void {
+        self._sessionId = null;
+        self._sessionToken = null;
+        self._session_started_at = null;
+        self._session_expires_at = null;
+        self._auth_vized = false;
+        self._auth_initialized = false;
+    },
+}));
+// #endregion
+//                                                                                                                 SUBSCRIPTION
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const SUBSCRIPTION = BIND_ATOM("SUBSCRIPTION", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+    listeners: new Set<LISTENER<W>>(),
+
+    subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
+        self.listeners.add(listener);
+
+        return () => {
+            self.listeners.delete(listener);
+        };
+    },
+
+    notify(change: CHANGE<W>): void {
+        for (const listener of self.listeners) {
+            try {
+                listener(change);
+            } catch (error) {
+                console.error(`[soul-ELECTRON] listener failed for "${String(change.key)}":`, error);
+            }
+        }
+    },
+
+    get size(): number {
+        return self.listeners.size;
+    },
+
+    purge(): void {
+        self.listeners.clear();
+    },
+}));
+// #endregion
+//                                                                                                                       WAITER
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const WAITER = BIND_ATOM("WAITER", ({ self, master, config }: any) => ({
+    k: config.k ?? "__SIGNALS__",
+    s: config.s ?? "SAURON_SLAVE_REG",
+    m: config.m ?? "SAURON_MASTER_REG",
+    r: config.r ?? "THE_WIZARD_ROOT_REG",
+
+
+    waiters: new Set<{
+        resolve: (value: A) => void;
+        reject: (reason?: A) => void;
+    }>(),
+
+    wait<T = A>(timeout?: number): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
+            const waiter = {
+                resolve: resolve as (value: A) => void,
+                reject,
+            };
+
+            self.waiters.add(waiter);
+
+            if (timeout !== undefined && timeout > 0) {
+                const timer = setTimeout(() => {
+                    if (self.waiters.delete(waiter)) {
+                        reject(new Error("SOUL_ELECTRON wait timed out"));
+                    }
+                }, timeout);
+
+                const originalResolve = waiter.resolve;
+                waiter.resolve = value => {
+                    clearTimeout(timer);
+                    originalResolve(value);
+                };
+
+                const originalReject = waiter.reject;
+                waiter.reject = reason => {
+                    clearTimeout(timer);
+                    originalReject(reason);
+                };
+            }
+        });
+    },
+
+    resolve<T = A>(value: T): number {
+        const waiters = [...self.waiters];
+        self.waiters.clear();
+
+        for (const waiter of waiters) {
+            waiter.resolve(value as A);
+        }
+
+        return waiters.length;
+    },
+
+    reject(reason: A): number {
+        const waiters = [...self.waiters];
+        self.waiters.clear();
+
+        for (const waiter of waiters) {
+            waiter.reject(reason);
+        }
+
+        return waiters.length;
+    },
+
+    purge(): void {
+        self.reject(new Error("SOUL_ELECTRON waiter ELECTRON destroyed"));
+    },
+}));
+// #endregion
+//                                                                                                                MASTER VERTEX
+
+
+
+// ============================================================================
+//  STEP 0 — masters as the registry actually holds them
+//  The registry holds the BINDABLE FACTORY for "GATE", not an instance, so
+//  NexusMirror's `prop in arr` never matches and every property becomes a stub.
+// ============================================================================
+const attempt = (fn: () => any) => {
+	try { return { ok: true, value: fn() }; }
+	catch (e: any) { return { ok: false, value: String(e.message ?? e).split("\n")[0] }; }
+};
+
+const vertexContract = ATOM_CONTRACT(() => ({
 	atom: "VERTEX",
 	value: { count: 0 },
-	bindables: {
-		counter: ATOM_BINDABLE(({ self }) => ({
-			increment() {
-				self.value = { count: self.value.count + 1 };
-				return self.value.count;
-			},
-		})),
+	bindables: { conflict: CONFLICT, ttl: TTL },
+}));
+const atomMasterContract = ATOM_CONTRACT(() => ({
+	atom: "ATOM",
+	value: 0,
+	bindables: { ttl: TTL },
+}));
+const moduleContract = ATOM_CONTRACT(() => ({
+	atom: "MODULE",
+	value: [],
+	bindables: { conflict: CONFLICT },
+}));
+
+console.log("--- STEP 0: read with the registry exactly as signals.ts leaves it ---");
+const shippedVertex = vertexContract({ value: { count: 0 } });
+console.log("  vertex.read() ->", JSON.stringify(attempt(() => shippedVertex.read())));
+//console.log('  registry "GATE" holds a ->', typeof CELLS.get("GATE"), "(a bindable factory, not an instance)");
+
+// PLACEHOLDER: put a resolved gate instance in the registry, which is what a
+// live hub does. Everything after this line assumes that.
+// CELLS.set("GATE", { sealed: false, frozen: false });
+
+// ============================================================================
+//  THREE CONTRACTS — one per master, 1-2 bindables each
+// ============================================================================
+console.log("\n--- THREE MASTERS, THEIR BINDABLES ---");
+
+const vertex = vertexContract({ value: { count: 0 }, conflictStrategy: "accumulate", defaultTtlMs: 60_000 });
+const atomMaster = atomMasterContract({ value: 0, defaultTtlMs: 1_000 });
+const moduleMaster = moduleContract({ value: [], conflictStrategy: "latest" });
+
+// ---------------------------------------------------------------------------
+//  1. MASTER PATH — flat, no .master indirection
+// ---------------------------------------------------------------------------
+console.log("\n[1] master path");
+console.log("  vertex.read()            ->", JSON.stringify(vertex.read()));
+console.log("  vertex.write({count:5})  ->", vertex.write({ count: 5 }));
+console.log("  vertex.read() after      ->", JSON.stringify(vertex.read()));
+console.log("  atomMaster.read()        ->", JSON.stringify(atomMaster.read()));
+console.log("  atomMaster.write(7)      ->", atomMaster.write(7), "| read() =", atomMaster.read());
+console.log("  moduleMaster.mount('a')  ->", moduleMaster.mount("a", { id: "a" }));
+console.log("  moduleMaster.list()      ->", JSON.stringify(moduleMaster.list()));
+console.log("  vertex.atom              ->", vertex.atom, "| atomMaster.atom ->", atomMaster.atom, "| moduleMaster.atom ->", moduleMaster.atom);
+
+// ---------------------------------------------------------------------------
+//  2. NAMESPACING — method lives under its bindable key
+// ---------------------------------------------------------------------------
+console.log("\n[2] namespacing");
+console.log("  vertex.conflict.resolve(10, 5) ->", vertex.conflict.resolve(10, 5), "(accumulate)");
+vertex.ttl.set("session", "abc", 30_000);
+console.log("  vertex.ttl.get('session')      ->", vertex.ttl.get("session"));
+console.log("  vertex.ttl.has('missing')      ->", vertex.ttl.has("missing"));
+console.log("  moduleMaster.conflict.resolve('x','y') ->", moduleMaster.conflict.resolve("x", "y"), "(latest)");
+console.log("  bindable keys on vertex        ->", JSON.stringify(Object.keys(vertex).filter((k) => ["conflict", "ttl", "gate"].includes(k))));
+console.log("  flat vertex.resolve(...)       ->", JSON.stringify(attempt(() => (vertex as any).resolve(1, 2))));
+console.log("  flat vertex.set(...)           ->", JSON.stringify(attempt(() => (vertex as any).set("a", 1))));
+
+// ---------------------------------------------------------------------------
+//  3. ISOLATION
+// ---------------------------------------------------------------------------
+console.log("\n[3] isolation");
+const has = (obj: any, key: string) => Object.keys(obj).includes(key);
+
+const vertex2 = vertexContract({ value: { count: 0 }, conflictStrategy: "accumulate", defaultTtlMs: 60_000 });
+vertex.write({ count: 99 });
+console.log("  same-contract second instance  ->", JSON.stringify(vertex2.read()), "(first wrote 99)");
+
+const vertex3 = vertexContract({ value: { count: 0 }, conflictStrategy: "fail", defaultTtlMs: 1 });
+vertex.ttl.set("only-first", 1, 30_000);
+console.log("  vertex3.ttl.get('only-first')  ->", JSON.stringify(vertex3.ttl.get("only-first")));
+console.log("  vertex3.conflictStrategy       ->", JSON.stringify(vertex3.conflict.conflictStrategy));
+console.log("  vertex.conflictStrategy        ->", JSON.stringify(vertex.conflict.conflictStrategy), "(unchanged by vertex3)");
+
+console.log("  'ttl' on moduleMaster          ->", has(moduleMaster, "ttl"));
+console.log("  'conflict' on atomMaster       ->", has(atomMaster, "conflict"));
+console.log("  'mount' on vertex              ->", has(vertex, "mount"));
+console.log("  'resolve' on atomMaster        ->", has(atomMaster, "resolve"));
+console.log("  'read' on vertex / atomMaster  ->", has(vertex, "read"), "/", has(atomMaster, "read"));
+
+// 3d. refs fall back to the GLOBAL registry by name
+console.log("\n[3d] unresolved ctx refs fall back to the global registry:");
+console.log("  vertex.conflict.TTL   ->", typeof (vertex.conflict as any).TTL);
+console.log("  vertex.conflict.GATE  ->", typeof (vertex.conflict as any).GATE);
+console.log("  atomMaster.ttl.MODULE ->", typeof (atomMaster.ttl as any).MODULE);
+console.log("  atomMaster.ttl.rawCellRead('ATOM') ->", typeof death_star.bear.cell("ATOM"));
+
+// 3e. the real reach: bindable ctx falls back to the global registry by name,
+//     so any bindable can grab any other registered factory.
+const SPY = BIND_ATOM("SPY", ({ self, master, TTL: otherTtl, MODULE: otherModule, CONFLICT: otherConflict }: any) => ({
+	k: "__SIGNALS__", s: "SAURON_SLAVE_REG", m: "SAURON_MASTER_REG", r: "THE_WIZARD_ROOT_REG",
+	// refs are array proxies, so typeof is "object" — but it is a live handle
+	stolen: { ttl: typeof otherTtl, module: typeof otherModule, conflict: typeof otherConflict },
+	// and it can BUILD them against a fake instance
+	buildForeign() {
+		const fake = { value: 0, entries: new Map() };
+		return typeof otherTtl === "function" ? Object.keys(otherTtl.__build(fake)).slice(0, 4) : null;
 	},
 }));
 
-const a = liveContract();
-console.log("before:", a.read());        // { count: 0 }
-a.counter.increment();
-console.log("after, same read fn:", a.read()); // must show { count: 1 } WITHOUT calling read() being redefined/rebuilt
-export class RAVENS_WAR_ROOOM2 {
-    public r: A = "THE_WIZARD_ROOT_REG";
-	public m: A = "SAURON_MASTER_REG";
-	public s: A = "SAURON_SLAVE_REG";
-	public k: A = "__SAURON__";
-    public raven : RAVEN
+const spyContract = ATOM_CONTRACT(() => ({ atom: "MODULE", value: [], bindables: { spy: SPY } }));
+const spyAtom = spyContract({ value: [] });
+console.log("  spy.stolen                     ->", JSON.stringify(spyAtom.spy.stolen));
+console.log("  spy.buildForeign()             ->", JSON.stringify(spyAtom.spy.buildForeign()));
+	// new in this version: the contract itself is registered by name
+	console.log("  registry ATOM_CONTRACTn        ->", typeof (death_star.bear.cell as any)("ATOM_CONTRACT1"), typeof (death_star.bear.cell as any)("ATOM_CONTRACT2"));
+	console.log("  registry cell('ATOM_CONTRACT1')  ->", typeof (death_star.bear.cell as any)("ATOM_CONTRACT1"), "| is a contract:", typeof (death_star.bear.cell as any)("ATOM_CONTRACT1") === "function");
 
-    //                                                                                                                  MAIN CACHES
-    // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    #META = new M2<A, M2<A, M2<A, A>>>();
-    _meta: M2<A, A>
-    #SIGNALS = new M2<A, M2<A, M2<A, A>>>();
-    _signals: M2<A, A>
-    #CONTEXT = new M2<A, M2<A, M2<A, A>>>();
-    _context: M2<A, A>
-    #ATOMS = new M2<A, M2<A, M2<A, A>>>();
-    _atoms: M2<A, A>
-    #SAURON = new M2<A, M2<A, M2<A, A>>>();
-    _sauron: M2<A, A>
-    #BUS = new M2<A, M2<A, M2<A, A>>>();
-    _bus: M2<A, A>
-    _gt: M2<A, A>
+const results = [
+	["vertex.read() flat (99 was the last write)", JSON.stringify(vertex.read()), JSON.stringify({ count: 99 })],
+	["atomMaster.read() flat", atomMaster.read(), 7],
+	["conflict namespaced + accumulate", vertex.conflict.resolve(10, 5), 15],
+	["module conflict latest", moduleMaster.conflict.resolve("x", "y"), "y"],
+	["ttl namespaced", vertex.ttl.get("session"), "abc"],
+	["flat resolve throws (typo guard)", attempt(() => (vertex as any).resolve(1, 2)).ok, false],
+	["flat set throws (typo guard)", attempt(() => (vertex as any).set("a", 1)).ok, false],
+	["same contract, separate values", JSON.stringify(vertex2.read()), JSON.stringify({ count: 0 })],
+	["separate bindable state", vertex3.ttl.get("only-first"), undefined],
+	["separate bindable config", vertex3.conflict.conflictStrategy, "fail"],
+	["no ttl on MODULE atom", has(moduleMaster, "ttl"), false],
+	["no conflict on ATOM atom", has(atomMaster, "conflict"), false],
+	["no MODULE method on VERTEX atom", has(vertex, "mount"), false],
+];
 
-    COMPONENTS = new M2<S, ComponentInstance>();
-    // #endregion
-    //                                                                                                                    THE CLOUD
-    // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    _components: M2<A, A>
-    _batches: M<S | SY>
-    _batchQueue: M<S | SY, A>
-    _batchOpts: M<S | SY, { triggerRender?: B }>
-    _globalListeners: Set<(key: S | SY, value: A) => V>
-    _global_subscribers: M<S, Set<() => V>>
-    _waiters: M<S | SY, ST<(value: A) => V>>
-    _sys: M<S, SysEntry>
-    _sealed: M<S, SysEntry>
-    _frozen: ST<S>
-    _keyContracts: M<S, ST<S>>
-    _conflicts: M<S, ConflictPolicy>
-    _conflictStrategies: M<S, "latest" | "fail" | "accumulate">
-    _causal: M<S, CausalEntry[]>
-    _history: M<S | SY, HistoryEntry[]>
-    _scopes: M<S, SignalScope>
-    _msgHandlers:  M<S, ST<(p: A) => V>>
-    _lastWriteSource: M<S, S>
-    _mainMap: M<A, S>
-    _tupleCache: M<S, S>
-    _weakMap: WM<O, S>
-    _boundaries: WM<O, S>
-    _persistent: M2<A, A>
-    _persistent_keys: M2<A, A>
-    _listeners: M2<A, Set<(value: A) => void>>
-    // #endregion
-    //                                                                                                                    SIGNALS
-    // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-    _timeTravelMaul: M2<A, A>
-    _historyMaul: M2<A, A>
-    _subscribersMaul: M2<A, A>
-    _listenersMaul: M2<A, A>
-    // #endregion
-    constructor(raven: RAVEN) {
-        this.raven=raven
-        this.r = raven.r ?? 'THE_WIZARD_ROOT_REG'
-        this.m = raven.m ?? 'SAURON_MASTER_REG'
-        
-        this.s = raven.s ?? 'SAURON_SLAVE_REG'
-        this.k = raven.k ?? 'THE_K_KEY'
-        this._meta = this.map('_meta', this.m, this.r, '#META')
-        this._signals = this.map('_signals', this.m, this.r, '#SIGNALS')
-        this._context = this.map('_context', this.m, this.r, '#CONTEXT')
-        this._atoms = this.map('_atoms', this.m, this.r, '#ATOMS')
-        this._sauron = this.map('_sauron', this.m, this.r, '#SAURON')
-        this._bus = this.map('_bus', this.m, this.r, '#BUS')
-        this._gt = this.map('_gt', this.m, this.r)
-
-
-        this._listeners = this.map('_listeners_raven', this.m, this.r)
-        this._persistent_keys = this.map('_persistent_keys_raven', this.m, this.r)
-        this._persistent = this.map('_persistent_raven', this.m, this.r)
-        this._components = this.map('_components_raven', this.m, this.r)
-        this._batches = this.map('_batches_raven', this.m, this.r)
-        this._batchQueue = this.map('_batchQueue_raven', this.m, this.r)
-        this._batchOpts = this.map<M<S | SY, { triggerRender?: B }>>('_batchOpts_raven', this.m, this.r)
-        this._globalListeners = this.map<M<S, Set<() => V>>>('_globalListeners_raven', this.m, this.r)
-        this._global_subscribers = this.map< M<S, Set<() => V>>>('_global_subscribers_raven', this.m, this.r)
-        this._waiters = this.map<M<S | SY, ST<(value: A) => V>>>('_waiters_raven', this.m, this.r)
-        this._sys = this.map< M<S, SysEntry>>('_sys_raven', this.m, this.r)
-        this._sealed = this.map<M<S, SysEntry>>('_sealed_raven', this.m, this.r)
-        this._frozen = this.map<Set<string>>('_frozen_raven', this.m, this.r) as Set<string>
-        this._keyContracts = this.map< M<S, ST<S>>>('_keyContracts_raven', this.m, this.r)
-        this._conflicts = this.map<M<S, ConflictPolicy>>('_conflicts_raven', this.m, this.r)
-        this._conflictStrategies = this.map<M<S, "latest" | "fail" | "accumulate">>('_conflictStrategies_raven', this.m, this.r)
-        this._causal = this.map<M<S, CausalEntry[]>>('_causal_raven', this.m, this.r)
-        this._history = this.map< M<S | SY, HistoryEntry[]>>('_history_raven', this.m, this.r)
-        this._scopes = this.map< M<S, SignalScope>>('_scopes_raven', this.m, this.r)
-        this._msgHandlers = this.map<M<S, ST<(p: A) => V>>>('_msgHandlers_raven', this.m, this.r)
-        this._lastWriteSource = this.map< M<S, S>>('_lastWriteSource_raven', this.m, this.r)
-        this._mainMap = this.map('_mainMap_raven', this.m, this.r)
-        this._tupleCache = this.map<M<S, S>>('_tupleCache_raven', this.m, this.r)
-        this._weakMap = this.map<WM<O, S>>('_weakMap_raven', this.m, this.r)
-        this._boundaries = this.map<WM<O, S>>('_boundaries_raven', this.m, this.r)
-
-        this._timeTravelMaul = this.map<WM<O, S>>('_timeTravel_maul', this.m, this.r)
-        this._historyMaul = this.map<WM<O, S>>('_history_maul', this.m, this.r)
-        this._subscribersMaul = this.map<WM<O, S>>(' _subscribers_maul', this.m, this.r)
-        this._listenersMaul = this.map<WM<O, S>>(' _listeners_maul', this.m, this.r)
-    }
-    map<K = A, V=A>(s = this.s, m = this.m, r = this.r, c = 'gt'): M2<K, V> | K | V {
-        let root
-        switch (c) {
-            case '#CONTEXT': { root = this.#CONTEXT.get(r); break; }
-            case '#META': { root = this.#META.get(r); break; }
-            case '#SIGNALS': { root = this.#SIGNALS.get(r); break; }
-            case '#ATOMS': { root = this.#ATOMS.get(r); break; }
-            case '#SAURON': { root = this.#SAURON.get(r); break; }
-            case '#BUS': { root = this.#BUS.get(r); break; }
-            case 'gt': { root = rootRegistry.get(r); break }
-            case 'globalThis': { (globalThis as A)[r]; break; }
-        }
-        if (!root) {
-            root = new M2<A, M2<A, M2<A, A>>>();
-            switch (c) {
-                case '#CONTEXT': { root = this.#CONTEXT.set(r, root); break; }
-                case '#META': { root = this.#META.set(r, root); break; }
-                case '#SIGNALS': { root = this.#SIGNALS.set(r, root); break; }
-                case '#ATOMS': { root = this.#ATOMS.set(r, root); break; }
-                case '#SAURON': { root = this.#SAURON.set(r, root); break; }
-                case '#BUS': { root = this.#BUS.set(r, root); break; }
-                case 'gt': {rootRegistry.set(r, root); break; }
-                case 'globalThis': { (globalThis as A)[r] = root; break; }
-            }
-            this.#CONTEXT.set(r, root);
-        }
-        let masterMap = root.get(m);
-        if (!masterMap) { masterMap = new M2<A, M2<A, A>>(); root.set(m, masterMap); }
-        let slaveMap = masterMap.get(s);
-        if (!slaveMap) { slaveMap = new M2<K, V>(); masterMap.set(s, slaveMap); }
-        return slaveMap;
-    }
-    // (globalThis as A)[r] //  STATE_CONTEXT === "sauron" ? : null;
-    // (globalThis as A)[r] = root;
+console.log("\n--- RESULTS ---");
+let fails = 0;
+for (const [label, actual, expected] of results as [string, any, any][]) {
+	const ok = JSON.stringify(actual) === JSON.stringify(expected);
+	if (!ok) fails++;
+	console.log(`${ok ? "PASS" : "FAIL"}  ${label}${ok ? "" : `  got ${JSON.stringify(actual)} want ${JSON.stringify(expected)}`}`);
 }
+console.log(fails === 0 ? "\nAll checks passed." : `\n${fails} check(s) failed.`);
+
 // #endregion
 /**
  Addressing
