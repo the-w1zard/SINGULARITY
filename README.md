@@ -220,19 +220,194 @@ warlock vs alien:    37.74x
 > ```tsx
 > const v = the_mesh.send.gt.hot(p, k)
 > ```
-> We still get our multiplexing and all the things that come with that, but instead of paying the cost to verify each channel automatically we just reach for the hot path.
+> We still get our multiplexing and all the things that come with that, but instead of paying the cost to verify each channel automatically we just reach for the hot path. Meanwhile, the next layer up would be the next fastest, with send being the slowest due to total ops required to execute the send and acquire the returned value. We do get something in return for that bit of cost which is flexibility as it grants us access to every single adapter that the rest of the bus mesh has access to. Which ends up making it so that, no matter what bus you originally registered the subscribe with, you can infact send a message from any bus in the mesh and it will get to the subscriber wherever that ends up.
 >
 > Despite the dark side forgoing virtually all features across the board, there are some features that are worth thier weight in gold, but this one... I'll be honest, I haven't benched it yet but I do not think it would add much in the form of costing us ops... I will verify this though. Maybe promise has been placed within each of the send methods in order to grant us BOTH async and sync fns from a single fn. The ergonomics is just too much to pass up.
+>
+> The plan is to currently have each bus, at a min, have the basic send/sub, stream/handler and duplex fns. Beyond that, each bus will have a specialty, jedi is a fully featured bus with dealetters and all, while also containing drs among other things. Sith, will be its exact carbon copy but aimed at raw performance. 
+>
+> These two portions of the mesh reside in the apps first module to load during the init phase, because of that it does not have access to everything. Which is where staff comes in, as it will make up for the pieces that cannot be placed with jedi.
+>
+> G_BUS will be available and accessible as a bus alongside sith and jedi, just so we have access to it. But it does have its own purpose, that I mentioned earlier.
+>
+> Then there are... 3 signals solutions... I want to say. One in the dark side and 2 attached to staff. The dark side signals solution will contain the newly created atoms solution, due to its hot path characteristics where the user can actually get up to 750 mill ops per sec.
+>
+> The 2 attached to staff are more akin to reactive streaming solutions, where one of them is a direct competitior to solutions like rx and others. The second one, is an upgraded version of that competitor. I will say this though, those solutions will never get another update again, as there has since been a solution that... is so many leagues ahead in every possible way, that I simply do not see the point or the value in updating those solutions in the future. They are built, they are there to use... so if you love using solutions that have absolute shit dx... by all means go for it.
+>
+> I think that is 6 buses... oh and then there is a small, very small, bus attached to the atoms solution specfically for that solution. I don't think you will ever have a use case for it, but what do I know and as such it is there for you to reach for and use if the need arises.
+
+> [!NOTE] BUILDERS LOG #3
+>
+> The hunt for more contigious memory continues... but takes a rather, strange and unsuspecting, but welcoming turn.
+>
+> Disruptors are... fucking great. But they themselves come with costs to which I have been able to obsorb virtually all of them through the platform instead of placing it on the end user.
+>
+> While creating another comp for the dark side... A bench and its results... surprised the fuck out of me. It was, a very simple and plain bus. That had a send, sub, stream, handler, and duplex. While there weere a couple of other requirements, that was it... but I try to always build things different in attempt in finding better or more effecient ways in dealing with things... It paid off this time.
+>
+> That non disruptor bus... hit 3.1 bill ops per second. Immediatly... I looked at it like it had 4 heads... and got it verified... ya... 3.1 billion ops without... soa typed arrays, without a ring buffer, you name it, it did not have it.
+>
+> Very... very... appealing, immediatly so, due to the fact that... 'holy shit, disruptor speeds... but... no encoders... no where is there defined, 64 variables of a slew of different binary array types...  none of that...
+>
+> Well... naturally... the entire platform needs this... special code cocaine... because we CAN'T JUST FUCKING SIT ON IT AND NOT... USE AS MUCH AS WE CAN, lol.
+>
+> App state and context, signals... because there IS a regular one in the platform as well, hooks and so on. 3.1 billion ops is not a thing to scoff at, primarily due to the fact that it lifts the entire platforms ceiling... THAT IN ITSELF, is the most important part. Because... without me doing these things, or any other dev creating a solution... once your done, unless you go back to it, that number will only ever go up. 
+>
+> I pull all the stops so that I do not effect that number much, before passing it on to a user who probably doesn't know the difference between an op and a byte but thats ok... as long as it is as fast as I can get it... when passing it to you, and myself included, any time I can garauntee a level... I will always go for it.
+>
+> The end result will be that... there will not be a single platform or solution that... could even come close to this fucking platform as it will literally be untouchable.
+>
+> | Handler | node | bun |
+> |---|---|---|
+> | trivial `(p) => p` | 95 | 3,103 |
+> | reply value consumed by caller | 92 | 2,370 |
+> | sub returns a new message object | 64 | 2,325 |
+> | handler reads msg fields | 106 | 507 |
+> | `sendStream` + 1 push listener | 76 | 321 |
+> | 8 channels, 8 different handlers | 59 | 92 |
+> | handler retains the msg | 41 | 47 |
 
 
 
+### 3.1 bill ops bench / test needs actual bus
+```tsx
+'use strict';
+const { spawnSync } = require('child_process');
+
+const DURATION = Number(process.env.DURATION || 12);
+const pid = 1, v = 1;
 
 
 
+function child(mode) {
+  const bus = new FELKOR2();
+  const acc = new Int32Array(4);
+  const keep = new Array(1024).fill(null); let kn = 0;
+  let write;
+
+  if (mode === 'trivial') {
+    bus.sub((p) => p, 'k');
+    write = () => { bus.send(v, 'k'); };
+  } else if (mode === 'reads') {
+    bus.sub((p, msg) => { acc[0] = (acc[0] + p + msg.k.length + msg.s.length) | 0; return p; }, 'k');
+    write = () => { bus.send(v, 'k'); };
+  } else if (mode === 'escape') {
+    bus.sub((p, msg) => { keep[kn++ & 1023] = msg; return p; }, 'k');
+    write = () => { bus.send(v, 'k'); };
+  } else if (mode === 'multi8') {
+    const hs = [(p) => p + 1, (p) => p + 2, (p) => p * 3, (p) => p - 4, (p) => p ^ 5, (p) => p | 6, (p) => p & 7, (p) => p + 8];
+    const keys = hs.map((_, i) => 'k' + i);
+    hs.forEach((h, i) => bus.sub(h, keys[i]));
+    let i = 0;
+    write = () => { bus.send(v, keys[i]); i = (i + 1) & 7; };
+  } else if (mode === 'roundtrip') {
+    // sub replies with a value derived from the message; caller consumes the reply
+    bus.sub((p, msg) => p + msg.k.length, 'k');
+    write = () => { acc[2] = (acc[2] + bus.send(v, 'k')) | 0; };
+  } else if (mode === 'replyobj') {
+    // sub returns a NEW message object; caller reads a field off the reply
+    bus.sub((p, msg) => ({ id: msg.k, p: p + 1, ok: true }), 'k');
+    write = () => { acc[2] = (acc[2] + bus.send(v, 'k').p) | 0; };
+  } else if (mode === 'stream0') {
+    bus.sub((p) => p, 'k');
+    write = () => { bus.sendStream(v, 'k'); };
+  } else if (mode === 'stream1') {
+    bus.sub((p) => p, 'k');
+    bus.stream((msg) => { acc[1] = (acc[1] + msg.p) | 0; }, 'k');
+    write = () => { bus.sendStream(v, 'k'); };
+  } else throw new Error('unknown mode ' + mode);
+
+  const ns = (ms) => BigInt(Math.round(ms)) * 1000000n;
+  const warmEnd = process.hrtime.bigint() + ns(1000);
+  while (process.hrtime.bigint() < warmEnd) for (let i = 0; i < 100000; i++) write();
+
+  const wins = new Float64Array(100000); let nw = 0;
+  const t0 = process.hrtime.bigint(), end = t0 + ns(DURATION * 1000);
+  let wStart = t0, wOps = 0, total = 0, now = t0;
+  do {
+    for (let i = 0; i < 100000; i++) write();
+    wOps += 100000; total += 100000;
+    now = process.hrtime.bigint();
+    if (now - wStart >= 1000000000n) { wins[nw++] = wOps / (Number(now - wStart) / 1e9); wOps = 0; wStart = now; }
+  } while (now < end);
+  const avg = total / (Number(now - t0) / 1e9);
+  let peak = 0; for (let i = 0; i < nw; i++) if (wins[i] > peak) peak = wins[i];
+  if (nw === 0) peak = avg;
+  console.log(JSON.stringify({ mode, peak, avg, check: acc[0] + acc[1] + acc[2] + kn }));
+}
+
+// ---------------------------------------------------------------- parent
+function parent() {
+  const rt = typeof Bun !== 'undefined' ? 'bun ' + Bun.version : 'node ' + process.version;
+  console.log(`${rt} | ${DURATION}s per run (+1s warmup) | each op = one send() that runs a handler\n`);
+  console.log('mode'.padEnd(10), 'peak M/s'.padStart(10), 'avg M/s'.padStart(10));
+  for (const mode of ['trivial', 'roundtrip', 'replyobj', 'reads', 'escape', 'multi8', 'stream0', 'stream1']) {
+    const out = spawnSync(process.execPath, [__filename, mode], { env: process.env, encoding: 'utf8' });
+    let j;
+    try { j = JSON.parse(out.stdout.trim().split('\n').pop()); } catch (e) { console.log(mode, 'FAILED', out.stderr); continue; }
+    console.log(mode.padEnd(10), (j.peak / 1e6).toFixed(0).padStart(10), (j.avg / 1e6).toFixed(0).padStart(10));
+  }
+}
+
+if (process.argv.length >= 3) child(process.argv[2]); else parent();
+```
+
+> [!NOTE] BUILDERS LOG #4
+>
+> Stuff... is fucking happening... obviously, but I swear... I did not plan a single portion or part of this platform. I have never planned out a solution where the end user is us, the devs.
+>
+> haha, there has never been a morning where... 'ahhhh... I'm going to build this for devs today' *twirls mustache*.
+>
+> That just has never happened. Instead, what usually ends up happening is that I got so fucking annoyed and frustrated with a solution and I get to the point where, 'ahhhh fuck this SHIT...ehhhhhhhh, ya... I'm just going to build my own so it doesn't suck ass'
+>
+> But this platform seriously looks as if I spent 3 years planning it, and not just becasue of its size but...
+>
+> For example, Warlock portals... while the current impementation of the apps context / state reactivety was going to run it... it looks as if... a path that I am currently working on, will infact... work a hell of a lot better, that the already in place app solution. 
+>
+> If you don't know hat a warlock protal is, think signals... fine grain reactivity... but... microscopic, surgical renderivity... haha, taking what signals probably wanted to do... and actually doing it. Taking the fine grain idea and appliying to html and webpage rendering.
+>
+> Also the dark sides bus.... pfffftttttttt... BROTHER... that shit is getttttting wilddd. In a good way. I am going to try... everything I can think of... in order for that 3.1 billion to reach us as a user whenever we go to reach for it.
+>
+> In addition to that, right now, spreadsheet engine is being reimagined where we are lifting it out of the apps context and state entirely... and slaming it and the actual spreadsheet runtime into a multithreaded disruptor. Still need to drop the same node, different app transport in there as well... but already there is as, let me actually count...
+> - spreadsheet disruptor
+> - power of 2 disruptor
+> - vader, specializes in streaming and duplexing
+> - palpatine, batching disruptor
+> - rule of 2 disruptors, which is the diff app transport layer
+> - g_bus, despite this bus being something to copy paste into solutions, comps, modules and whatever... it does need to be stored somewhere, not to mention it meets the requirments of being placed into the darkside. As well as providing a access point to said mesh buses where, absolutely nothing is required to configure in order to communicate or receive coms from those mesh buses. AND... it does earn its place among the disruptors as it smacks them down with a performance metric of over 3 billion per sec.
+> - as well as, I currently do not know which one will serve as the disruptor transports adapter for the bus mesh, but that too wil be coming out of this
+>
+> The end result, yes that is a stupid amount, I 100% agree with you BUT... they all specialize in one area so they aren't the same. And I'm not gonna lie, lol, there is one more that is supposed to go into this class haha. 
+>
+> As it sits right now, the bus signals, atoms... and the last pieces that are already done they just have to be dropped into it. Said pieces are a idb kv and a binary db, pairing with a disruptor cache dd. 
+>
+> Pretty epic area of the app tbh.
+>
+> Once that last section finally gets placed into it... we can finaly build the auto transpo feature. Where, instead of us having to decide and pick which is the best and fastest transport to use for each boundary... the dark side will handle this automatically for us. Making ti so that, it does not matter where that messaage ends up having to go, we will get the absolute fastest means of getting that msg to where it needs to end up.
+>
+> Starting at 3 bill ops, dropping to 1.5... If I remember correctly... and obviously we drop well below the 1 billion mark when we get to the last and final layer which will either consist of web socket and or a http transport.
+>
+> 2 new reactive things have been added... to the list that never fucking wants to fucking end... 
+> - distrbuted reactiveness... solution
+> - atoms will be getting... drum roll... configurable distributed reactive state hooks. Where, just like everywhere else, there are no, 'NOW this is how your gonna fucking do it... because I fucking said so... and ppl think... I know things'. Or in other words, no boundaries, no barricades, no rules... your an adult, your a dev... We all fucking know that... we make things, and there will be times that... WE FUCKING BREAK THINGS... but thats ok, because we are devs and we can fix whatever it is that we broke and because of the fact that we are actual, literal fucking wizards and can literally build anything that we can think of where our only limitation is our own minds. 
+>
+> So no, there will not be any rules in the contract that will be something to the tune of, 'Hard passs on this config, you stupid fuck... try again.' Just like everywhere else, there are no rules, since rules limit us and what we can ultimately end up with in terms of a result.
 
 
-
-
+> [!NOTE] BUILDERS LOG #5
+>
+> pfftt... I don't know man, its... just working. I understand it takes a while to get good at something... but this, to some, would just be a straight up crime.
+>
+> Meanwhile, I'm just like, 'LA DI DA!', 16_000+ lines in a single fucking class... yet, lol, it is actually a millino times easier to work with then some devs... especially the ones that put 5 lines in a single file... 400 times over. 
+>
+> Funny thing is... there is actually 2 class like this in the signals file... the second one is only, you know, 11_000 lines. It is a wee baby, espeicially when we compare the end result... which both those classes will end up being combined because it was planned to be a single solution. Where you have a redicuouslly performing file that included the db solution, signals, atoms, hooks, and whatever the fuck else it comes with...
+>
+> The number count... is wild, I'll agree with you there... but it so beautifully organized, easy to get from one place to the next, everything is labeled properly and because of the iife's... everything is name spaced, making it INCREDIBLY easy to not only find things, but to get to them WAY faster then it would without them. I still cannot beleive... that every single master and bindable atom... is entirely within the signals class.
+>
+> There are going to be so many assholes who, just look at the count and yell something like, 'OVER ENGINEERED'... I get it, without context, you just will not have the correct fram e of mind when looking at this, in order to appreciate it.
+>
+> Zero over engineering btw, chasing 1-2% gains... man you are wasting your time. I garauntee you, if that is what you are currently working towards... there is atleast, at a min, 4+ other areas or spots within your solution that can easily net a 20-100x gain. As soon as I realize, THAT 1-2% improvement happens to be what I am currently working on, I just stop no matter what, close the file and work on something more worth my time.
+>
+> I can't stop looking at the file, its just... how many class total, between the two are actually fitted into them... 8 nested in signals, if the atoms stayed the same shape as they were the first time they were made... there would be 100+ classes inside this one class. I know the other class has, WAY more because I made it so, ANYTHING you would need to reach for... it is literally, right there. Your not importing, 16 FUCKING MODULES or some stupid shit like that. 31 classes in the other, lol.
 
 
 

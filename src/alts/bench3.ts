@@ -2,7 +2,7 @@ import { performance } from 'node:perf_hooks';
 import { SIGNALS_DISRUPTOR } from './signals_disruptor';
 import { WarlockDisruptor } from './signals_disruptor2';
 import { WARLOCK2 } from './signals3';
-import { BINARY_REACTOR } from '../numeric_array/BINARY_REACTOR';
+import { WARLOCK_NGIN } from '../disruptor_signals1';
 import { signal as as_, computed as ac, effect as ae } from './signals_alien';
 import { signal as ps, computed as pc, effect as pe } from './signals_preact';
 
@@ -13,7 +13,7 @@ const d = new SIGNALS_DISRUPTOR(cap);
 const wd = new WARLOCK2(cap);
 
 const wdd = new WarlockDisruptor(cap);
-const B = new BINARY_REACTOR();
+const B = new WARLOCK_NGIN();
 console.log(cap, 'cap');
 
 function chainDisruptor(): number {
@@ -73,9 +73,9 @@ function chainAlien(): number {
   return performance.now() - t0;
 }
 function chainBINARY_REACTOR(): number {
-  for (let i = 0; i < ITERATIONS; i++) B.atom(i, "warmup");
+  for (let i = 0; i < ITERATIONS; i++) B.signal(i);
 
-  const root = B.atom(1, "root");
+  const root = B.signal(1);
   let curr = root;
 
   for (let i = 0; i < DEPTH; i++) {

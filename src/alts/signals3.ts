@@ -61,48 +61,48 @@ export class WARLOCK2 {
   public readonly val: Int32Array;
 
   // ── PID free list (ring) ─────────────────────────────────────────────────
-  private readonly freePids: Int32Array;
+  private freePids: Int32Array;
   private freeHead = 0;
   private freeTail = 0;
   private laneLen = 0;
   public nextAllocatedPid = 1;
 
   // ── Reactive node columns ────────────────────────────────────────────────
-  private readonly kind: Uint8Array;
-  private readonly flags: Uint16Array;
-  private readonly value: Array<any>;
-  private readonly pendingValue: Array<any>;
-  private readonly version: Float64Array;
-  private readonly getter: Array<Getter<any> | undefined>;
-  private readonly cleanup: Array<Teardown>;
+  private kind: Uint8Array;
+  private flags: Uint16Array;
+  private value: Array<any>;
+  private pendingValue: Array<any>;
+  private version: Float64Array;
+  private getter: Array<Getter<any> | undefined>;
+  private cleanup: Array<Teardown>;
 
   // ── Link graph ───────────────────────────────────────────────────────────
-  private readonly linkDep: Int32Array;
-  private readonly linkSub: Int32Array;
-  private readonly linkPrevDep: Int32Array;
-  private readonly linkNextDep: Int32Array;
-  private readonly linkPrevSub: Int32Array;
-  private readonly linkNextSub: Int32Array;
-  private readonly linkVersion: Float64Array;
-  private readonly linkFree: Int32Array;
+  private linkDep: Int32Array;
+  private linkSub: Int32Array;
+  private linkPrevDep: Int32Array;
+  private linkNextDep: Int32Array;
+  private linkPrevSub: Int32Array;
+  private linkNextSub: Int32Array;
+  private linkVersion: Float64Array;
+  private linkFree: Int32Array;
   private linkFreeTop = 0;
 
-  private readonly depsHead: Int32Array;
-  private readonly depsTail: Int32Array;
-  private readonly subsHead: Int32Array;
-  private readonly subsTail: Int32Array;
+  private depsHead: Int32Array;
+  private depsTail: Int32Array;
+  private subsHead: Int32Array;
+  private subsTail: Int32Array;
 
   // ── Scheduler ────────────────────────────────────────────────────────────
-  private readonly notifyQueue: Int32Array;
+  private   notifyQueue: Int32Array;
   private notifyHead = 0;
   private notifyTail = 0;
 
   // ── Iterative invalidation worklist ──────────────────────────────────────
-  private readonly worklist: Int32Array;
+  private   worklist: Int32Array;
 
   // ── Runtime state ────────────────────────────────────────────────────────
   private activeSub = -1;
-  private readonly activeStack: number[] = [];
+  private   activeStack: number[] = [];
   private cycle = 0;
   private batchDepth = 0;
   private runDepth = 0;
