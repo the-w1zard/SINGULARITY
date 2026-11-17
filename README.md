@@ -409,6 +409,58 @@ if (process.argv.length >= 3) child(process.argv[2]); else parent();
 >
 > I can't stop looking at the file, its just... how many class total, between the two are actually fitted into them... 8 nested in signals, if the atoms stayed the same shape as they were the first time they were made... there would be 100+ classes inside this one class. I know the other class has, WAY more because I made it so, ANYTHING you would need to reach for... it is literally, right there. Your not importing, 16 FUCKING MODULES or some stupid shit like that. 31 classes in the other, lol.
 
+> [!NOTE] BUILDERS LOG #6
+>
+> Hopefully this ends up being faster... but who the fuck knows really till its benched.
+>
+> So as of now, we have the origiinal state and context system... then we have modified, what the industry believes, to be the fastest signals solution to directly inject straight into the dom. Which would, if it ends up being faster, replace the first solution as the platforms context / state solution. This will also end up and effect the hooks as well... ofcourse... this is only if the user has it in warlock mode... which I have to admit came together a hell of a lot cleaner seperation than I had first envsisioned because the platform currently hosting a dark and a light version of itself... means we can just switch from one... to the other whenever the user does change it over. As... I'll have to double check this but I beleive... the dark side completely covers every feature that the light has...
+>
+> And if this ends up working... obviously... you know whats happening next... yes, that means an upgrade to darth maul would naturally be the next step as its 40-11_0000x faster than alien... because alien is slow as dog shit... i really need to make a bench to see just how slow it actually is... because we need those numbers...and when I say that I mean just straight up ops per sec. We'll see...
+>
+> I am kinda curious as to why alien never shipped with dom injection... like why?... ya i get the fact that you want something that doesnt trigger a render... just add a fucking prop my guy, like is that sooooooo fucking hard... well, apparently so.
+
+> [!NOTE] BUILDERS LOG #6
+>
+> Monomorphic vs megamorphic...
+>
+> *stares at it* Whatever the fuck that means... the assholes that come up with these names dude, I swear... If anyone ends up reading this, Renderivity... is a parody, I know that will fly over some heads but... tbh, almsot all the docs when it comes to things like the markdown header... are also the same.
+>
+> *sighs* anyways... the only reason I bring this up is because of the final shape that the mesh store is taking. Unfortuantly, I wanted to but can't, the global this hot path cache is not going to actually be physically stored on global this. Instead it is going to be stored within the store itself.
+>
+> ```tsx
+> (globalThis as A)[r]?.[m]?.[s]?.[k]
+> this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k]
+> (globalThis as A)[s]?.[k]
+> this._handlers[k]
+> ``` 
+>
+> The first and second lines... let's just call them what they are, fucking dog shit in terms of performance. BUT... it is as if that dog shat gold, tbh. Because that format is just nothing but the ever lasting fountain of gold in terms of benefits, it is just really slow.
+>
+> So to come up with an answer to that problem, cached hot paths have been the answer. The only issue with global this itself... is that you have to first call on that branch to get it, then use the key in order to get the specific thing on that branch that we want, this is in relation to number 3. The fourth one is about 3 times faster. Now that doesn't seem fast, but when you have a bus doing 3.1 bill ops per second... it now only does... 1 bill ops per sec.
+>
+> Now I know your probably laughing since no other platform even comes close to those numbers, yes I get it 'first world problems'... but it is a massive delta that I just cannot ignore, which is why it is being stored in the mesh store rather then global this itself.
+>
+> It is planned that the mesh stored will be called and created in root itself... which is the first module to load, so it should be available across the platform.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

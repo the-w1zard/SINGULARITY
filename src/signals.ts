@@ -50,27 +50,36 @@ import { Registry } from "@the-w1zard/the-registry";
 // import { darkState, useEffect } from "@the-w1zard/the-dark-side"
 import { queue, Queue } from "./comps/queue";
 import { M2 } from "#dx";
-import { parseFormula, removeDependencies, registerDependencies, evaluateSpreadsheetAst, writeGraphCell, collectAffected, recalculateCell, recalculateAffected, createEvalContext, isFormula, normalizeCellRef, parseCellRef, cloneGraph, createSpreadsheetGraph, round, gcd, combin, looseEqual, compare, approxMatch, wildcardMatch, matchCriteria, stddev, variance, correl, covariance, linreg, normalPDF, normalCDF, normalInv, dateSerial, fromSerial, networkDays, workday, dateDif, toRoman, formatText, evaluate, toNum, toStr, toBool, isErr, looseEq, cellKey, resolveCell, expandRange, flattenRange, colToIndex, indexToCol, parseRangeStr, tokenize, Parser, SpreadsheetMode, SpreadsheetChain, SpreadsheetRaw, SpreadsheetCell, SpreadsheetGraphState, SpreadsheetCellRef, qualifyAst, clearGraphCellInPlace, writeGraphCellInPlace, isVolatileAst, recalculateDirty, RangeBox, RangeEntry, boxContains, analyzeDependencies, collectDependencies, } from './comps/cell';
+import { parseFormula, removeDependencies, registerDependencies, evaluateSpreadsheetAst, writeGraphCell, collectAffected, recalculateCell, recalculateAffected, createEvalContext, isFormula, normalizeCellRef, parseCellRef, cloneGraph, createSpreadsheetGraph, round, gcd, combin, looseEqual, compare, approxMatch, wildcardMatch, matchCriteria, stddev, variance, correl, covariance, linreg, normalPDF, normalCDF, normalInv, dateSerial, fromSerial, networkDays, workday, dateDif, toRoman, formatText, evaluate, toNum, toStr, toBool, isErr, looseEq, cellKey, resolveCell, expandRange, flattenRange, colToIndex, indexToCol, parseRangeStr, tokenize, Parser, SpreadsheetMode, SpreadsheetChain, SpreadsheetRaw, SpreadsheetCell, SpreadsheetGraphState, SpreadsheetCellRef, qualifyAst, clearGraphCellInPlace, writeGraphCellInPlace, isVolatileAst, recalculateDirty, RangeBox, RangeEntry, boxContains, analyzeDependencies, collectDependencies, ASTNode, } from './comps/cell';
 //import { M2 } from "@the-w1zard/dx";
 
 
 // #endregion
 //                                                                                                                       TYPPES
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+interface DOMBindingNode extends ReactiveNode {
+	read: () => unknown;
+	node: object;
+	update: (node: object, value: unknown) => void;
+	active: boolean;
+	value: unknown;
+	hasValue: boolean;
+}
+
 export interface CustomCodecResult {
 	type: string;
-	value: unknown; // must already be JSON-safe / already encoded via encodeChild
+	value: unknown;
   }
-  export type CustomEncoder = (  value: unknown,  encodeChild: (v: unknown) => unknown) => CustomCodecResult | typeof SKIP;
-  export type CustomDecoder = (  type: string,  value: unknown,  decodeChild: (v: unknown) => unknown) => unknown | typeof SKIP;
+  export type CustomEncoder = (  value: unknown,  encodeChild: (v: unknown) => unknown) => CustomCodecResult 
+  export type CustomDecoder = (  type: string,  value: unknown,  decodeChild: (v: unknown) => unknown) => unknown 
   export interface SerFormatConfig {
 	date?: boolean;
 	bigint?: boolean;
 	regexp?: boolean;
 	error?: boolean;
-	specialNumber?: boolean; // NaN / Infinity / -Infinity
+	specialNumber?: boolean;
 	undefined?: boolean;
-	typedArray?: boolean;    // Uint8Array etc + ArrayBuffer
+	typedArray?: boolean;  
 	url?: boolean;
 	map?: boolean;
 	set?: boolean;
@@ -127,10 +136,7 @@ export interface BackpressureConfig {
     retry?: N;
     timeout?: N;
 }
-type COALESCED_GROUP = {
-    items: Array<{ msg: CSEMessage; resolve: (v: A) => void; reject: (e: A) => void }>;
-    flushed: B;
-};
+
 export interface CONTRACT_PROTON {
 	name: S;
 	precondition?: (value: A) => boolean;
@@ -152,7 +158,6 @@ export interface RiftRecord<T = A> {
     createdAt: N;
     openedAt?: N;
 }
-type StoreListener<T = A> = (v: RiftRecord<T>) => void;
 export interface TTL_ENTRY { expiresAt: N; data?: A; }
 
 export interface OFFSEC_AUDIT_ENTRY {
@@ -466,7 +471,6 @@ export interface RiftRecord<T = A> {
     createdAt: N;
     openedAt?: N;
 }
-type StoreListener<T = A> = (v: RiftRecord<T>) => void;
 // #endregion
 //                                                                                                                   [GOVERNOR]
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -517,7 +521,7 @@ class GOVERNOR {
 			}
 
 			// Drain one revolution at the current tier.
-			this.hub.signals.DARTH_MAUL_ENGINE.pass();
+			this.hub.signals.maul_ngin.pass();
 
 			// Sample load and adjust tier.
 			this.windowActions++;
@@ -573,6 +577,7 @@ let runDepth = 0;
 let batchDepth = 0;
 let notifyIndex = 0;
 let queuedLength = 0;
+// let notifySubscribers = true
 let activeSub: ReactiveNode | UD;
 class SIGNALS {
 	public root: DEATH_STAR
@@ -598,11 +603,15 @@ class SIGNALS {
             this.signals = s;
         }
     };
-
 	public rx = new (class RX {// REACTIVE ENGINE
-		public hub: DEATH_STAR
-		public signals: SIGNALS
-		constructor(s: SIGNALS) { this.hub = s.root; this.signals = s; }
+		public root: DEATH_STAR
+		public hub: SIGNALS
+		public signals: typeof this.hub.signals
+		constructor(s: SIGNALS) { 
+			this.root = s.root;
+			this.hub = s;
+			this.signals = s.signals;
+		 }
 		
 		private batchDepth = 0;
 		private openScopes = new Set<BatchScope>();
@@ -674,11 +683,11 @@ class SIGNALS {
 				return _root;
 			} else {
 				if (!init_hooks_context) {
-					this.set("_root", _root, true, this.s, this.m, this.r);
+					this.signals.state.set("_root", _root,  {s: this.signals.s, m: this.signals.m, r: this.signals.r});
 					init_hooks_context = true;
 				}
-				const updated_ctx = this.get("_root", this.s, this.m, this.r) as ComponentInstance;
-				if (updated_ctx && updated_ctx.id === this.r) return updated_ctx;
+				const updated_ctx = this.signals.state.get("_root",  {s: this.signals.s, m: this.signals.m, r: this.signals.r}) as ComponentInstance;
+				if (updated_ctx && updated_ctx.id === this.signals.r) return updated_ctx;
 				else return _root;
 			}
 		};
@@ -1045,7 +1054,7 @@ class SIGNALS {
 			}
 		}
 	})(this);
-	public dom_signals = new (class DOM_SIGNALS {// DIRECT DOM INJECTION, REACTIVE SIGNALS... ALMOST SOUNDS LIKE A FAST AND THE FURIOUS SPECCED ENGINE - NON-ATOMS SIGNALS
+	public signals = new (class DOM_SIGNALS {
 			public r: A = "THE_WIZARD_ROOT_REG";
 			public m: A = "SAURON_MASTER_REG";
 			public s: A = "SAURON_SLAVE_REG";
@@ -1058,20 +1067,21 @@ class SIGNALS {
 			#SIGNAL_CELLS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
 			public _signal_cells: Record<S, A>
 		
+			#SIGNAL_LISTENERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
 			public _signal_listeners: Record<S, ST<(value: A) => void>>;
+		
+			#SIGNAL_GLOBAL_LISTENERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
 			public _signal_global_listeners: Record<S, ST<(key: A, value: A) => void>>;
+		
+			#SIGNAL_WAITERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
 			public _signal_waiters: Record<S, ST<(value: A) => void>>;
 		
+			#SIGNAL_PERSISTENT: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
+			
 			public _signal_persistent: Record<S, A>
+			#SIGNAL_PERSISTENT_KEYS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
 			public _signal_persistent_keys: Record<S, A>
-		
-			public _signal_cells2: M2<A, A>;
-			#SIGNAL_CELLS2 = new M2<A, M2<A, M2<A, A>>>();
-			public _signal_listeners2: M2<A, ST<(value: A) => void>>;
-			public _signal_waiters2: M2<A, ST<(value: A) => void>>;
-			public _signal_global_listeners2: M2<A, ST<(key: A, value: A) => void>>;
-			public _signal_persistent2: M2<A, A>;
-			public _signal_persistent_keys2: M2<A, A>;
+			
 			constructor(s: SIGNALS) {
 				this.r = s.root.r ?? "THE_WIZARD_ROOT_REG";
 				this.m = s.root.m ?? "SAURON_MASTER_REG";
@@ -1081,11 +1091,11 @@ class SIGNALS {
 				this.signals = s
 
 				this._signal_cells = this.getS(this.s, this.m, this.r, "#SIGNAL_CELLS");
-				this._signal_listeners = this.getS(this.s, this.m, this.r);
-				this._signal_global_listeners = this.getS(this.s, this.m, this.r);
-				this._signal_waiters = this.getS(this.s, this.m, this.r);
-				this._signal_persistent_keys = this.getS(this.s, this.m, this.r);
-				this._signal_persistent = this.getS(this.s, this.m, this.r);
+				this._signal_listeners = this.getS(this.s, this.m, this.r, "#SIGNAL_LISTENERS");
+				this._signal_global_listeners = this.getS(this.s, this.m, this.r, "#SIGNAL_GLOBAL_LISTENERS");
+				this._signal_waiters = this.getS(this.s, this.m, this.r, "#SIGNAL_WAITERS");
+				this._signal_persistent = this.getS(this.s, this.m, this.r, "#SIGNAL_PERSISTENT");
+				this._signal_persistent_keys = this.getS(this.s, this.m, this.r, "#SIGNAL_PERSISTENT_KEYS");
 				this.selfId = `bus_${this.hub.REGISTRY._sid()}`
 			}
 			public get_(c:S = "signal_cells") {
@@ -1105,6 +1115,11 @@ class SIGNALS {
 				let root;
 				switch (c) {
 					case "signal_cells": { root = this.#SIGNAL_CELLS[r]; break; }
+					case "signal_listeners": { root = this.#SIGNAL_LISTENERS[r]; break; }
+					case "signal_global_listeners": { root = this.#SIGNAL_GLOBAL_LISTENERS[r]; break; }
+					case "signal_waiters": { root = this.#SIGNAL_WAITERS[r]; break; }
+					case "signal_persistent": { root = this.#SIGNAL_PERSISTENT[r]; break; }
+					case "signal_persistent_keys": { root = this.#SIGNAL_PERSISTENT_KEYS[r]; break; }
 					default: {  break; }
 				}
 				return root
@@ -1113,115 +1128,115 @@ class SIGNALS {
 				let root;
 				switch (c) {
 					case "signal_cells": { root = this.#SIGNAL_CELLS[r]; break; }
+					case "signal_listeners": { root = this.#SIGNAL_LISTENERS[r]; break; }
+					case "signal_global_listeners": { root = this.#SIGNAL_GLOBAL_LISTENERS[r]; break; }
+					case "signal_waiters": { root = this.#SIGNAL_WAITERS[r]; break; }
+					case "signal_persistent": { root = this.#SIGNAL_PERSISTENT[r]; break; }
+					case "signal_persistent_keys": { root = this.#SIGNAL_PERSISTENT_KEYS[r]; break; }
 				}
 				if (!root) {
 					root = Object.create(null);
 					switch (c) {
 						case "signal_cells": { this.#SIGNAL_CELLS[r] = root; break; }
+						case "signal_listeners": { this.#SIGNAL_LISTENERS[r] = root; break; }
+						case "signal_global_listeners": { this.#SIGNAL_GLOBAL_LISTENERS[r] = root; break; }
+						case "signal_waiters": { this.#SIGNAL_WAITERS[r] = root; break; }
+						case "signal_persistent": { this.#SIGNAL_PERSISTENT[r] = root; break; }
+						case "signal_persistent_keys": { this.#SIGNAL_PERSISTENT_KEYS[r] = root; break; }
 					}
 				}
 				return root;
 			}
-			public getS(s: S = this.s, m: S = this.m, r: S = this.r, c = "#handlers") {
+			public getS(s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") {
 				const rL = this.get_root(c, r);
 				const mL = (rL[m] ??= Object.create(null));
 				const sL = (mL[s] ??= Object.create(null));
 				return sL;
 			}
-			public getM(m: S = this.m, r: S = this.r, c = "#handlers") {
+			public getM(m: S = this.m, r: S = this.r, c = "signal_cells") {
 				const rL = this.get_root(c, r);
 				const mL = (rL[m] ??= Object.create(null));
 				return mL;
 			}
-			public getR(r: S = this.r, c = "#handlers") {
+			public getR(r: S = this.r, c = "signal_cells") {
 				const rL = this.get_root(c, r); 
 				return rL;
 			}
-		   
-			private get<T = A>( key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },	): { (): T | UD; (value: T | UD): V } {
-				const { s, m, r } = opts;
-				if (s === this.s && m === this.m && r === this.r ) {
-		
-				} else {
-					
+			public get = (() => {
+				const fn = <T = A>(k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
+					const rL = this.get_root(c, r);
+					const mL = (rL[m] ??= Object.create(null));
+					const registry = (mL[s] ??= Object.create(null));
+					const z = registry[k];
+					if (!z) return
+					else return z
 				}
-				let cell = this._signal_cells.get(key);
-			
-				if (!cell) {
-					cell = signal<T>(undefined);
-					this._signal_cells.set(key, cell);
+				return fn;
+				fn.hot = (k: S) => {
+					const c = this._signal_cells[k];
+					if (!c) return
+					else return c
 				}
-			
-				return cell as { (): T | UD; (value: T | UD): V };
-			}
-			private read<T = A>( cell: { (): T | UD; (value: T | UD): V }, ): T | UD {
-				
-				if (s === this.s && m === this.m && r === this.r ) {
-		
-				} else {
-					
+			})();
+			public read = (() => {
+				const fn = <T = A>(k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
+					const rL = this.get_root(c, r);
+					const mL = (rL[m] ??= Object.create(null));
+					const registry = (mL[s] ??= Object.create(null));
+					const z = registry[k];
+					if (!z) return
+					else return z
 				}
-				const prevSub = getActiveSub();
-			
-				// Do not create a dependency while performing an administrative read.
-				setActiveSub(undefined);
-			
-				try {
-					return cell() as T | UD;
-				} finally {
-					setActiveSub(prevSub);
+				return fn;
+				fn.hot = (k: S) => {
+					const c = this._signal_cells[k];
+					if (!c) return
+					else return c
 				}
-			}
-			private write<T = A>( cell: { (): T | UD; (value: T | UD): V }, value: T | UD,	): void {
-				
-				if (s === this.s && m === this.m && r === this.r ) {
-		
-				} else {
-					
+			})();
+			public write = (() => {
+				const fn = <T = A>(v?: T | (() => T), k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
+					const rL = this.get_root(c, r);
+					const mL = (rL[m] ??= Object.create(null));
+					const registry = (mL[s] ??= Object.create(null));
+					const t = UF(v);
+					const atom = signal<T>(t);
+					registry[k] = atom;
+					return atom;
 				}
-				cell(value as T);
-			}
-			private notifyKeyListeners( key: A, value: A | UD, opts: ScopeOptions,	): void {
-				 
-				const listeners = this._signal_listeners.get(key);
-			
+				fn.hot =  <T = A>(v?: T | (() => T), k: S) => {
+					const registry = this._signal_cells
+					const t = UF(v);
+					const atom = signal<T>(t);
+					registry[k] = atom;
+					return atom;
+				}
+				return fn;
+			})();
+			public notifyKeyListeners(key: A, value: A | UD, opts: ScopeOptions): void {
+				const listeners = this._signal_listeners[key];
 				if (!listeners) return;
-			
 				for (const listener of listeners) {
-					try {
-						listener(value);
-					} catch (err) {
-						console.error(`[Sauron Signal Listener Error]:`, err);
-					}
+					try { listener(value); }
+					catch (err) { console.error(`[Sauron Signal Listener Error]:`, err); }
 				}
 			}
-			public scheduleGlobalNotify( key: A, value: A | UD, opts: ScopeOptions,	): void {
-				const globalListeners = this._signal_global_listeners.get(
-					"_signal_global_listeners_raven",
-				);
-			
+			public scheduleGlobalNotify(key: A, value: A | UD, opts: ScopeOptions): void {
+				const globalListeners = this._signal_global_listeners["_signal_global_listeners_raven"];
 				if (globalListeners) {
 					for (const listener of globalListeners) {
-						try {
-							listener(key, value);
-						} catch (err) {
-							console.error(`[Sauron Signal Global Listener Error]:`, err);
-						}
+						try { listener(key, value); }
+						catch (err) { console.error(`[Sauron Signal Global Listener Error]:`, err); }
 					}
 				}
 			
-				const waiters = this._signal_waiters.get(key);
-			
+				const waiters = this._signal_waiters[key];
 				if (waiters) {
 					const resolved = Array.from(waiters);
-					this._signal_waiters.delete(key);
-			
+					delete this._signal_waiters[key];
 					for (const resolve of resolved) {
-						try {
-							resolve(value);
-						} catch (err) {
-							console.error(`[Sauron Signal Waiter Error]:`, err);
-						}
+						try { resolve(value); }
+						catch (err) { console.error(`[Sauron Signal Waiter Error]:`, err); }
 					}
 				}
 			}
@@ -1229,50 +1244,72 @@ class SIGNALS {
 				this.notifyKeyListeners(key, value, opts);
 				this.scheduleGlobalNotify(key, value, opts);
 			}
-			public atom<T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid()}`, s = this.s, m = this.m, r = this.r, ) {
-				if (s === this.s && m === this.m && r === this.r ) {
-		
-				} else {
-					
+			public atom = (() => {
+				const fn = <T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid()}`, s = this.s, m = this.m, r = this.r, ) => {
+					return {
+						get value(): T { return this.signal(undefined, k, s, m, r); },
+						get current(): T { return this.signal(undefined, k, s, m, r); },
+						peek(): T { return this.signal(undefined, k, s, m, r); },
+						set value(v: T) { this.signal(v, k, s, m, r); },
+						set current(v: T) { this.signal(v, k, s, m, r); },
+						set crt(v: T) { this.signal(v, k, s, m, r); },
+						set set(v: T) { this.signal(v, k, s, m, r); },
+					};
 				}
-				return {
-					get value(): T { return this.signal(k); },
-					get current(): T { return this.signal(k); },
-					peek(): T { return this.signal(k); },
-					set value(v: T) { this.signal(k, v); },
-					set current(v: T) { this.signal(k, v); },
-					set crt(v: T) { this.signal(k, v); },
-					set set(v: T) { this.signal(k, v); },
-				};
-			}
+				fn.hot = <T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid()}`, s = this.s, m = this.m, r = this.r, )  => {
+					return {
+						get value(): T { return this.signal.hot(k); },
+						get current(): T { return this.signal.hot(k); },
+						peek(): T { return this.signal.hot(k); },
+						set value(v: T) { this.signal.hot(k, v); },
+						set current(v: T) { this.signal.hot(k, v); },
+						set crt(v: T) { this.signal.hot(k, v); },
+						set set(v: T) { this.signal.hot(k, v); },
+					};
+				}
+				return fn;
+			})();
 			public signal = (() => {
-				const fn = <T = A,>(k: SignalKey, v?: T | (() => T)) => {
-					if (s === this.s && m === this.m && r === this.r ) {
+				const fn = <T = A,>(v?: T | (() => T), k: SignalKey, s = this.s, m = this.m, r = this.r, c = "signal_cells") => {
+					const rL = this.get_root(c, r);
+					const mL = (rL[m] ??= Object.create(null));
+					const registry = (mL[s] ??= Object.create(null));
+					let atom = registry[k];
 			
-					} else {
-						
-					}
-					const registry = this._signal_cells
-					let atom = registry.get(k);
-		
 					if (atom && v === undefined) { return atom; }
-					if (atom && v) { 
-						const t = UF(v)
-						atom = registry.set(k, t)
-						return atom;
-					 }
-		
-					const initialValue = UF(v)
+					if (atom && v !== undefined) {
+						const t = UF(v);
+						registry[k] = t;
+						return t;
+					}
+			
+					const initialValue = UF(v);
 					atom = signal<T>(initialValue);
-					registry.set(k, atom);
+					registry[k] = atom;
+					return atom;
+				};
+				fn.hot = <T = A,>(k: SignalKey, v?: T | (() => T)) => {
+					const registry = this._signal_cells;
+					let atom = registry[k];
+			
+					if (atom && v === undefined) { return atom; }
+					if (atom && v !== undefined) {
+						const t = UF(v);
+						registry[k] = t;
+						return t;
+					}
+			
+					const initialValue = UF(v);
+					atom = signal<T>(initialValue);
+					registry[k] = atom;
 					return atom;
 				};
 				return fn;
 			})();
 			public store = {
-				get: <T = A,>( key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }, ): T | UD => {
-					const cell = this.get<T>(key, opts);
-					const value = this.read<T>(cell);
+				get: <T = A,>(key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | UD => {
+					const { s, m, r } = opts;
+					const value = this.get<T>(key, s, m, r);
 			
 					if (value !== undefined) {
 						return MaybePromise(value);
@@ -1281,284 +1318,166 @@ class SIGNALS {
 					const persistent = this._signal_persistent;
 					const persistKeys = this._signal_persistent_keys;
 			
-					if (persistKeys.has(key) && persistent.has(key)) {
-						const hydrated = persistent.get(key) as T;
-						this.write(cell, hydrated);
+					if (key in persistKeys && key in persistent) {
+						const hydrated = persistent[key] as T;
+						this.write(hydrated, key, s, m, r);
 						return MaybePromise(hydrated);
 					}
 			
 					return MaybePromise(undefined);
 				},
 				set: <T = A,>( key: A, value: T | ((prev: T | UD) => T), opts: { triggerRender?: B; cap?: N } & ScopeOptions = { s: this.s, m: this.m, r: this.r, triggerRender: true, cap: 200 }, ): T | UD => {
-					const { triggerRender = true, s, m, r, cap } = opts;
-					const cell = this.get<T>(key, opts);
-				
-					const prev = this.read<T>(cell);
-					const next =
-						typeof value === "function"
-							? (value as (prev: T | UD) => T)(prev)
-							: value;
-				
-					if (Object.is(prev, next)) {
-						return MaybePromise(prev as T);
-					}
-				
-					this.write(cell, next);
-				
-					if (this._signal_persistent_keys.has(key)) {
-						this._signal_persistent.set(key, next);
-					}
-				
-					this.notifyKeyListeners(key, next, { s, m, r });
-				
-					if (triggerRender) {
-						this.scheduleGlobalNotify(key, next, { s, m, r });
-					}
-				
+					const { triggerRender = true, s, m, r } = opts;
+					const prev = this.get<T>(key, s, m, r);
+					const next = typeof value === "function" ? (value as (prev: T | UD) => T)(prev) : value;
+					if (Object.is(prev, next)) { return MaybePromise(prev as T); }
+					this.write(next, key, s, m, r);
+					if (key in this._signal_persistent_keys) { this._signal_persistent[key] = next; }
+					this.notifyKeyListeners(key, next as A, { s, m, r });
+					if (triggerRender) { this.scheduleGlobalNotify(key, next as A, { s, m, r }); }
 					return MaybePromise(next as T);
 				},
-				subscribe: <T = A,>(
-					key: A,
-					listener: (value: T) => void,
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): (() => void) => {
-					const cell = this.get<T>(key, opts);
+				subscribe: <T = A,>( key: A,  listener: (value: T) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }, ): (() => void) => {
 					const listeners = this._signal_listeners;
 			
-					if (!listeners.has(key)) {
-						listeners.set(key, new Set());
+					if (!(key in listeners)) {
+						listeners[key] = new Set();
 					}
 			
-					listeners.get(key)!.add(listener as (value: A) => void);
+					listeners[key]!.add(listener as (value: A) => void);
 			
 					return () => {
-						const current = listeners.get(key);
-			
+						const current = listeners[key];
 						if (!current) return;
-			
 						current.delete(listener as (value: A) => void);
-			
-						if (current.size === 0) {
-							listeners.delete(key);
-						}
+						if (current.size === 0) delete listeners[key];
 					};
 				},
-				delete: (key: A,opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },): B => {
+				delete: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): B => {
 					const { s, m, r } = opts;
 					const cells = this._signal_cells;
-					const cell = cells.get(key);
-				
-					const existed = cells.has(key);
-				
-					if (cell) {
-						this.write(cell, undefined);
+					const existed = key in cells;
+			
+					if (existed) delete cells[key];
+			
+					if (key in this._signal_persistent_keys) {
+						delete this._signal_persistent_keys[key];
+						delete this._signal_persistent[key];
 					}
-				
-					cells.delete(key);
-				
-					if (this._signal_persistent_keys.has(key)) {
-						this._signal_persistent_keys.delete(key);
-						this._signal_persistent.delete(key);
-					}
-				
+			
 					this.notifyKeyListeners(key, undefined, { s, m, r });
-				
-					if (existed) {
-						this.scheduleGlobalNotify(key, undefined, { s, m, r });
-					}
-				
-					this._signal_listeners.delete(key);
-				
+					if (existed) this.scheduleGlobalNotify(key, undefined, { s, m, r });
+			
+					delete this._signal_listeners[key];
 					return MaybePromise(existed);
 				},
-				entries: <T = A,>(
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): [A, T][] => {
+				entries: <T = A,>(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): [A, T][] => {
 					const cells = this._signal_cells;
 					const result: [A, T][] = [];
 			
-					for (const [key, cell] of cells.entries()) {
-						const value = this.read<T>(cell as any);
-			
-						if (value !== undefined) {
-							result.push([key, value]);
-						}
+					for (const key of Object.keys(cells) as A[]) {
+						const value = cells[key] as T;
+						if (value !== undefined) result.push([key, value]);
 					}
 			
 					return MaybePromise(result);
-				},	
-				persist: (
-					key: A,
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): void => {
-					const cell = this.get(key, opts);
-					const value = this.read(cell);
+				},
+				persist: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+					const { s, m, r } = opts;
+					const value = this.get(key, s, m, r);
 			
-					this._signal_persistent_keys.set(key, true);
-			
-					if (value !== undefined) {
-						this._signal_persistent.set(key, value);
-					}
-				},	
-				unpersist: (
-					key: A,
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): void => {
-					this._signal_persistent_keys.delete(key);
-					this._signal_persistent.delete(key);
-				},	
-				has: (
-					key: A,
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): B => {
-					const cell = this._signal_cells.get(key);
-			
-					if (!cell) {
-						return MaybePromise(false);
-					}
-			
-					const value = this.read(cell as any);
-			
+					this._signal_persistent_keys[key] = true;
+					if (value !== undefined) this._signal_persistent[key] = value;
+				},
+				unpersist: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+					delete this._signal_persistent_keys[key];
+					delete this._signal_persistent[key];
+				},
+				has: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): B => {
+					const { s, m, r } = opts;
+					const value = this.get(key, s, m, r);
 					return MaybePromise(value !== undefined);
-				},	
-				clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }, ): void => {
+				},
+				clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
 					const cells = this._signal_cells;
-				
-					for (const [key, cell] of Array.from(cells.entries())) {
-						this.write(cell as any, undefined);
+			
+					for (const key of Object.keys(cells) as A[]) {
+						delete cells[key];
 						this.notifyKeyListeners(key, undefined, opts);
 						this.scheduleGlobalNotify(key, undefined, opts);
 					}
-				
-					cells.clear();
-					this._signal_listeners.clear();
+			
+					for (const key of Object.keys(this._signal_listeners) as A[]) {
+						delete this._signal_listeners[key];
+					}
 				},
-				clearPersistent: (
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): void => {
-					this._signal_persistent.clear();
-					this._signal_persistent_keys.clear();
+				clearPersistent: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+					for (const k of Object.keys(this._signal_persistent) as A[]) delete this._signal_persistent[k];
+					for (const k of Object.keys(this._signal_persistent_keys) as A[]) delete this._signal_persistent_keys[k];
 				},
-				_emit: (key: A, s = this.s, m = this.m, r = this.r, ): void => {
+				_emit: (key: A, s = this.s, m = this.m, r = this.r): void => {
 					const opts = { s, m, r };
-					const cell = this._signal_cells.get(key);
-				
-					if (!cell) return;
-				
-					const value = this.read(cell as any);
-				
+					const value = this.get(key, s, m, r);
+					if (value === undefined) return;
 					this.notifyAll(key, value, opts);
 				},
 			};
 			public state: SauronState = {
-				get: <T = A,>(
-					key: string | symbol,
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): T | UD => {
-					return MaybePromise(this.store.get<T>(key, opts) as T);
-				},	
-				set: <T = A,>(
-					key: string | symbol,
-					value: T | ((prev: T | UD) => T),
-					opts: { triggerRender?: B } & ScopeOptions =
-						{ s: this.s, m: this.m, r: this.r },
-				): void => {
-					const { s, m, r, triggerRender = true } = opts;
-			
-					this.store.set(key, value, {
-						s,
-						m,
-						r,
-						triggerRender,
-					});
-			
-					return MaybePromise(value as T);
-				},	
-				delete: (key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }, ): B => {
-					return this.store.delete(key, opts);
+				get: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | UD => {
+					return this.store.get<T>(key as A, opts);
 				},
-				getByPrefix: <T = A,>(
-					prefix: string,
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): { key: string; value: T }[] => {
-					return this.store
-						.entries<T>(opts)
+				set: <T = A,>(key: string | symbol, value: T | ((prev: T | UD) => T), opts: { triggerRender?: B } & ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+					const { s, m, r, triggerRender = true } = opts;
+					this.store.set(key as A, value, { s, m, r, triggerRender });
+				},
+				delete: (key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): B => {
+					return this.store.delete(key as A, opts);
+				},
+				getByPrefix: <T = A,>(prefix: string, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): { key: string; value: T }[] => {
+					return this.store.entries<T>(opts)
 						.filter(([key]) => typeof key === "string" && key.startsWith(prefix))
 						.map(([key, value]) => ({ key: key as string, value }));
 				},
-				getAll: <T = A,>(
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): Record<string | symbol, T> => {
+				getAll: <T = A,>(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Record<string | symbol, T> => {
 					const result: Record<string | symbol, T> = {};
-			
-					for (const [key, value] of this.store.entries<T>(opts)) {
-						result[key] = value;
-					}
-			
+					for (const [key, value] of this.store.entries<T>(opts)) result[key] = value;
 					return result;
 				},
-				subscribe: <T = A,>(
-					key: string | symbol,
-					listener: (value: T) => void,
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): (() => void) => {
-					return this.store.subscribe<T>(key, listener, opts);
+				subscribe: <T = A,>(key: string | symbol, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
+					return this.store.subscribe<T>(key as A, listener, opts);
 				},
-				subscribeAll: (
-					listener: (key: string | symbol, value: A) => void,
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): (() => void) => {
-					const { s, m, r } = opts;
+				subscribeAll: (listener: (key: string | symbol, value: A) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
 					const listeners = this._signal_global_listeners;
+					const K = "_signal_global_listeners_raven";
 			
-					if (!listeners.has("_signal_global_listeners_raven")) {
-						listeners.set("_signal_global_listeners_raven", new Set());
-					}
-			
-					const set = listeners.get("_signal_global_listeners_raven")!;
+					if (!(K in listeners)) listeners[K] = new Set();
+					const set = listeners[K]!;
 					set.add(listener as any);
 			
 					return () => {
 						set.delete(listener as any);
-			
-						if (set.size === 0) {
-							listeners.delete("_signal_global_listeners_raven");
-						}
+						if (set.size === 0) delete listeners[K];
 					};
 				},
-				clear: (
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): void => {
-					const { s, m, r } = opts;
-			
+				clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
 					this.store.clear(opts);
 			
-					this._signal_waiters.clear();
+					for (const key of Object.keys(this._signal_waiters) as A[]) {
+						delete this._signal_waiters[key];
+					}
 			
-					const globalListeners = this._signal_global_listeners.get(
-						"_signal_global_listeners_raven",
-					);
-			
+					const globalListeners = this._signal_global_listeners["_signal_global_listeners_raven"];
 					globalListeners?.clear();
 				},
-				waitFor: <T = A,>(
-					key: string | symbol,
-					opts: ScopeOptions = { s: this.s, m: this.m, r: this.r },
-				): Promise<T> => {
+				waitFor: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Promise<T> => {
 					const existing = this.state.get<T>(key, opts);
-			
-					if (existing !== undefined) {
-						return Promise.resolve(existing);
-					}
+					if (existing !== undefined) return Promise.resolve(existing as T);
 			
 					return new Promise<T>((resolve) => {
 						const waiters = this._signal_waiters;
-			
-						if (!waiters.has(key)) {
-							waiters.set(key, new Set());
-						}
-			
-						waiters.get(key)!.add(resolve as A);
+						const k = key as unknown as A;
+						if (!(k in waiters)) waiters[k] = new Set();
+						waiters[k]!.add(resolve as any);
 					});
 				},
 			};
@@ -1652,6 +1571,7 @@ class SIGNALS {
 				this.state.set(k, t, { triggerRender: true, s: s, m: m, r: r });
 				return t;
 			} 
+
 			/** public get_root2(c: S, r: S) {
 			 let root;
 			 switch (c) {
@@ -2695,7 +2615,9 @@ class SIGNALS {
 		//                                                                                                                    CONSTANTS
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		public root: DEATH_STAR;
+		public hub: DEATH_STAR;
 		public signals: SIGNALS
+		public state: RAVEN
 		public DARTH_MAUL_ENGINE: typeof  this.signals.maul_ngin
 	
 		public r: S = "this.r";
@@ -2711,8 +2633,10 @@ class SIGNALS {
 		UU = [this.m, this.r];
 		private total_cache_size = 5000;
 		public activeTracer: Map<SignalKey, SIGNAL_CELL> | null = null;
-		constructor(s: 	SIGNALS, capacity = 1 << 20) {
+		constructor(s: 	SIGNALS, capacity = 1 << 20) { 
 			this.root = s.root;
+			this.hub = s.root;
+			this.state = s.root.state;
 			this.r = s.root.r;
 			this.m = s.root.m;
 			this.s = s.root.s;
@@ -2793,31 +2717,14 @@ class SIGNALS {
 				const liveTarget: any = {};
 				const selfProxy = new Proxy(liveTarget, {
 					get: (t, k: any) => t[k],
-					set: (t, k: any, v: any) => { t[k] = v; root.bear.cell.set(`${instanceId}:${k}`, v); return true; },
+					set: (t, k: any, v: any) => { t[k] = v; this.hub.root.state.state.set(`${instanceId}:${k}`, v); return true; },
 				});
 				return { selfProxy, liveTarget };
 			}
-			const OPEN_CELLS: any[] = []; // test-only window onto the cells
+			const OPEN_CELLS: any[] = []; 
 			// useCell.obj — the merge variant Illusionist uses:
 			//   const [o, o$] = root.DISRUPTOR.useCell.obj(liveTarget, prim_label, categoryName)
 			//   o$.merge(result)
-			this.root.bus.drs.useCell.obj = (liveTarget: any, label: string, category: string, s = root.s, m = root.m, r = root.r) => {
-				const [cell, setLive] = root.drs.useCell.mailbox(liveTarget, label, s, m, r);
-				const merge = (patch: any = {}) => {
-					const p = typeof patch === "function" ? patch(cell) : patch;
-					for (const k of Object.keys(p ?? {})) {
-						const v = p[k];
-						if (v && typeof v === "object" && !Array.isArray(v) && cell[k] && typeof cell[k] === "object" && !Array.isArray(cell[k])) Object.assign(cell[k], v);
-						else cell[k] = v;
-					}
-					cell._version = (cell._version ?? 0) + 1;
-					setLive(cell);
-					return cell;
-				};
-				const o$ = { merge, set: setLive, key: label, category };
-				OPEN_CELLS.push({ cell, ...o$ });
-				return [cell, o$] as const;
-			};
 			// A bound atom's self: its own namespace, plus the master's root fields.
 			// Nothing here stores state — it reads and writes liveTarget directly.
 			function nsSelf(liveTarget: any, name: string, publish: () => void, useCell: () => any) {
@@ -2867,10 +2774,10 @@ class SIGNALS {
 				return desc;
 			}
 			function createMaster(kind: string, config: any) {
-				const kindFactory = resolveFactory(root.bear.cell(kind));
+				const kindFactory = resolveFactory(this.signals.signals.state.get(kind));
 				if (!kindFactory) throw new TypeError(`Unknown master atom: ${kind}`);
 			
-				const instanceId = `${kind}:${root.REGISTRY._sid}`;
+				const instanceId = `${kind}:${this.root.REGISTRY._sid}`;
 				const { selfProxy, liveTarget } = createLiveSelf(instanceId);
 				const names = new Set<string>();
 				const refreshers: Record<string, () => void> = {};
@@ -2889,7 +2796,7 @@ class SIGNALS {
 					liveTarget[name] = Object.assign(liveTarget[name] ?? {}, { _isNamespace: true });
 					const useCell = () => cellHandle(() => liveTarget[name], publish);
 					const self = nsSelf(liveTarget, name, publish, useCell);
-					const ctx: any = { self, useCell, channel: (l: any) => root.bear.state.subscribe(instanceId, l), master: selfProxy, config: cfg, k: root.k, s: root.s, m: root.m, r: root.r };
+					const ctx: any = { self, useCell, channel: (l: any) => this.signals.signals.state.subscribe(instanceId, l), master: selfProxy, config: cfg, k: root.k, s: root.s, m: root.m, r: root.r };
 					const out = factory(ctx);
 					Object.defineProperties(liveTarget[name], withoutKeys(out, ["bindables", "refresh"]));
 					if (typeof out.refresh === "function") refreshers[name] = out.refresh;
@@ -2904,7 +2811,7 @@ class SIGNALS {
 				};
 			
 				const masterCtx = (cfg: any) => {
-					const ctx: any = { self: selfProxy, useCell: () => cellHandle(() => liveTarget, publish), channel: (l: any) => root.bear.state.subscribe(instanceId, l), config: cfg, master: selfProxy, k: root.k, s: root.s, m: root.m, r: root.r };
+					const ctx: any = { self: selfProxy, useCell: () => cellHandle(() => liveTarget, publish), channel: (l: any) => this.root.signals.signals.state.subscribe(instanceId, l), config: cfg, master: selfProxy, k: root.k, s: root.s, m: root.m, r: root.r };
 					for (const name of names) ctx[name] = view(name);
 					return ctx;
 				};
@@ -2916,7 +2823,7 @@ class SIGNALS {
 				}
 			
 				// open the cell on the seeded object — this IS the resource from here on
-				const [cell, handle] = root.drs.useCell.obj(liveTarget, instanceId, kind);
+				const [cell, handle] = this.root.bus.drs.useCell.obj(liveTarget, instanceId, kind);
 				o$ = handle;
 			
 				// 1. required bound atoms first — the master reads gate.sealed on read()
@@ -2952,11 +2859,11 @@ class SIGNALS {
 				return withTypoGuard(api, instanceId.split(":")[1]);
 			}
 			const z = () => {}
-			z.MASTER = (name: string, arg: any)=>{ const f = resolveFactory(arg); this.root.signals.bear.cell.set(name, f); return f; }
-			z.BIND=(name: string, arg: any)=> { const f = resolveFactory(arg); this.root.signals.bear.cell.set(name, f); return f; }
+			z.MASTER = (name: string, arg: any)=>{ const f = resolveFactory(arg); this.root.signals.signals.cell.set(name, f); return f; }
+			z.BIND=(name: string, arg: any)=> { const f = resolveFactory(arg); this.root.signals.signals.cell.set(name, f); return f; }
 			z.BINDABLE=(factory: any)=> { return factory; }
 			z.CONTRACT=(arg1: any, arg2?: any): any =>{
-				const id = `${root.REGISTRY._sid}`;
+				const id = `${this.root.REGISTRY._sid}`;
 				const categoryName = typeof arg1 === "string" ? arg1 : `ATOM_CONTRACT${id}`;
 				const rawConfig = typeof arg1 === "string" ? arg2 : arg1;
 				if (rawConfig === undefined || rawConfig === null) throw new Error("Self is required");
@@ -2969,1951 +2876,55 @@ class SIGNALS {
 					return createMaster(kind, normalized);
 				}) as any;
 				Object.assign(contract, pass);
-				root.bear.cell.set(categoryName, contract);
+				this.root.signals.signals.state.set(categoryName, contract);
 				return contract;
 			}
 			return z
 		})(); 
 		public MASTERS = (() => {
 			const z = () => {}
-			z.SAURON = this.ATOM.MASTER("SAURON", ({ self, master, config }: any) => ({}));
-			z.MSG_Q = this.ATOM.MASTER("MSG_Q", ({ self, master, config }: any) => ({}));
-			z.SLAB = this.ATOM.MASTER("SLAB_ATOM", <X = U>({ self, master, config }: any) => ({
+			z.SAURON = this.ATOM.MASTER("SAURON", <T = A>({ self, master, config }: A) => ({}));
+			z.MSG_Q = this.ATOM.MASTER("MSG_Q", <T = A>({ self, master, config }: A) => ({}));
+			z.SLAB = this.ATOM.MASTER("SLAB", <T = A>({ self, master, config }: A) => ({}));
+			z.DRS = this.ATOM.MASTER("DRS", <X = A>({ self, master, config }: A) => ({}));
+			z.SUB = this.ATOM.MASTER("SUB", <T = A>({ self, master, config }: A) => ({}));
+			z.STREAM = this.ATOM.MASTER("STREAM", <T = A>({ self, master, config }: A) => ({}));
+			z.SPREADSHEET = this.ATOM.MASTER("SPREADSHEET", <T = A>({ self, master, config }: A) => ({}));
+			z.SEND = this.ATOM.MASTER("SEND", <T = A>({ self, master, config }: A) => ({}));
+			z.CLOUD = this.ATOM.MASTER("CLOUD", <T = A>({ self, master, config }: A) => ({}));
+			z.DUPLEX = this.ATOM.MASTER("DUPLEX", <T = A>({ self, master, config }: A) => ({}));
+			z.MODULE = this.ATOM.MASTER("MODULE", <T = A>({ self, master, config }: A) => ({
 				k: config.k ?? "__SIGNALS__",
 				s: config.s ?? "SAURON_SLAVE_REG",
 				m: config.m ?? "SAURON_MASTER_REG",
 				r: config.r ?? "THE_WIZARD_ROOT_REG",
-				capacity: config.capacity as number,
-			
-				values: new Float64Array(config.capacity),
-				versions: new Uint32Array(config.capacity),
-				nextFree: new Int32Array(config.capacity),
-				refCount: new Int32Array(config.capacity),
-			
-				freeHead: -1,
-				allocated: 0,
-			
-				slab: new Uint8Array(config.slabCapacity ?? (1 << 20)),
-				slabTail: 0,
-			
-				slabOffsets: new Int32Array(config.capacity).fill(-1),
-				slabLengths: new Int32Array(config.capacity).fill(0),
-			
-				inUse: new Uint8Array(config.capacity),
-			
-				initialized: (() => {
-					const capacity = config.capacity as number;
-			
-					if (!pow2(capacity)) {
-						throw new Error("slotCapacity must be a power of two");
-					}
-			
-					self.nextFree.fill(-1);
-			
-					// Slot 0 is reserved as the control slot (version counter).
-					self.allocated = 1;
-					self.refCount[0] = 1;
-					self.versions[0] = 0;
-					self.inUse[0] = 1;
-			
-					// Build initial free list (skip slot 0).
-					// Link slots 1..capacity-1 in reverse order so we pop from the front.
-					for (let i = capacity - 1; i >= 1; i--) {
-						self.nextFree[i] = self.freeHead;
-						self.freeHead = i;
-					}
-			
-					return true;
-				})(),
-			
-				writeBinary(slot: N, data: U8, epoch: N): V {
-					self.assertLive(slot);
-					self.assertEpoch(epoch);
-			
-					const oldOffset = self.slabOffsets[slot];
-					const oldLength = self.slabLengths[slot];
-					const length = data.length;
-			
-					// Reuse the existing allocation when it is large enough.
-					if (oldOffset >= 0 && length <= oldLength) {
-						self.slab.set(data, oldOffset);
-			
-						if (length < oldLength) {
-							self.freeBytes(oldOffset + length, oldLength - length);
-						}
-			
-						self.slabOffsets[slot] = length === 0 ? 0 : oldOffset;
-						self.slabLengths[slot] = length;
-						self.values[slot] = 0;
-						self.versions[slot] = epoch;
-						return;
-					}
-			
-					// Allocate first: exhaustion leaves the old payload intact.
-					const offset = self.allocBytes(length);
-			
-					self.slab.set(data, offset);
-			
-					if (oldOffset >= 0 && oldLength > 0) {
-						self.freeBytes(oldOffset, oldLength);
-					}
-			
-					self.slabOffsets[slot] = offset;
-					self.slabLengths[slot] = length;
-					self.values[slot] = 0;
-					self.versions[slot] = epoch;
-				},
-			
-				readBinary(slot: N): U8 {
-					const { offset, length } = self.ref(slot);
-					return self.slab.subarray(offset, offset + length);
-				},
-			
-				allocBytes(length: N): N {
-					if (length === 0) return 0;
-			
-					// First-fit allocation from reclaimed ranges.
-					for (let i = 0; i < self.freeRanges.length; i++) {
-						const range = self.freeRanges[i];
-			
-						if (range.length < length) continue;
-			
-						const offset = range.offset;
-			
-						if (range.length === length) {
-							self.freeRanges.splice(i, 1);
-						} else {
-							range.offset += length;
-							range.length -= length;
-						}
-			
-						return offset;
-					}
-			
-					if (length > self.slab.length - self.slabTail) {
-						throw new RangeError("STORAGE_RING: no contiguous slab range large enough");
-					}
-			
-					const offset = self.slabTail;
-					self.slabTail += length;
-					return offset;
-				},
-			
-				freeBytes(offset: N, length: N): V {
-					if (length === 0) return;
-			
-					const ranges = self.freeRanges;
-					let index = 0;
-			
-					while (index < ranges.length && ranges[index].offset < offset) {
-						index++;
-					}
-			
-					ranges.splice(index, 0, { offset, length });
-			
-					// Merge with the preceding range.
-					if (
-						index > 0 &&
-						ranges[index - 1].offset + ranges[index - 1].length === offset
-					) {
-						ranges[index - 1].length += length;
-						ranges.splice(index, 1);
-						index--;
-					}
-			
-					// Merge with the following range.
-					if (
-						index + 1 < ranges.length &&
-						ranges[index].offset + ranges[index].length === ranges[index + 1].offset
-					) {
-						ranges[index].length += ranges[index + 1].length;
-						ranges.splice(index + 1, 1);
-					}
-			
-					// Return a free suffix to the unused slab tail.
-					const last = ranges[ranges.length - 1];
-			
-					if (last !== undefined && last.offset + last.length === self.slabTail) {
-						self.slabTail = last.offset;
-						ranges.pop();
-					}
-				},
-			
-				assertLive(slot: N): V {
-					if (
-						!Number.isInteger(slot) ||
-						slot <= 0 ||
-						slot >= self.allocated ||
-						self.refCount[slot] <= 0
-					) {
-						throw new RangeError(`STORAGE_RING: invalid or released slot ${slot}`);
-					}
-				},
-			
-				assertEpoch(epoch: N): V {
-					if (
-						!Number.isInteger(epoch) ||
-						epoch < 0 ||
-						epoch > 0xffffffff
-					) {
-						throw new RangeError("STORAGE_RING: epoch must be a uint32");
-					}
-				},
-			
-				tick(): number {
-					return self.versions[0];
-				},
-			
-				advance(): number {
-					return ++self.versions[0];
-				},
-			
-				alloc(value = 0): number {
-					const slot = self.freeHead;
-					if (slot === -1) return -1;
-			
-					// Remove from free list.
-					self.freeHead = self.nextFree[slot];
-					self.nextFree[slot] = -1;
-			
-					// Initialize slot.
-					self.values[slot] = value;
-					self.refCount[slot] = 1;
-					self.inUse[slot] = 1;
-			
-					// Clear slab allocation for this slot.
-					self.slabOffsets[slot] = -1;
-					self.slabLengths[slot] = 0;
-			
-					self.allocated++;
-			
-					return slot;
-				},
-			
-				retain(slot: number): boolean {
-					if (slot < 0 || slot >= self.capacity) return false;
-					if (!self.inUse[slot]) return false;
-			
-					if (self.refCount[slot] === 0x7FFFFFFF) {
-						throw new Error("Reference count overflow");
-					}
-			
-					self.refCount[slot]++;
-					return true;
-				},
-			
-				release(slot: number): boolean {
-					if (slot < 0 || slot >= self.capacity) return false;
-					if (!self.inUse[slot]) return false;
-			
-					if (self.refCount[slot] <= 0) {
-						throw new Error("Reference count underflow");
-					}
-			
-					self.refCount[slot]--;
-			
-					if (self.refCount[slot] === 0) {
-						self.inUse[slot] = 0;
-			
-						// Clear slab data.
-						self.slabOffsets[slot] = -1;
-						self.slabLengths[slot] = 0;
-						self.values[slot] = 0;
-			
-						// Add to free list.
-						self.nextFree[slot] = self.freeHead;
-						self.freeHead = slot;
-			
-						self.allocated--;
-			
-						return true;
-					}
-			
-					return false;
-				},
-			
-				write(slot: number, value: number, epoch: number): boolean {
-					if (slot < 0 || slot >= self.capacity) return false;
-					if (!self.inUse[slot]) return false;
-					if (self.refCount[slot] <= 0) return false;
-			
-					// Epoch validation: the slot's version must match the expected epoch.
-					if (self.versions[slot] !== epoch) return false;
-			
-					self.values[slot] = value;
-					return true;
-				},
-			
-				read(slot: number): number {
-					if (slot < 0 || slot >= self.capacity) return NaN;
-					if (!self.inUse[slot]) return NaN;
-			
-					return self.values[slot];
-				},
-			
-				version(slot: number): number {
-					if (slot < 0 || slot >= self.capacity) return -1;
-					return self.versions[slot];
-				},
-			
-				ref(slot: number): { offset: number; length: number } {
-					if (slot < 0 || slot >= self.capacity) {
-						return { offset: -1, length: 0 };
-					}
-			
-					return {
-						offset: self.slabOffsets[slot],
-						length: self.slabLengths[slot],
-					};
-				},
-			
-				storeSlab(slot: number, data: Uint8Array | ArrayBuffer): boolean {
-					if (slot < 0 || slot >= self.capacity) return false;
-					if (!self.inUse[slot]) return false;
-			
-					const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-					const len = bytes.length;
-			
-					if (len === 0) {
-						// Zero-length: clear slab assignment.
-						self.slabOffsets[slot] = -1;
-						self.slabLengths[slot] = 0;
-						return true;
-					}
-			
-					// Simple bump allocator: check if we have room.
-					if (self.slabTail + len > self.slab.length) {
-						// Could implement compaction here, but for now just fail.
-						return false;
-					}
-			
-					const offset = self.slabTail;
-					self.slab.set(bytes, offset);
-					self.slabTail += len;
-			
-					self.slabOffsets[slot] = offset;
-					self.slabLengths[slot] = len;
-			
-					return true;
-				},
-			
-				loadSlab(slot: number): Uint8Array | null {
-					if (slot < 0 || slot >= self.capacity) return null;
-					if (!self.inUse[slot]) return null;
-			
-					const offset = self.slabOffsets[slot];
-					const length = self.slabLengths[slot];
-			
-					if (offset < 0 || length <= 0) return null;
-			
-					return self.slab.subarray(offset, offset + length);
-				},
-			
-				growthSlab(minAdditional: number): void {
-					const newCapacity = Math.max(self.slab.length * 2, self.slabTail + minAdditional);
-					const newSlab = new Uint8Array(newCapacity);
-					newSlab.set(self.slab);
-					self.slab = newSlab;
-				},
-			
-				needsCompaction(): boolean {
-					if (self.allocated <= 1) return false;
-			
-					let liveBytes = 0;
-					for (let i = 1; i < self.capacity; i++) {
-						if (self.inUse[i] && self.slabLengths[i] > 0) {
-							liveBytes += self.slabLengths[i];
-						}
-					}
-			
-					const deadBytes = self.slabTail - liveBytes;
-					return deadBytes > self.slabTail * 0.5;
-				},
-			
-				compact(): void {
-					if (!self.needsCompaction()) return;
-			
-					const newSlab = new Uint8Array(self.slab.length);
-					let newTail = 0;
-			
-					for (let i = 1; i < self.capacity; i++) {
-						if (!self.inUse[i]) continue;
-			
-						const length = self.slabLengths[i];
-						if (length <= 0) continue;
-			
-						const oldOffset = self.slabOffsets[i];
-						newSlab.set(
-							self.slab.subarray(oldOffset, oldOffset + length),
-							newTail,
-						);
-			
-						self.slabOffsets[i] = newTail;
-						newTail += length;
-					}
-			
-					// Copy back into original slab buffer.
-					self.slab.set(newSlab.subarray(0, newTail), 0);
-					self.slabTail = newTail;
-				},
-			
-				stats(): {
-					capacity: number;
-					allocated: number;
-					freeSlots: number;
-					slabUsed: number;
-					slabCapacity: number;
-					slabUtilization: number;
-				} {
-					return {
-						capacity: self.capacity,
-						allocated: self.allocated,
-						freeSlots: self.capacity - self.allocated,
-						slabUsed: self.slabTail,
-						slabCapacity: self.slab.length,
-						slabUtilization: self.slabTail / self.slab.length,
-					};
-				},
-			
-				validate(): string[] {
-					const errors: string[] = [];
-			
-					let freeCount = 0;
-					let current = self.freeHead;
-					const seen = new Set<number>();
-			
-					while (current !== -1) {
-						if (current < 1 || current >= self.capacity) {
-							errors.push(`Free list contains invalid slot: ${current}`);
-							break;
-						}
-			
-						if (seen.has(current)) {
-							errors.push(`Free list contains cycle at slot: ${current}`);
-							break;
-						}
-			
-						seen.add(current);
-						freeCount++;
-						current = self.nextFree[current];
-					}
-			
-					if (freeCount !== self.capacity - self.allocated) {
-						errors.push(
-							`Free list has ${freeCount} entries, expected ${self.capacity - self.allocated}`,
-						);
-					}
-			
-					for (let i = 1; i < self.capacity; i++) {
-						if (!self.inUse[i]) continue;
-			
-						const offset = self.slabOffsets[i];
-						const length = self.slabLengths[i];
-			
-						if (offset === -1 && length !== 0) {
-							errors.push(`Slot ${i}: offset -1 but length ${length}`);
-						} else if (offset !== -1) {
-							if (offset < 0 || offset + length > self.slabTail) {
-								errors.push(
-									`Slot ${i}: slab range [${offset}, ${offset + length}) out of bounds (tail=${self.slabTail})`,
-								);
-							}
-						}
-					}
-			
-					return errors;
-				},
-			
-				get used(): N {
-					return self.allocated - 1 - self.freeCount();
-				},
-			
-				get freeCount(): N {
-					return self.freeHead === FREE_LIST_END ? 0 : self.walkFree();
-				},
-			
-				get slabUsed(): N {
-					return self.liveBytes;
-				},
-			
-				get slabFree(): N {
-					return self.slab.length - self.liveBytes;
-				},
-			
-				walkFree(): N {
-					let n = 0;
-					let p = self.freeHead;
-			
-					while (p !== FREE_LIST_END) {
-						n++;
-						p = self.nextFree[p];
-					}
-			
-					return n;
-				},
+				pipeline: 'A' ,
+				send(message: A, signal?: A) { 	},
+				dispatch(hook: A, ctx: A, terminal: () => V) { },
+				deliver(ctx: A){ },
 			}));
-			z.DRS = this.ATOM.MASTER("DRS_ATOM", <X = U>({ self, master, config }: any) => ({
+			z.MODULE_STORAGE = this.ATOM.MASTER("MODULE_STORAGE_PROTON", <T = A>({ self, master, config }: A) => ({}));
+			z.S_CLASS = this.ATOM.MASTER("S_CLASS", <T = A>({ self, master, config }: A) => ({
 				k: config.k ?? "__SIGNALS__",
 				s: config.s ?? "SAURON_SLAVE_REG",
 				m: config.m ?? "SAURON_MASTER_REG",
 				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				value: config.value as X,
-			
-			  
-			
-				destroy(): V {
-					self.registry?.purgeAll();
-					self.registry = null;
-					BC().store.particle(self.s, self.m, self.r).delete(self.key)._REGISTRY_PROTON;
-				},
-			
-				read(): X {
-					const r = self.registry;
-					if (r !== null) {
-						const gate = r.get(GATE_ELECTRON);
-						if (gate !== undefined && (gate as any).sealed) {
-							throw new SEALED_ERROR_ELECTRON(self.key);
-						}
-					}
-					return self.value;
-				},
-			
-				write(next: X): B {
-					const r = self.registry;
-					if (r === null) {
-						self.value = next;
-						return true;
-					}
-			
-					const gate = r.get(GATE_ELECTRON);
-					if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
-			
-					const previous = self.value;
-					if (Object.is(previous, next)) return false;
-			
-					self.value = next;
-			
-					const subs = r.get(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD;
-					if (subs !== undefined) {
-						subs.notify({ key: self.key, previous, current: next });
-					}
-			
-					return true;
-				},
-			
-				subscribe(listener: LISTENER<X>): UNSUBSCRIBE {
-					const subs =
-						(self.shard(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD) ??
-						self.bind(new SUBSCRIPTION_ELECTRON<X>(self));
-			
-					return subs.subscribe(listener);
-				},
-			
-				waitFor() {},
+				pipeline: 'A' ,
+				send(message: A, signal?: A) { 	},
+				dispatch(hook: A, ctx: A, terminal: () => V) { },
+				deliver(ctx: A){ },
 			}));
-			z.SUB = this.ATOM.MASTER("SUB_ATOM", <T = any>({ self, master, config }: any) => ({
+			z.S_CLASS_STORAGE = this.ATOM.MASTER("S_CLASS_STORAGE_PROTON", <T = A>({ self, master, config }: A) => ({
 				k: config.k ?? "__SIGNALS__",
 				s: config.s ?? "SAURON_SLAVE_REG",
 				m: config.m ?? "SAURON_MASTER_REG",
 				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				pipeline: undefined as PIPELINE<MQ_CTX<T>> | undefined,
-			
-				send(message: T, signal?: SIGNAL): B {
-					const ctx: MQ_CTX<T> = {
-						atom: self,
-						message,
-						signal,
-						meta: undefined,
-					};
-			
-					return self.dispatch("beforeSend", ctx, () => {
-						self.deliver(ctx);
-						return true;
-					});
-				},
-			
-				dispatch(hook: HOOK, ctx: MQ_CTX<T>, terminal: () => V): V {
-					const p = self.pipeline ??= self.compile();
-					return p.run(hook, ctx, terminal);
-				},
-			
-				deliver(ctx: MQ_CTX<T>): V {
-					// bare transport / queue / subscriber fanout
-				},
-			
-				compile(): PIPELINE<MQ_CTX<T>> {
-					const r = self.registry;
-					const behaviours: BEHAVIOUR<MQ_CTX<T>>[] = [];
-			
-					if (r !== null) {
-						for (const shard of r.shards()) {
-							if ("behaviours" in shard) {
-								behaviours.push(...(shard as any).behaviours());
-							}
-						}
-					}
-			
-					return compilePipeline(behaviours);
-				},
+				pipeline: 'A' ,
+				send(message: A, signal?: A) { 	},
+				dispatch(hook: A, ctx: A, terminal: () => V) { },
+				deliver(ctx: A){ },
 			}));
-			z.STREAM = this.ATOM.MASTER("STREAM_ATOM", <T = any>({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				pipeline: undefined as PIPELINE<STREAM_CTX<T>> | undefined,
-			
-				send(message: T, signal?: SIGNAL): B {
-					const ctx: STREAM_CTX<T> = {
-						atom: self,
-						message,
-						signal,
-						meta: undefined,
-					};
-			
-					return self.dispatch("beforeSend", ctx, () => {
-						self.deliver(ctx);
-						return true;
-					});
-				},
-			
-				dispatch(hook: HOOK, ctx: STREAM_CTX<T>, terminal: () => V): V {
-					const p = self.pipeline ??= self.compile();
-					return p.run(hook, ctx, terminal);
-				},
-			
-				deliver(ctx: STREAM_CTX<T>): V {
-					// bare transport / queue / subscriber fanout
-				},
-			
-				compile(): PIPELINE<STREAM_CTX<T>> {
-					const r = self.registry;
-					const behaviours: BEHAVIOUR<STREAM_CTX<T>>[] = [];
-			
-					if (r !== null) {
-						for (const shard of r.shards()) {
-							if ("behaviours" in shard) {
-								behaviours.push(...(shard as any).behaviours());
-							}
-						}
-					}
-			
-					return compilePipeline(behaviours);
-				},
-			}));
-			z.SPREADSHEET = this.ATOM.MASTER("SPREADSHEET_ATOM", <X = U>({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				key: config.key,
-				value: config.value as X,
-				registry: null as REGISTRY_PROTON | null,
-			
-				bind<S extends SPREADSHEET_ATOM>(atom: S, owner: OWNERSHIP = "bespoke"): S {
-					if (self.registry === null) {
-						self.registry = new REGISTRY_PROTON(self.key, { atoms: [{ atom, owner }] });
-					} else {
-						self.registry.bind(atom, owner);
-					}
-					return atom;
-				},
-			
-				shard<S extends SPREADSHEET_ATOM>(ctor: ATOM_CLASS<S>): S | UD {
-					return self.registry?.get(ctor);
-				},
-			
-				unbind(ctor: ATOM_CLASS<any>): B {
-					if (self.registry === null) return false;
-			
-					const removed = self.registry.unbind(ctor);
-			
-					// A registry with nothing in it is dropped, returning the cell to the bare fast path.
-					if (self.registry.size === 0) {
-						BC().store.particle(self.s, self.m, self.r).delete(self.key)._REGISTRY_PROTON;
-						self.registry = null;
-					}
-			
-					return removed;
-				},
-			
-				destroy(): V {
-					self.registry?.purgeAll();
-					self.registry = null;
-					BC().store.particle(self.s, self.m, self.r).delete(self.key)._REGISTRY_PROTON;
-				},
-			
-				read(): X {
-					const r = self.registry;
-					if (r !== null) {
-						const gate = r.get(GATE_ELECTRON);
-						if (gate !== undefined && (gate as any).sealed) {
-							throw new SEALED_ERROR_ELECTRON(self.key);
-						}
-					}
-					return self.value;
-				},
-			
-				write(next: X): B {
-					const r = self.registry;
-					if (r === null) {
-						self.value = next;
-						return true;
-					}
-			
-					const gate = r.get(GATE_ELECTRON);
-					if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
-			
-					const previous = self.value;
-					if (Object.is(previous, next)) return false;
-			
-					self.value = next;
-			
-					const subs = r.get(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD;
-					if (subs !== undefined) {
-						subs.notify({ key: self.key, previous, current: next });
-					}
-			
-					return true;
-				},
-			
-				subscribe(listener: LISTENER<X>): UNSUBSCRIBE {
-					const subs =
-						(self.shard(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD) ??
-						self.bind(new SUBSCRIPTION_ELECTRON<X>(self));
-			
-					return subs.subscribe(listener);
-				},
-			
-				waitFor() {},
-			
-				kind: undefined as SY,
-				purge(): V {}, 
-			}));
-			z.SEND = this.ATOM.MASTER("SEND_ATOM", <T = any>({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				pipeline: undefined as PIPELINE<MQ_CTX<T>> | undefined,
-			
-				send(message: T, signal?: SIGNAL): B {
-					const ctx: MQ_CTX<T> = {
-						atom: self,
-						message,
-						signal,
-						meta: undefined,
-					};
-			
-					return self.dispatch("beforeSend", ctx, () => {
-						self.deliver(ctx);
-						return true;
-					});
-				},
-			
-				dispatch(hook: HOOK, ctx: MQ_CTX<T>, terminal: () => V): V {
-					const p = self.pipeline ??= self.compile();
-					return p.run(hook, ctx, terminal);
-				},
-			
-				deliver(ctx: MQ_CTX<T>): V {
-					// bare transport / queue / subscriber fanout
-				},
-			
-				compile(): PIPELINE<MQ_CTX<T>> {
-					const r = self.registry;
-					const behaviours: BEHAVIOUR<MQ_CTX<T>>[] = [];
-			
-					if (r !== null) {
-						for (const shard of r.shards()) {
-							if ("behaviours" in shard) {
-								behaviours.push(...(shard as any).behaviours());
-							}
-						}
-					}
-			
-					return compilePipeline(behaviours);
-				},
-			}));
-			z.CLOUD = this.ATOM.MASTER("CLOUD_ATOM", <X = U>({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				value: config.value as X,
-				registry: null as REGISTRY_PROTON | null,
-			
-				bind: <S extends ATOM>(shard: S, owner: OWNERSHIP = "bespoke"): S => {
-					if (self.registry === null) {
-						self.registry = new REGISTRY_PROTON(self.key, {
-							shards: [{ shard, owner }],
-						});
-					} else {
-						self.registry.bind(shard, owner);
-					}
-			
-					return shard;
-				},
-			
-				shard: <S extends ATOM>(ctor: ATOM_CLASS<S>): S | UD =>
-					self.registry?.get(ctor),
-			
-				unbind: (ctor: SHARD_CLASS<any>): B => {
-					if (self.registry === null) return false;
-			
-					const removed = self.registry.unbind(ctor);
-			
-					if (self.registry.size === 0) {
-						BC().store.particle(self.s, self.m, self.r)
-							.delete(self.k)._REGISTRY_PROTON;
-			
-						self.registry = null;
-					}
-			
-					return removed;
-				},
-			
-				destroy: (): void => {
-					self.registry?.purgeAll();
-					self.registry = null;
-			
-					BC().store.particle(self.s, self.m, self.r)
-						.delete(self.k)._REGISTRY_PROTON;
-				},
-			
-				read: (): X => {
-					const registry = self.registry;
-			
-					if (registry !== null) {
-						const gate = registry.get(GATE_ELECTRON);
-			
-						if (gate !== undefined && (gate as any).sealed) {
-							throw new SEALED_ERROR_ELECTRON(self.k);
-						}
-					}
-			
-					return self.value;
-				},
-			
-				write: (next: X): B => {
-					const registry = self.registry;
-			
-					if (registry === null) {
-						self.value = next;
-						return true;
-					}
-			
-					const gate = registry.get(GATE_ELECTRON);
-			
-					if (gate !== undefined && (gate.sealed || gate.frozen)) {
-						return false;
-					}
-			
-					const previous = self.value;
-			
-					if (Object.is(previous, next)) return false;
-			
-					self.value = next;
-			
-					const subs = registry.get(SUBSCRIPTION_ELECTRON) as
-						SUBSCRIPTION_ELECTRON<X> | UD;
-			
-					if (subs !== undefined) {
-						subs.notify({
-							key: self.k,
-							previous,
-							current: next,
-						});
-					}
-			
-					return true;
-				},
-			
-				subscribe: (listener: LISTENER<X>): UNSUBSCRIBE => {
-					const subs =
-						(self.shard(SUBSCRIPTION_ELECTRON) as
-							SUBSCRIPTION_ELECTRON<X> | UD) ??
-						self.bind(new SUBSCRIPTION_ELECTRON<X>(self));
-			
-					return subs.subscribe(listener);
-				},
-			
-				waitFor: () => {},
-			}));
-			z.DUPLEX = this.ATOM.MASTER("DUPLEX", <T>({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				pipeline: undefined as PIPELINE<MQ_CTX<T>> | undefined,
-			
-				send: (message: T, signal?: ATOM): B => {
-					const ctx: MQ_CTX<T> = {
-						atom: self,
-						message,
-						signal,
-						meta: undefined,
-					};
-			
-					return self.dispatch("beforeSend", ctx, () => {
-						self.deliver(ctx);
-						return true;
-					});
-				},
-			
-				dispatch: (
-					hook: HOOK,
-					ctx: MQ_CTX<T>,
-					terminal: () => V,
-				): V => {
-					const p = self.pipeline ??= self.compile();
-					return p.run(hook, ctx, terminal);
-				},
-			
-				deliver: (ctx: MQ_CTX<T>): V => {
-					// bare transport / queue / subscriber fanout
-				},
-			
-				compile: (): PIPELINE<MQ_CTX<T>> => {
-					const registry = self.registry;
-					const behaviours: BEHAVIOUR<MQ_CTX<T>>[] = [];
-			
-					if (registry !== null) {
-						for (const shard of registry.shards()) {
-							if ("behaviours" in shard) {
-								behaviours.push(...(shard as any).behaviours());
-							}
-						}
-					}
-			
-					return compilePipeline(behaviours);
-				},
-			}));
-			z.MODULE = this.ATOM.MASTER("MODULE_ATOM", <T = any>({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				initial: undefined as T,
-				key: config.k ?? "__SIGNALS__",
-				module: undefined as T,
-				module_type: "class_fn_pool",
-				version: 0,
-				sealed: false,
-				frozen: true,
-				hasWritten: false,
-				persisted: false,
-			
-				listeners: new Set<(change: Change<T>) => void>(),
-				waiters: new Set<(value: T) => void>(),
-				undoStack: undefined as HistoryEntry<T>[] | undefined,
-			
-				conflict: undefined as ConflictPolicy | undefined,
-				historyIndex: 0,
-				history: undefined as AtomHistoryEntry<T>[] | undefined,
-				historyMax: 50,
-				lifecycle: undefined as SignalLifecycle | undefined,
-				async: undefined as AsyncSignalState<T> | undefined,
-				metrics: undefined as Metrics | undefined,
-				conflictStrategy: undefined as "latest" | "fail" | "accumulate" | undefined,
-			
-				schema: undefined as SignalSchema | undefined,
-				contracts: new Map<string, AtomContract<T>>(),
-				causal: [] as CausalEntry[],
-				lastWriteSource: undefined as string | undefined,
-			
-				batches: new Set<SignalKey>(),
-				batchQueue: new Map<SignalKey, unknown>(),
-				batchOpts: new Map<SignalKey, { triggerRender?: boolean }>(),
-			
-				broadcast: true,
-				triggerRender: true,
-				boundary: "same-app" as Boundary,
-			
-				initialize: (
-					initial: T,
-					options: MODULE_OPTIONS = {
-						module_type: "class_fn_pool",
-						broadcast: true,
-						frozen: true,
-					},
-				): void => {
-					const ptype = options?.module_type
-						? options.module_type
-						: self.module_type;
-					const shouldFreeze = options.frozen ?? self.frozen;
-			
-					switch (ptype) {
-						case "fn":
-						case "comp":
-						case "node_module":
-							self.frozen = shouldFreeze;
-							self.module = initial;
-							self.initial = initial;
-							break;
-			
-						case "class_fn_pool":
-						default:
-							self.frozen = false;
-							self.module = { ...initial };
-							self.initial = { ...initial };
-							break;
-					}
-			
-					self.module_type = ptype;
-			
-					if (options?.broadcast) self.broadcast = options.broadcast;
-					if (options?.module_type) self.module_type = options.module_type;
-					if (options?.schema) self.schema = options.schema;
-					if (options?.lifecycle) self.lifecycle = options.lifecycle;
-					if (options?.conflict) self.conflict = options.conflict;
-					if (options?.conflictStrategy) self.conflictStrategy = options.conflictStrategy;
-			
-					if (options?.history) {
-						self.historyMax = Math.max(1, options.history.max ?? 50);
-						self.history = [{
-							k: 0,
-							value: initial,
-							timestamp: Date.now(),
-							source: "initial",
-						}];
-						self.historyIndex = 0;
-					}
-				},
-			
-				read: (): T => self.module,
-			
-				peek: (): T => self.module,
-			
-				write: (
-					incoming: any | ((prev: T) => T),
-					options: AtomWriteOptions = {},
-				): T => {
-					if (self.frozen) return self.peek();
-			
-					const prev = self.module;
-					const resolved = incoming;
-			
-					const next = self.module_type === "class_fn_pool"
-						? resolved
-							? { ...prev, ...resolved }
-							: prev
-						: resolved;
-			
-					self.module = next;
-					self.hasWritten = true;
-					self.version += 1;
-					self.lastWriteSource = options.source ?? "write";
-					self.assertContracts(next, prev);
-			
-					for (const l of self.listeners) {
-						try {
-							l(next);
-						} catch (e) {}
-					}
-			
-					root.bus.send(self.key, next, self.s, self.m, self.r);
-			
-					for (const w of self.waiters) {
-						try {
-							w(next);
-						} catch (e) {}
-					}
-			
-					if (options.recordHistory !== false) {
-						self.recordHistory(prev, next, self.lastWriteSource);
-					}
-			
-					self.recordCausal(next, self.lastWriteSource, options.cause);
-					self.waiters.clear();
-			
-					self.notifyListeners({
-						key: self.key,
-						previous: prev,
-						current: next,
-						version: self.version,
-						timestamp: Date.now(),
-						source: self.lastWriteSource,
-					});
-			
-					return next;
-				},
-			
-				register: (name: string, val: any): T =>
-					self.write((prev: A) => ({ ...prev, [name]: val })),
-			
-				unregister: (name: string): T =>
-					self.write((prev: A) => {
-						const { [name]: _gone, ...rest } = prev;
-						return rest;
-					}),
-			
-				slot: (name: string): any => self.module[name],
-			
-				on: (listener: RiftListener<any>): void => {
-					self.listeners.add(listener);
-					listener(self.module);
-				},
-			
-				waitFor: (): Promise<T> =>
-					new Promise((resolve) => {
-						self.waiters.add(resolve);
-					}),
-			
-				waitForSlot: async (name: string, timeoutMs = 0): Promise<any> => {
-					const existing = self.module[name];
-					if (existing !== undefined) return existing;
-			
-					if (!timeoutMs) {
-						const next = await self.waitFor();
-						return (next as Record<string, any>)[name];
-					}
-			
-					return Promise.race([
-						self.waitFor().then(
-							(next) => (next as Record<string, any>)[name],
-						),
-						new Promise((_, reject) =>
-							setTimeout(
-								() => reject(
-									new Error(
-										`[ModuleAtom] waitForSlot("${name}") timed out after ${timeoutMs}m`,
-									),
-								),
-								timeoutMs,
-							),
-						),
-					]);
-				},
-			
-				inspect: (): T => ({ ...self.module }),
-			
-				setSchema: (schema?: SignalSchema) => {
-					self.schema = schema;
-					return self;
-				},
-			
-				setLifecycle: (lifecycle?: SignalLifecycle<T>) => {
-					self.lifecycle = lifecycle;
-					return self;
-				},
-			
-				setConflict: (
-					conflict?: ConflictPolicy,
-					strategy?: "latest" | "fail" | "accumulate",
-				) => {
-					self.conflict = conflict;
-					self.conflictStrategy = strategy;
-					return self;
-				},
-			
-				setFrozen: (): void => {
-					self.frozen = true;
-				},
-			
-				setUnfrozen: (): void => {
-					self.frozen = false;
-				},
-			
-				setSealed: (): void => {
-					self.sealed = true;
-				},
-			
-				setUnsealed: (): void => {
-					self.sealed = false;
-				},
-			
-				setBoundary: (): void => {},
-			
-				validate: (next: T): T => {
-					if (!self.schema) return next;
-					return root.signals._.validateSchema(self.schema, next);
-				},
-			
-				assertContracts: (next: T, previous: T): void => {
-					for (const contract of self.contracts.values()) {
-						let valid = false;
-			
-						try {
-							valid = contract.postcondition(next, previous);
-						} catch (error) {
-							console.error(
-								`[Sauron] contract "${contract.name}" threw for "${String(self.key)}":`,
-								error,
-							);
-						}
-			
-						if (valid) continue;
-			
-						const message =
-							`[Sauron] contract "${contract.name}" violated ` +
-							`on write to "${String(self.key)}"`;
-			
-						if (contract.block) {
-							throw new Error(message);
-						}
-			
-						console.error(message);
-					}
-				},
-			
-				recordHistory: (previous: T, next: T, source?: string): void => {
-					if (!self.history) return;
-			
-					self.history.splice(self.historyIndex + 1);
-			
-					const last = self.history[self.history.length - 1];
-			
-					self.history.push({
-						k: (last?.k ?? -1) + 1,
-						prev: previous,
-						value: next,
-						next,
-						timestamp: Date.now(),
-						source,
-						undone: false,
-					});
-			
-					while (self.history.length > self.historyMax) {
-						self.history.shift();
-					}
-			
-					self.historyIndex = self.history.length - 1;
-				},
-			
-				getHistory: (): readonly AtomHistoryEntry<T>[] =>
-					self.history ?? [],
-			
-				timeTravel: (steps = 1): T | undefined => {
-					if (!self.history?.length || steps <= 0) return undefined;
-			
-					const idx = Math.max(
-						0,
-						Math.min(self.history.length - 1, self.historyIndex + steps),
-					);
-			
-					if (idx === self.historyIndex) return undefined;
-			
-					self.historyIndex = idx;
-					return self.replayHistory("time-travel");
-				},
-			
-				back: (steps = 1): T | undefined =>
-					self.timeTravel(-Math.abs(steps)),
-			
-				forward: (steps = 1): T | undefined =>
-					self.timeTravel(Math.abs(steps)),
-			
-				goto: (sequence: number): T | undefined => {
-					if (!self.history?.length) return undefined;
-			
-					const idx = self.history.findIndex(
-						(entry) => entry.k === sequence,
-					);
-			
-					if (idx < 0 || idx === self.historyIndex) return undefined;
-			
-					self.historyIndex = idx;
-					return self.replayHistory("time-travel.goto");
-				},
-			
-				replayHistory: (source: string): T => {
-					const entry = self.history![self.historyIndex];
-			
-					return self.write(entry.value as T, {
-						source,
-						cause: "time-travel",
-						triggerRender: true,
-						recordHistory: false,
-					});
-				},
-			
-				recordCausal: (
-					value: T,
-					source?: string,
-					cause?: string,
-				): void => {
-					self.causal.push({
-						value,
-						source,
-						cause,
-						timestamp: Date.now(),
-					} as CausalEntry);
-			
-					if (self.causal.length > 100) {
-						self.causal.shift();
-					}
-				},
-			
-				recordMetrics: (): void => {
-					if (!self.metrics) return;
-			
-					self.metrics.writeCount += 1;
-					self.metrics.lastWrite = Date.now();
-				},
-				
-				notifyListeners: (change: Change<T>): void => {
-					const listeners = root.wr._listeners.get(self.key);
-					if (!listeners) return;
-			
-					for (const listener of listeners) {
-						try {
-							listener(change);
-						} catch (error) {
-							console.error(
-								`[Sauron:SIGNAL_CELL:${String(self.key)}] listener failed:`,
-								error,
-							);
-						}
-					}
-				},
-			
-				resolveWaiters: (value: T): void => {
-					const waiting = root.wr._waiters.get(self.key);
-					if (!waiting) return;
-			
-					root.wr._waiters.delete(self.key);
-			
-					for (const resolve of waiting) {
-						try {
-							resolve(value);
-						} catch (error) {
-							console.error(
-								`[Sauron:SIGNAL_CELL:${String(self.key)}] waiter failed:`,
-								error,
-							);
-						}
-					}
-				},
-			
-				notifyExternalSubscribers: (): void => {
-					const subscribers = root.state._externalSubscribers.get(self.key);
-					if (!subscribers) return;
-			
-					for (const callback of subscribers) {
-						try {
-							callback();
-						} catch (error) {
-							console.error(
-								`[Sauron:SIGNAL_CELL:${String(self.key)}] external subscriber failed:`,
-								error,
-							);
-						}
-					}
-				},
-			}));
-			z.MODULE_STORAGE = this.ATOM.MASTER(
-				"MODULE_STORAGE_PROTON",
-				({ self, master, config }: any) => ({
-					k: config.k ?? "__SIGNALS__",
-					s: config.s ?? "SAURON_SLAVE_REG",
-					m: config.m ?? "SAURON_MASTER_REG",
-					r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-					slots: new Map<S, MODULE_SLOT>(),
-			
-					addr: (
-						k: S = self.k,
-						s: S = self.s,
-						c?: CACHE,
-						m: S = self.m,
-						r: S = self.r,
-					): S =>
-						c !== undefined
-							? `[${r}][${m}][${c}][${s}][${k}]` as S
-							: `[${r}][${m}][${s}][${k}]` as S,
-			
-					set: (
-						value: MDV,
-						k: S,
-						s: S,
-						c: S,
-						m: S,
-						r: S,
-						options: {
-							owner?: OWNERSHIP;
-							onUnload?: (v: MDV) => V;
-						} = {},
-					): MDV => {
-						const key = self.addr(k, s, c, m, r);
-						const prev = self.slots.get(key);
-			
-						prev?.onUnload?.(prev.value);
-			
-						self.slots.set(key, {
-							value,
-							registeredAt: Date.now(),
-							owner: options.owner ?? "bespoke",
-							onUnload: options.onUnload,
-						});
-			
-						return value;
-					},
-			
-					get: (
-						k: S,
-						s: S,
-						m: S,
-						r: S,
-					): MODULE_VALUE | undefined =>
-						self.slots.get(self.addr(k, s, undefined, m, r))?.value,
-			
-					has: (
-						k: S,
-						s: S,
-						m: S,
-						r: S,
-					): B =>
-						self.slots.has(self.addr(k, s, undefined, m, r)),
-			
-					drop: (
-						k: S,
-						s: S,
-						m: S,
-						r: S,
-						force: B = false,
-					): B => {
-						const key = self.addr(k, s, undefined, m, r);
-						const slot = self.slots.get(key);
-			
-						if (!slot) return false;
-						if (slot.owner === "shared" && !force) return false;
-			
-						slot.onUnload?.(slot.value);
-						self.slots.delete(key);
-			
-						return true;
-					},
-			
-					list: (
-						s: S,
-						m: S,
-						r: S,
-					): Array<{ k: S; owner: OWNERSHIP; registeredAt: N }> => {
-						const prefix = `[${r}][${m}][${s}][`;
-						const out: Array<{
-							k: S;
-							owner: OWNERSHIP;
-							registeredAt: N;
-						}> = [];
-			
-						for (const [key, slot] of self.slots) {
-							if (key.startsWith(prefix)) {
-								out.push({
-									k: key.slice(0, -1).slice(prefix.length) as S,
-									owner: slot.owner,
-									registeredAt: slot.registeredAt,
-								});
-							}
-						}
-			
-						return out;
-					},
-			
-					inspect: (): Array<{ address: S; owner: OWNERSHIP; kind: S }> =>
-						[...self.slots.entries()].map(([address, slot]) => ({
-							address,
-							owner: slot.owner,
-							kind: typeof slot.value === "function"
-								? (slot.value.name || "anonymous-fn") as S
-								: "object" as S,
-						})),
-			
-					purge: (): void => {
-						for (const slot of self.slots.values()) {
-							slot.onUnload?.(slot.value);
-						}
-						self.slots.clear();
-					},
-				}),
-			);
-			z.S_CLASS = this.ATOM.MASTER("S_CLASS_ATOM", <T = any>({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				initial: undefined as T,
-				key: config.k ?? "__SIGNALS__",
-				module: undefined as T,
-				module_type: "class_fn_pool",
-				version: 0,
-				sealed: false,
-				frozen: true,
-				hasWritten: false,
-				persisted: false,
-			
-				listeners: new Set<(change: Change<T>) => void>(),
-				waiters: new Set<(value: T) => void>(),
-				undoStack: undefined as HistoryEntry<T>[] | undefined,
-			
-				conflict: undefined as ConflictPolicy | undefined,
-				historyIndex: 0,
-				history: undefined as AtomHistoryEntry<T>[] | undefined,
-				historyMax: 50,
-				lifecycle: undefined as SignalLifecycle | undefined,
-				async: undefined as AsyncSignalState<T> | undefined,
-				metrics: undefined as Metrics | undefined,
-				conflictStrategy: undefined as "latest" | "fail" | "accumulate" | undefined,
-			
-				schema: undefined as SignalSchema | undefined,
-				contracts: new Map<string, AtomContract<T>>(),
-				causal: [] as CausalEntry[],
-				lastWriteSource: undefined as string | undefined,
-			
-				batches: new Set<SignalKey>(),
-				batchQueue: new Map<SignalKey, unknown>(),
-				batchOpts: new Map<SignalKey, { triggerRender?: boolean }>(),
-			
-				broadcast: true,
-				triggerRender: true,
-				boundary: "same-app" as Boundary,
-			
-				initialize: (
-					initial: T,
-					options: MODULE_OPTIONS = {
-						module_type: "class_fn_pool",
-						broadcast: true,
-						frozen: true,
-					},
-				): void => {
-					const ptype = options?.module_type
-						? options.module_type
-						: self.module_type;
-					const shouldFreeze = options.frozen ?? self.frozen;
-			
-					switch (ptype) {
-						case "fn":
-						case "comp":
-						case "node_module":
-							self.frozen = shouldFreeze;
-							self.module = initial;
-							self.initial = initial;
-							break;
-			
-						case "class_fn_pool":
-						default:
-							self.frozen = false;
-							self.module = { ...initial };
-							self.initial = { ...initial };
-							break;
-					}
-			
-					self.module_type = ptype;
-			
-					if (options?.broadcast) self.broadcast = options.broadcast;
-					if (options?.module_type) self.module_type = options.module_type;
-					if (options?.schema) self.schema = options.schema;
-					if (options?.lifecycle) self.lifecycle = options.lifecycle;
-					if (options?.conflict) self.conflict = options.conflict;
-					if (options?.conflictStrategy) self.conflictStrategy = options.conflictStrategy;
-			
-					if (options?.history) {
-						self.historyMax = Math.max(1, options.history.max ?? 50);
-						self.history = [{
-							k: 0,
-							value: initial,
-							timestamp: Date.now(),
-							source: "initial",
-						}];
-						self.historyIndex = 0;
-					}
-				},
-			
-				read: (): T => self.module,
-			
-				peek: (): T => self.module,
-			
-				write: (
-					incoming: any | ((prev: T) => T),
-					options: AtomWriteOptions = {},
-				): T => {
-					if (self.frozen) return self.peek();
-			
-					const prev = self.module;
-					const resolved = incoming;
-			
-					const next = self.module_type === "class_fn_pool"
-						? resolved
-							? { ...prev, ...resolved }
-							: prev
-						: resolved;
-			
-					self.module = next;
-					self.hasWritten = true;
-					self.version += 1;
-					self.lastWriteSource = options.source ?? "write";
-					self.assertContracts(next, prev);
-			
-					for (const l of self.listeners) {
-						try {
-							l(next);
-						} catch (e) {}
-					}
-			
-					root.bus.send(self.key, next, self.s, self.m, self.r);
-			
-					for (const w of self.waiters) {
-						try {
-							w(next);
-						} catch (e) {}
-					}
-			
-					if (options.recordHistory !== false) {
-						self.recordHistory(prev, next, self.lastWriteSource);
-					}
-			
-					self.recordCausal(next, self.lastWriteSource, options.cause);
-					self.waiters.clear();
-			
-					self.notifyListeners({
-						key: self.key,
-						previous: prev,
-						current: next,
-						version: self.version,
-						timestamp: Date.now(),
-						source: self.lastWriteSource,
-					});
-			
-					return next;
-				},
-			
-				register: (name: string, val: any): T =>
-					self.write((prev: A) => ({ ...prev, [name]: val })),
-			
-				unregister: (name: string): T =>
-					self.write((prev: A) => {
-						const { [name]: _gone, ...rest } = prev;
-						return rest;
-					}),
-			
-				slot: (name: string): any => self.module[name],
-			
-				on: (listener: RiftListener<any>): void => {
-					self.listeners.add(listener);
-					listener(self.module);
-				},
-			
-				waitFor: (): Promise<T> =>
-					new Promise((resolve) => {
-						self.waiters.add(resolve);
-					}),
-			
-				waitForSlot: async (name: string, timeoutMs = 0): Promise<any> => {
-					const existing = self.module[name];
-					if (existing !== undefined) return existing;
-			
-					if (!timeoutMs) {
-						const next = await self.waitFor();
-						return (next as Record<string, any>)[name];
-					}
-			
-					return Promise.race([
-						self.waitFor().then(
-							(next) => (next as Record<string, any>)[name],
-						),
-						new Promise((_, reject) =>
-							setTimeout(
-								() => reject(
-									new Error(
-										`[ModuleAtom] waitForSlot("${name}") timed out after ${timeoutMs}m`,
-									),
-								),
-								timeoutMs,
-							),
-						),
-					]);
-				},
-			
-				inspect: (): T => ({ ...self.module }),
-			
-				setSchema: (schema?: SignalSchema) => {
-					self.schema = schema;
-					return self;
-				},
-			
-				setLifecycle: (lifecycle?: SignalLifecycle<T>) => {
-					self.lifecycle = lifecycle;
-					return self;
-				},
-			
-				setConflict: (
-					conflict?: ConflictPolicy,
-					strategy?: "latest" | "fail" | "accumulate",
-				) => {
-					self.conflict = conflict;
-					self.conflictStrategy = strategy;
-					return self;
-				},
-			
-				setFrozen: (): void => {
-					self.frozen = true;
-				},
-			
-				setUnfrozen: (): void => {
-					self.frozen = false;
-				},
-			
-				setSealed: (): void => {
-					self.sealed = true;
-				},
-			
-				setUnsealed: (): void => {
-					self.sealed = false;
-				},
-			
-				setBoundary: (): void => {},
-			
-				validate: (next: T): T => {
-					if (!self.schema) return next;
-					return root.signals._.validateSchema(self.schema, next);
-				},
-			
-				assertContracts: (next: T, previous: T): void => {
-					for (const contract of self.contracts.values()) {
-						let valid = false;
-			
-						try {
-							valid = contract.postcondition(next, previous);
-						} catch (error) {
-							console.error(
-								`[Sauron] contract "${contract.name}" threw for "${String(self.key)}":`,
-								error,
-							);
-						}
-			
-						if (valid) continue;
-			
-						const message =
-							`[Sauron] contract "${contract.name}" violated ` +
-							`on write to "${String(self.key)}"`;
-			
-						if (contract.block) {
-							throw new Error(message);
-						}
-			
-						console.error(message);
-					}
-				},
-			
-				recordHistory: (previous: T, next: T, source?: string): void => {
-					if (!self.history) return;
-			
-					self.history.splice(self.historyIndex + 1);
-			
-					const last = self.history[self.history.length - 1];
-			
-					self.history.push({
-						k: (last?.k ?? -1) + 1,
-						prev: previous,
-						value: next,
-						next,
-						timestamp: Date.now(),
-						source,
-						undone: false,
-					});
-			
-					while (self.history.length > self.historyMax) {
-						self.history.shift();
-					}
-			
-					self.historyIndex = self.history.length - 1;
-				},
-			
-				getHistory: (): readonly AtomHistoryEntry<T>[] =>
-					self.history ?? [],
-			
-				timeTravel: (steps = 1): T | undefined => {
-					if (!self.history?.length || steps <= 0) return undefined;
-			
-					const idx = Math.max(
-						0,
-						Math.min(self.history.length - 1, self.historyIndex + steps),
-					);
-			
-					if (idx === self.historyIndex) return undefined;
-			
-					self.historyIndex = idx;
-					return self.replayHistory("time-travel");
-				},
-			
-				back: (steps = 1): T | undefined =>
-					self.timeTravel(-Math.abs(steps)),
-			
-				forward: (steps = 1): T | undefined =>
-					self.timeTravel(Math.abs(steps)),
-			
-				goto: (sequence: number): T | undefined => {
-					if (!self.history?.length) return undefined;
-			
-					const idx = self.history.findIndex(
-						(entry) => entry.k === sequence,
-					);
-			
-					if (idx < 0 || idx === self.historyIndex) return undefined;
-			
-					self.historyIndex = idx;
-					return self.replayHistory("time-travel.goto");
-				},
-			
-				replayHistory: (source: string): T => {
-					const entry = self.history![self.historyIndex];
-			
-					return self.write(entry.value as T, {
-						source,
-						cause: "time-travel",
-						triggerRender: true,
-						recordHistory: false,
-					});
-				},
-			
-				recordCausal: (
-					value: T,
-					source?: string,
-					cause?: string,
-				): void => {
-					self.causal.push({
-						value,
-						source,
-						cause,
-						timestamp: Date.now(),
-					} as CausalEntry);
-			
-					if (self.causal.length > 100) {
-						self.causal.shift();
-					}
-				},
-			
-				recordMetrics: (): void => {
-					if (!self.metrics) return;
-			
-					self.metrics.writeCount += 1;
-					self.metrics.lastWrite = Date.now();
-				},
-			
-				notifyListeners: (change: Change<T>): void => {
-					const listeners = root.wr._listeners.get(self.key);
-					if (!listeners) return;
-			
-					for (const listener of listeners) {
-						try {
-							listener(change);
-						} catch (error) {
-							console.error(
-								`[Sauron:SIGNAL_CELL:${String(self.key)}] listener failed:`,
-								error,
-							);
-						}
-					}
-				},
-			
-				resolveWaiters: (value: T): void => {
-					const waiting = root.wr._waiters.get(self.key);
-					if (!waiting) return;
-			
-					root.wr._waiters.delete(self.key);
-			
-					for (const resolve of waiting) {
-						try {
-							resolve(value);
-						} catch (error) {
-							console.error(
-								`[Sauron:SIGNAL_CELL:${String(self.key)}] waiter failed:`,
-								error,
-							);
-						}
-					}
-				},
-			
-				notifyExternalSubscribers: (): void => {
-					const subscribers = root.state._externalSubscribers.get(self.key);
-					if (!subscribers) return;
-			
-					for (const callback of subscribers) {
-						try {
-							callback();
-						} catch (error) {
-							console.error(
-								`[Sauron:SIGNAL_CELL:${String(self.key)}] external subscriber failed:`,
-								error,
-							);
-						}
-					}
-				},
-			}));
-			z.S_CLASS_STORAGE = this.ATOM.MASTER(
-				"S_CLASS_STORAGE_PROTON",
-				({ self, master, config }: any) => ({
-					k: config.k ?? "__SIGNALS__",
-					s: config.s ?? "SAURON_SLAVE_REG",
-					m: config.m ?? "SAURON_MASTER_REG",
-					r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-					store: new Map<string, Record<string, any>>(),
-					addr: (
-						k: string,
-						sl: string,
-						ms: string,
-						rt: string,
-					): string => `[${rt}][${ms}][${sl}][${k}]`,
-			
-					set: (
-						k: string,
-						incoming: Record<string, any> | undefined,
-						sl: string,
-						ms: string,
-						rt: string,
-						bus: any,
-					): Record<string, any> => {
-						const key = self.addr(k, sl, ms, rt);
-						const prev = self.store.get(key) ?? {};
-						const next = incoming ? { ...prev, ...incoming } : prev;
-			
-						self.store.set(key, next);
-						bus.send.emit(k, next, sl, ms, rt);
-			
-						return next;
-					},
-			
-					get: (
-						k: string,
-						sl: string,
-						ms: string,
-						rt: string,
-					): Record<string, any> | undefined =>
-						self.store.get(self.addr(k, sl, ms, rt)),
-			
-					has: (
-						k: string,
-						sl: string,
-						ms: string,
-						rt: string,
-					): boolean => self.store.has(self.addr(k, sl, ms, rt)),
-			
-					inspect: (): Array<{ address: string; value: Record<string, any> }> =>
-						[...self.store.entries()].map(([address, value]) => ({
-							address,
-							value,
-						})),
-			
-					clear: (): void => {
-						self.store.clear();
-					},
-			
-					get size(): number {
-						return self.store.size;
-					},
-				}),
-			);
-			z.ATOM = this.ATOM.MASTER('ATOM',({ self, config, gate, subscription, SEALED_ERROR, conflict }: any) => ({
+			z.ATOM = this.ATOM.MASTER('ATOM',<T = A>({ self, config, gate, subscription, SEALED_ERROR, conflict }: A) => ({
 				k: config.k ?? "__SIGNALS__",
 				s: config.s ?? "SAURON_SLAVE_REG",
 				m: config.m ?? "SAURON_MASTER_REG",
@@ -4960,7 +2971,7 @@ class SIGNALS {
 				subscribe(listener: LISTENER<A>): UNSUBSCRIBE { return subscription.subscribe(listener); },
 				waitFor() {},
 			}));
-			z.VERTEX = this.ATOM.MASTER("VERTEX", ({ self,config, gate, subscription, SEALED_ERROR }: any) => ({
+			z.VERTEX = this.ATOM.MASTER("VERTEX", <T = A>({ self,config, gate, subscription, SEALED_ERROR }: A) => ({
 				value: config.value as U,
 				k: config.k ?? "__SIGNALS__",
 				s: config.s ?? "SAURON_SLAVE_REG",
@@ -9855,9 +7866,9 @@ export function createReactiveSystem({ update, notify, unwatched,}: { update(sub
 			};
 		if (nextDep !== undefined) { nextDep.prevDep = newLink; }
 		if (prevDep !== undefined) { prevDep.nextDep = newLink; }
-        else { sub.deps = newLink; }
+		else { sub.deps = newLink; }
 		if (prevSub !== undefined) { prevSub.nextSub = newLink; }
-        else { dep.subs = newLink; }
+		else { dep.subs = newLink; }
 	}
 	function unlink(link: Link, sub = link.sub): Link | undefined {
 		const { dep, prevDep, nextDep, nextSub, prevSub } = link;
@@ -10021,9 +8032,15 @@ export function createReactiveSystem({ update, notify, unwatched,}: { update(sub
 interface EffectScopeNode extends ReactiveNode {}
 interface EffectNode extends ReactiveNode {	fn(): (() => V) | V; cleanup?: () => V;}
 interface ComputedNode<T = any> extends ReactiveNode {	value: T | UD;	getter: (previousValue?: T) => T;} 
-interface SignalNode<T = any> extends ReactiveNode { currentValue: T; pendingValue: T;}
+interface SignalNode<T = any> extends ReactiveNode { 
+	currentValue: T; 
+	pendingValue: T;
+	injectDom: boolean;
+	domBindings?: Set<DOMBinding<T>>;
+}
+export interface SignalOptions { injectDom?: boolean;}
 const {	link, unlink, propagate, checkDirty, shallowPropagate,} = createReactiveSystem({	
-    update(node: SignalNode | ComputedNode | EffectScopeNode): boolean {
+	update(node: SignalNode | ComputedNode | EffectScopeNode): boolean {
 		if ('getter' in node) { return updateComputed(node); }
 		if ('currentValue' in node) { return updateSignal(node); }
 		node.flags = ReactiveFlags.Mutable;
@@ -10085,11 +8102,11 @@ function updateComputed(c: ComputedNode): B {
 	}
 }
 function updateSignal(s: SignalNode): B {	
-    s.flags = ReactiveFlags.Mutable;
-    const previous = s.currentValue;
-    const next = s.pendingValue;
-    s.currentValue = next;
-    return !Object.is(previous, next);
+	s.flags = ReactiveFlags.Mutable;
+	const previous = s.currentValue;
+	const next = s.pendingValue;
+	s.currentValue = next;
+	return !Object.is(previous, next);
 }
 function run(e: EffectNode): V {
 	const flags = e.flags;
@@ -10189,34 +8206,34 @@ function signalOper<T>(this: SignalNode<T>, ...value: [T]): T | V {
 		}
 	} else {
 		if (value.length) {
-            const next = value[0];
+			const next = value[0];
 
-            if (!Object.is(this.pendingValue, next)) {
-                this.pendingValue = next;
-                this.flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
-                const subs = this.subs;
-                if (subs !== undefined) {
-                    propagate(subs, !!runDepth);
-                    if (!batchDepth) {
-                        flush();
-                    }
-                }
-            }
-        } else {
-            if (this.flags & ReactiveFlags.Dirty) {
-                if (updateSignal(this)) {
-                    const subs = this.subs;
-                    if (subs !== undefined) {
-                        shallowPropagate(subs);
-                    }
-                }
-            }
-            const sub = activeSub;
-            if (sub !== undefined) {
-                link(this, sub, cycle);
-            }
-            return this.currentValue;
-        }
+			if (!Object.is(this.pendingValue, next)) {
+				this.pendingValue = next;
+				this.flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+				const subs = this.subs;
+				if (subs !== undefined) {
+					propagate(subs, !!runDepth);
+					if (!batchDepth) {
+						flush();
+					}
+				}
+			}
+		} else {
+			if (this.flags & ReactiveFlags.Dirty) {
+				if (updateSignal(this)) {
+					const subs = this.subs;
+					if (subs !== undefined) {
+						shallowPropagate(subs);
+					}
+				}
+			}
+			const sub = activeSub;
+			if (sub !== undefined) {
+				link(this, sub, cycle);
+			}
+			return this.currentValue;
+		}
 	}
 }
 function runCleanup(e: EffectNode): V {
@@ -10272,9 +8289,9 @@ export function isSignal(fn: () => V): B {	return fn.name === 'bound ' + signalO
 export function isComputed(fn: () => V): B { return fn.name === 'bound ' + computedOper.name;}
 export function isEffect(fn: () => V): B {	return fn.name === 'bound ' + effectOper.name;}
 export function isEffectScope(fn: () => V): B {	return fn.name === 'bound ' + effectScopeOper.name;}
-export function signal<T>(): { (): T | UD;	(value: T | UD): V;};
-export function signal<T>(initialValue: T): { (): T; (value: T): V;};
-export function signal<T>(initialValue?: T): { (): T | UD;	(value: T | UD): V;} {
+export function signal<T>(): {(): T | undefined; (value: T | undefined): void;};
+export function signal<T>(initialValue: T): {(): T;	(value: T): void;};
+export function signal<T>(initialValue?: T): {(): T | undefined; (value: T | undefined): void;} {
 	return signalOper.bind({
 		currentValue: initialValue,
 		pendingValue: initialValue,
@@ -10283,6 +8300,15 @@ export function signal<T>(initialValue?: T): { (): T | UD;	(value: T | UD): V;} 
 		flags: ReactiveFlags.Mutable,
 	}) as () => T | undefined;
 }
+export function signalRx<T>()
+export function signalRx<T>(initialValue: T)
+export function signalRx<T>(initialValue?: T, injectDom = true, __sauron_id__ = _sid()) {}
+export function signalRxTxt<T>();
+export function signalRxTxt<T>(initialValue: T)
+export function signalRxTxt<T>(initialValue?: T, node?: Node, injectDom = true ,  __sauron_id__ = _sid()) {}
+export function signalRxAtr<T>()
+export function signalRxAtr<T>(initialValue: T)
+export function signalRxAtr<T>(initialValue?: T, node?: Element,  attributeName?: string, injectDom = true, __sauron_id__ = _sid()) {}
 export function computed<T>(getter: (previousValue?: T) => T): () => T {
 	return computedOper.bind({
 		value: undefined,
@@ -10368,6 +8394,16 @@ export function trigger(fn: () => V) {
 		}
 	}
 }
+export function signal1<T>(initialValue?: T, injectDom: B = true): { (): T | UD; (value: T | UD): V;} {
+	return signalOper.bind({
+		currentValue: initialValue,
+		pendingValue: initialValue,
+		injectDom: injectDom ?? undefined,
+		subs: undefined,
+		subsTail: undefined,
+		flags: ReactiveFlags.Mutable,
+	}) as () => T | undefined;
+}
 // #endregion
 //                                                               [SITH] [PALPATINE] [DARTH VADER] [GALEN MAREK] [RULE OF 2] BUS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -10389,6 +8425,7 @@ interface BUS_CHANNEL {
 	handler?: BUS_HANDLER<any, any>;
 	push?: Set<(msg: SIG_BUS_Message1) => void>;
 }
+interface Program { code: Int32Array; consts: Float64Array; ranges: Int32Array[] } 
 const THE_MESH_CACHE: R<S, R<S, R<S, R<S, V>>>> = O.create(null);
 type c_type = "mesh" | 'globalThis'
 class THE_MESH_STORE {
@@ -10399,7 +8436,7 @@ class THE_MESH_STORE {
 	public k: A = "__SAURON__";
 	public cache: c_type
 	THE_MESH_CACHE: R<S, R<S, R<S, R<S, V>>>> = O.create(null);
-	_the_mesh_cache: R<S, A>
+	_the_mesh_cache: R<S, A> = O.create(null);
 	_handlers: R<S, A> = O.create(null);
 	#subRoot: R<S, R<S, R<S, R<S, ST<QuadSub<A>>>>>> = O.create(null);
  
@@ -10430,7 +8467,7 @@ class THE_MESH_STORE {
 		this._handlers = this.getS('_handlers', this.m, this.r );
 		const rL = ((globalThis as A)[this.r] ??= O.create(null));
 		const mL = (rL[this.m] ??= O.create(null));
-		(globalThis as A)[this.s] = mL['_globalThis'] ??= O.create(null); // this._globalThis
+		(globalThis as A)['_handlers'] = mL['_handlers'] ??= O.create(null); // this._globalThis
 		this._meta = this.getS('_meta', this.m, this.r);
 		this._signals = this.getS('_signals', this.m, this.r);
 		this._naked_signals = this.getS('_naked_signals', this.m, this.r);
@@ -10462,9 +8499,9 @@ class THE_MESH_STORE {
 		fn.get = (() => {
 			const fn =<Z = A> (k: S, s: S = '_handlers', m: S = this.m, r: S = this.r, c: c_type = "mesh"): A | UD => { 
 				if (this.cache === 'globalThis' || c === 'globalThis') {
-					return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k]as Z;
+					return (globalThis as A)[r]?.[m]?.[s]?.[k] as Z;
 				} else {
-					return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k]as Z;
+					return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k] as Z;
 				}
 			 };
 			fn.hotGT= <Z = A>(k: S): A | UD => { return this._handlers[k] as Z; };
@@ -10483,14 +8520,14 @@ class THE_MESH_STORE {
 				return this;
 			}
 			fn.hotGT= <Z = A>(v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.r) => { 
-				const sL = (globalThis as A)[s];
+				const sL = this._handlers[k];
 				const next = rv(v);
 				sL[k] = next;
 				this.handlers.emit(k, s, m, r, next);
 				return next as Z;
 			 };
 			fn.hotMesh = <Z = A,>(v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.r) => {
-				const sL = this._handlers;
+				const sL = this._handlers[k];
 				const next = rv(v);
 				sL[k] = next;
 				this.handlers.emit(k, s, m, r, next);
@@ -10499,8 +8536,14 @@ class THE_MESH_STORE {
 			return fn;
 		})();
 		fn.has = (() => {
-			const fn = (k: S, s: S = '_handlers', m: S = this.m, r: S = this.r): B => { return !!this.THE_MESH_CACHE[r]?.[m]?.[s] && k in this.THE_MESH_CACHE[r][m][s]; };
-			fn.hotGT= (k: S, s: S):B => { return k in (globalThis as A)[s] };
+			const fn = (k: S, s: S = '_handlers', m: S = this.m, r: S = this.r, c: c_type = "mesh"): B => { 
+				return !!this.THE_MESH_CACHE[r]?.[m]?.[s] && k in this.THE_MESH_CACHE[r][m][s];
+				if (this.cache === 'globalThis' || c === 'globalThis') {
+					return k in (globalThis as A)[r]?.[m]?.[s] 
+				} else {
+					return k in  this.THE_MESH_CACHE[r]?.[m]?.[s]
+				}
+			 };
 			fn.hot= (k: S): B => { return k in this._handlers; };
 			return fn;
 		})();
@@ -12081,7 +10124,7 @@ export class SITH {
 		public send = (() => {
 			const fn = <T = A,>(p: U, k: A, s: S = this.s, m: S = this.m, r: S = this.r,  adapter = "ws") => {
 				//const msg: SIG_BUS_Message = { id: this.hub.REGISTRY._sid(), r: r, m: m, s: s, k: k,  p: p, ts: Date.now(), _ack: false };
-				let v: A = this.DISPATCH({ id: this.hub.REGISTRY._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
+				let v: A = this.DISPATCH({ id: this.hub.root.REGISTRY._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
 				if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 				else {
 					const tMs = 5000;
@@ -12094,12 +10137,6 @@ export class SITH {
 						})(),
 					);
 				}
-				if (r === this.r && m === this.m && s === this.s) {
-					
-				} else {
-	
-				}
-				
 			};
 			fn.gt = (() => {
 				const fn =<T = U, P = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r)  => {
@@ -12107,7 +10144,7 @@ export class SITH {
 					const rL = (root[r] ??= Object.create(null));
 					const mL = (rL[m] ??= Object.create(null));
 					const channel = mL[s] ??= Object.create(null);
-					const handler = channel?.handler;
+					const handler = channel[k]?.handler;
 					if (!handler) return undefined;
 					const v: A = handler(p, { r, m, s, k, p: p });
 					if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
@@ -12125,8 +10162,7 @@ export class SITH {
 				}
 				fn.hot = (() => {
 					const fn =<T = U, P = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
-						const channel = this.mesh_store._globalThis[k];
-						const handler = channel?.handler;
+						const handler = (globalThis as any)[s]?.[k]?.handler;
 						if (!handler) return undefined;
 						const v: A = handler(p, { r, m, s, k, p: p });
 						if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
@@ -12155,8 +10191,8 @@ export class SITH {
 				return fn;
 			})();
 			fn.stream=<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | P<T> | UD =>{
-				const channel = this.mesh_store._globalThis[k];
-				const handler = channel?.handler;
+				const channel = (globalThis as any)[s];
+				const handler = channel[k]?.handler;
 				if (!handler) return undefined;
 				const msg: SIG_BUS_Message1 = { r, m, s, k, p: p, _ack: false };
 				const result = handler(p, msg);
@@ -12164,33 +10200,30 @@ export class SITH {
 				if (listeners) { for (const listener of listeners) listener(msg); }
 				return result as T | P<T> | UD;
 			}
-			fn.nested = (p: P, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
-				if (r === this.r && m === this.m && s === this.s) {
-					const set = this.mesh_store._globalThis[k];
-					if (!set) return;
-					for (const fn of set) { fn(p); }
-				} else {
+			fn.nested = (() => {
+				const fn =(p: P, k: S, s: S = this.s, m: S = this.m, r: S = this.r)  => {
 					const root = globalThis as any;
 					const rL = (root[r] ??= Object.create(null));
 					const mL = (rL[m] ??= Object.create(null));
 					const _listeners = mL[s] ??= Object.create(null);
-					const set = _listeners.get(k);
+					const set = _listeners[k];
 					if (!set) return;
 					for (const fn of set) { fn(p); }
-				}
-			};
-			return fn;
+				 }
+				fn.hot = (() => {
+					const fn = (p: P, k: S, s: S = this.s) =>{
+						const set = (globalThis as any)[s]?.[k];
+						if (!set) return;
+						for (const fn of set) { fn(p); }
+					 }
+					return fn;
+				})();
+				return fn;
+			})();
+			
 		})();
 		public sub = (() => {
-			const fn = ( handler: A, k: S, s: S = this.s, m: S = this.m, r: S = this.r, c: S = "#handlers" ) => {
-				if ( r === this.r && m === this.m && s === this.s ) {
-					const root = this.mesh_store.get_(c);
-					let handlers = root[k] as Set<A> | undefined;
-					if (!handlers) { handlers = new Set<A>(); root[k] = handlers as A; }
-					handlers.add(handler);
-					return () => { handlers!.delete(handler); if (handlers!.size === 0) { delete root[k]; } };
-				}
-		
+			const fn = ( handler: A, k: S, s: S = this.s, m: S = this.m, r: S = this.r, c: c_type = "mesh" ): () => V => {
 				// CHANNEL LEVEL
 				const channelSet = (this.mesh_store.getR(r, c)[r] ??= new Set<A>()) as Set<A>;
 				channelSet.add(handler);
@@ -12229,15 +10262,33 @@ export class SITH {
 					if (!channelSet.size) delete this.mesh_store.getR(r, c)[r];
 		
 					// Remove empty hierarchy nodes
-					if (!Object.keys(subMap).length) { delete this.mesh_store.get_root(c, r)[m]; }
-					if (!Object.keys(tripMap).length) { delete this.mesh_store.get_root(c, r)[m]; }
+					if (!Object.keys(subMap).length) { delete this.mesh_store.getR(c, r)[m]; }
+					if (!Object.keys(tripMap).length) { delete this.mesh_store.getR(c, r)[m]; }
 				};
 			};
+			fn.hot = (handler: A, k: S ) => {
+				const root = this.mesh_store._handlers;
+				let handlers = root[k] as Set<A> | undefined;
+				if (!handlers) { handlers = new Set<A>(); root[k] = handlers as A; }
+				handlers.add(handler);
+				return () => { handlers!.delete(handler); if (handlers!.size === 0) { delete root[k]; } };
+			}
 			fn.gt = (() => {
-				const fn =()  => { }
+				const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = this.s, m: S = this.m, r: S = this.r,): () => V=> {
+					const rL = ((globalThis as A)[r] ??= O.create(null));
+					const mL = (rL[m] ??= O.create(null));
+					const sl = mL['_globalThis'] ??= O.create(null); 
+					const channel = sl[k]
+					channel.handler = handler;
+						return () => {
+							if (channel.handler === handler) {
+								channel.handler = undefined;
+							}
+						};
+				 }
 				fn.hot = (() => {
-					const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): () => V =>{
-						const channel = this.mesh_store._globalThis[k];
+					const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = this.s): () => V =>{
+						const channel = (globalThis as A)[s]?.[k];
 						channel.handler = handler;
 						return () => {
 							if (channel.handler === handler) {
@@ -12250,7 +10301,7 @@ export class SITH {
 				return fn;
 			})();
 			fn.adapter = (() => {
-				const fn =()  => { }
+				const fn =( handler: A, k: S, s: S = this.s, m: S = this.m, r: S = this.r, c: c_type = "mesh")  => { }
 				fn.hot = (() => {
 					const fn = () =>{ }
 					return fn;
@@ -12259,11 +10310,11 @@ export class SITH {
 			})();
 			fn.nested = (handler: (data: any) => void, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
 				if (r === this.r && m === this.m && s === this.s) {
-					const _listeners = this._bear;
+					const _listeners = this.mesh_store._handlers[k];
 					if (!_listeners.has(k)) {
 						_listeners.set(k, new Set());
 					}
-					_listeners.get(k)!.add(handler);
+					_listeners[k]!.add(handler);
 					return () => {
 						const set = _listeners.get(k);
 						if (set) {
@@ -12294,12 +10345,12 @@ export class SITH {
 			return fn;
 		})();
 		async *streamGen<P = A, R = A>(p: P, k: S, s: S = this.s, m: S = this.m, r: S = this.r, opts: { adapter?: S } = {}): AG<R, V, U> {
-			const replyTo = this.hub.REGISTRY._sid();
+			const replyTo = this.hub.root.REGISTRY._sid();
 			const queue: R[] = [];
 			let closed = false;
 			let failure: U;
 			let wake: (() => V) | UD;
-			const handlers = this.mesh_store.getS(k, s, m, r).get(k);
+			const handlers = this.mesh_store.getS(s, m, r).get(k);
 			if (!handlers || !handlers.size) { throw new Error(`[rift] no subscriber for k="${k}"`); }
 			const reply = (value: R | Promise<R> | typeof END) => {
 				if (value === END) { closed = true; } 
@@ -12309,7 +10360,7 @@ export class SITH {
 				wake = undefined;
 			};
 			for (const handler of handlers) {
-				handler({ id: this.hub.REGISTRY._sid(), r: r ?? this.r, m: m ?? this.m, s: s ?? this.s, k, p: { p }, ts: Date.now(), _ack: false, replyTo, stream: true }, reply);
+				handler({ id: this.hub.root.REGISTRY._sid(), r: r ?? this.r, m: m ?? this.m, s: s ?? this.s, k, p: { p }, ts: Date.now(), _ack: false, replyTo, stream: true }, reply);
 			}
 			while (true) {
 				if (queue.length) { yield queue.shift()!; continue; }
@@ -12371,7 +10422,7 @@ export class SITH {
 			}
 			const fn = () => stream
 			fn.request = (p: A, onChunk: (chunk: A) => V, k: S, s: S = this.s, m: S = this.m, r: S = this.r): P<V> => {
-				const streamId = this.hub.REGISTRY._sid();// `[${r}][${m}][${s}][${k}][${_sid()}]`.replace(/[.\[\]]/g, match => (match === "." ? "_" : ""));
+				const streamId = this.hub.root.REGISTRY._sid();// `[${r}][${m}][${s}][${k}][${_sid()}]`.replace(/[.\[\]]/g, match => (match === "." ? "_" : ""));
 				const result = new Promise<void>((resolve, reject) => {
 					let closed = false;
 					let closeSubscription: (() => V) | UD;
@@ -12404,7 +10455,7 @@ export class SITH {
 			fn.openSync = (k: S, s?: S, m?: S, r = this.r, opts?: {windowSize?: N}) => {
 				// Like syncStream, but for continuous/unbounded emission — no known chunk count up front. Adds a bounded in-flight window so a fast sender backs off instead of flooding a slow receiver.
 				const cleanChannel = r.replace(/[\[\]]/g, "");
-				const streamId = this.hub.REGISTRY._sid()//`${cleanChannel}-${m}-${Math.random().toString(36).slice(2)}`.replace(/\./g, "-");
+				const streamId = this.hub.root.REGISTRY._sid()//`${cleanChannel}-${m}-${Math.random().toString(36).slice(2)}`.replace(/\./g, "-");
 				const windowSize = opts?.windowSize ?? 32;
 		
 				const unacked = new Map<number, {p: any; retries: number}>();
@@ -13370,64 +11421,197 @@ export class SITH {
 			this.k = hub.k;
 		}
 		public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
-			const existing = this.root.bear.state.get(k, { s: s, m: m, r: r });
+			const existing = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
 			if (existing !== undefined) return existing;
 			const t = UF(v)
-			this.hub.root.bear.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
+			this.hub.root.state.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
 			return t;
 		}
-		public useCell = (() => {
-			const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.root.REGISTRY._sid(), ) => {
-				return root.state.createHookCell( "useCell", __sauron_id__, () => ({
-						value: {
-							current: this.state_setter(v, k, s, m, r),
-							derived: undefined as A,
-						},
-					}),
-					(state, key, notify) => {
-						const st = state.value;
+		public cell: SIG_BUS_CELL_FN = (() => {
+			const fn = <T = A,>(k: A, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r, chain?: CHAIN, v?: T) => {
+				const [value, setValue] = darkState(() => { return this.state_setter(v, k, s, m, r); });
 	
-						const senderToken = this.root.bear.atom(this.root.REGISTRY._sid());
+				this.j.sub( (i: A) => {
+						const incoming = i.p;
+						this.hub.root.state.set(k, incoming, false, s, m, r);
+					}, k, s, m, r, );
+					this.hub.root.state.sub(k, (newValue: any) => setValue(newValue), s, m, r);
 	
-						const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
-						const selector = options.selector ?? null;
-						const derive = options.derive ?? null;
+				return MCR_Combo(value, chain); // still no setter — this one was never meant to write
+			};
+			fn.send = async (p: U, k: A, s = this.j.s, m = this.j.m, r = this.j.r, chain?: CHAIN): P<U> => {
+				const msgId = this.j.root._id.b()
+				const msg: SIG_BUS_Message = {id: msgId, r: r, m: m, s: s, k: k, p: {p}, ts: Date.now(), _ack: false, priority: this.j.root.se.defaultPriority};
 	
-						const getValue = (): any => (selector ? selector(st.current) : st.current);
+				await this.j.DISPATCH(msg);
+				const rr = this.cell(`${k}${this.j.root.RTRN_TO_SDR}`, s, m, r);
 	
-						const setValue = (next: A) => {
-							const prevSelected = getValue();
-							const nextSelected = selector ? selector(next) : next;
-							if (!equals(prevSelected, nextSelected)) {
-								st.current = next;
-								if (derive) { st.derived = derive(next); }
-								notify(key);
-							}
-							return next;
-						};
+				await this.j.root.se.BACK_END.run.afterSend(msg, rr);
 	
-						this.hub.marek.sub((i: A) => {
-							const incoming = i.p;
-							if (incoming?.from === senderToken.value) return;
-							this.root.bear.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
-							setValue(incoming.value);
-						}, k, s, m, r);
+				log(`[SIGNALS][ENCRPYTION][CONFIGURE]`, {type: "sendsub", r: rr, m: m, s: s, k: k, id: msgId, detail: "[✔][SUCCESS]", p: msg, _ack: "UNKNOWN", _adapter: "UNKNOWN", priority: this.j.root.se.defaultPriority, tags: "UNKNOWN", streamId: "UNKNOWN", token: "UNKNOWN", error: "NONE", adapter_id: "UNKNOWN"}, t.deep);
 	
-						this.root.bear.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+				return MCR_Combo(rr, chain);
 	
-						const setLive = (next: any) => {
-							const newValue = typeof next === "function" ? next(this.root.bear.state.get(k, { s: s, m: m, r: r })) : next;
-							setValue(newValue);
-							this.root.bear.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
-							this.hub.marek.send({ value: newValue, from: senderToken.value }, k, s, m, r);
-						};
+				//if (!(await this.BACK_END.run.beforeSend(msg))) return { success: false, blocked: true }
 	
-						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
-						if (derive) { return [getValue(), setLive, st.derived] as const; }
+				// ── TRANSPORT SELECTION — most specific live boundary at this address ──
+				// const boundary = this.boundaries.select(msg)
 	
-						return [getValue(), setLive] as const;
+				// ── 'same-app' (or no subs) — normal path, unchanged ──
+				/**  if (!this.online || this.BACK_END.SHOULD_BACKPRESSURE()) {
+					await this.DISPATCH.enqueue(msg)
+					log(`[SIGNALS][ENCRPYTION][CONFIGURE]`, { type: 'sendsub', r: r, m: m, s: s, k: k, id: msgId, p: msg, ttl: ttl, _ack: 'UNKNOWN', _adapter: 'UNKNOWN', priority: this.defaultPriority, tags: 'UNKNOWN', streamId: 'UNKNOWN', token: 'UNKNOWN', binary: binary, error: 'NONE', adapter_id: 'UNKNOWN', detail: '[!this.online || this.shouldBackpressure()]' }, t.deep)
+					return { success: false, queued: true }
+				  } */
+			};
+			fn.cell = <T = A,>(k: A, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r, type: CELL = "cell", chain?: CHAIN, v?: T) => {
+				const cellKey = `${k}:${this.j.root.RTRN_TO_SDR}`;
+	
+				const [value, setValue] = useState(() => {
+					const existing = get(k, s, m, r);
+					if (existing !== undefined) return existing;
+					if (v) return typeof v === "function" ? v() : v;
+				});
+	
+				this.j.sub(
+					(i: A) => {
+						const incoming = i.p;
+						set(k, incoming, false, s, m, r);
 					},
+					k,
+					s,
+					m,
+					r,
 				);
+				sub(k, (newValue: any) => setValue(newValue), s, m, r);
+	
+				let rr: any;
+				if (type === "waitFor") {
+					this.j.send({cmd: "waitFor", k, s, m, r}, this.j.hc_disptacher, this.j.hc_sl_reg, SAURON_MASTER_REG, THE_WIZARD_ROOT_REG);
+					this.j.sub((m: any) => setValue(m.p), cellKey, s, m, r);
+				} else if (type === "sub") {
+					this.j.send({cmd: "subscribe", k, s, m, r}, this.j.hc_disptacher, this.j.hc_sl_reg, SAURON_MASTER_REG, THE_WIZARD_ROOT_REG);
+					this.j.sub((m: any) => setValue(m.p), cellKey, s, m, r);
+				} else if (type === "cell") {
+					r = this.cell(cellKey, s, m, r);
+				}
+	
+				useEffect(() => {
+					if (rr) setValue(rr);
+				}, [rr]);
+	
+				return MCR_Combo(value, chain); // still no setter — this one was never meant to write
+			};
+			fn.crdt = <T = A,>(k: A = this.j.k, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r, chain?: CHAIN, v?: T) => {
+				const [value, setValue] = useState(() => {
+					const existing = get(k, s, m, r);
+					if (existing !== undefined) return existing;
+					if (v) return typeof v === "function" ? v() : v;
+				});
+	
+				this.j.sub(
+					(i: A) => {
+						const incoming = i.p;
+						set(k, incoming, true, s, m, r);
+					},
+					k,
+					s,
+					m,
+					r,
+				);
+				sub(k, (newValue: any) => setValue(newValue), s, m, r);
+	
+				return MCR_Combo(value, chain); // still no setter — this one was never meant to write
+			};
+			return fn;
+		})();
+		public useCell = (() => {
+			const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none", chain?: CHAIN, adapter:ADP = "http", options: StateOptions<A, any> = {}, __sauron_id__ = _sid() ) => {
+				const cellKey = `${k}:${this.j.RTRN_TO_SDR}`;
+	
+				const [state, setState] = darkState(() => {
+					return this.state_setter(v, k, s, m, r);
+				});
+	
+				const senderTokenRef = this.j.root.SIGNALS.atom(this.j.root._id.b()); // this.j.root._id.b();
+	
+				if (type === "none") {
+					this.j.sub(
+						(i: A) => {
+							const incoming = i.p;
+							if (incoming?.from === senderTokenRef.value) return;
+							set(k, incoming.value, false, s, m, r);
+							setState(incoming.value);
+						}, k, s, m, r, ); // stay in sync with local writes too (including our own setLive below)
+					sub(k, (newValue: any) => setState(newValue), s, m, r);
+				}
+	
+				const setLive = (next: any) => {
+					const newValue = typeof next === "function" ? next(get(k, s, m, r)) : next;
+					setState(newValue);
+					set(k, newValue, true, s, m, r); // local write
+					this.j.send({value: newValue, from: senderTokenRef.value}, k, s, m, r, undefined, undefined, false, adapter); // broadcast to the bus
+				};
+	
+				let rr: any;
+				if (type === "waitFor") {
+					this.j.send({cmd: "waitFor", k, s, m, r}, this.j.hc_disptacher, this.j.hc_sl_reg, SAURON_MASTER_REG, THE_WIZARD_ROOT_REG);
+					this.j.sub((m: any) => setLive(m), cellKey, s, m, r);
+				} else if (type === "sub") {
+					this.j.send({cmd: "subscribe", k, s, m, r}, this.j.hc_disptacher, this.j.hc_sl_reg, SAURON_MASTER_REG, THE_WIZARD_ROOT_REG);
+					this.j.sub((m: any) => setLive(m), cellKey, s, m, r);
+				} else if (type === "cell") {
+					rr = this.cell(cellKey, s, m, r);
+					useEffect(() => {
+						if (rr !== undefined) {
+							set(k, rr, false, s, m, r);
+							setState(rr);
+						}
+					}, [rr]);
+				}
+				return [MCR_Combo(state, chain), setLive] as const;
+			}
+			fn.obj = <T extends Record<PropertyKey, any> = Record<string, any>>(v: T = {} as T, k: A = `_USECELL_OBJ`, s: S = this.s, m: S = this.m, r: S = this.r) => {
+				const [state, setLive] = fn(v, k, s, m, r, );
+				const value = state && typeof state === "object" && !Array.isArray(state) ? (state as T) : v;
+				const actions = {
+					get<K extends keyof T>(key: K): T[K] | undefined { return value[key]; },
+					set<K extends keyof T>(key: K, next: T[K]) {
+						setLive((previous: T | undefined) => {
+							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
+							if (Object.is(current[key], next)) { return current; }
+							return {...current, [key]: next};
+						});
+					},
+					delete<K extends keyof T>(key: K) {
+						setLive((previous: T | undefined) => {
+							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
+							if (!(key in current)) return current;
+							const next = {...current};
+							delete next[key];
+							return next;
+						});
+					},
+					merge(next: Partial<T>) {
+						setLive((previous: T | undefined) => {
+							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
+							return {...current, ...next};
+						});
+					},
+					patch<K extends keyof T>(key: K, updater: (value: T[K]) => T[K]) {
+						setLive((previous: T | undefined) => {
+							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
+							return {...current, [key]: updater(current[key])};
+						});
+					},
+					pick<K extends keyof T>(...keys: K[]): Pick<T, K> {
+						const next = {} as Pick<T, K>;
+						for (const key of keys) { if (key in value) { next[key] = value[key]; } }
+						return next;
+					},
+					reset() { setLive(() => v); },
+				};
+				return [value, actions] as const;
 			};
 			fn.mailbox = ( v?: A,k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.root.REGISTRY._sid(),		) => {
 				return root.state.createHookCell("useCell.mailbox",__sauron_id__,() => ({
@@ -13439,8 +11623,8 @@ export class SITH {
 					(state, key, notify) => {
 						const st = state.value;
 	
-						const senderToken = this.root.bear.atom(this.root.REGISTRY._sid());
-						const queueRef = this.root.bear.atom<Queue | null>(null);
+						const senderToken = this.root.signals.signals.atom(this.root.REGISTRY._sid());
+						const queueRef = this.root.signals.signals.atom<Queue | null>(null);
 	
 						if (!queueRef.current) {
 							queueRef.current = new Queue(1);
@@ -13467,14 +11651,14 @@ export class SITH {
 							const incoming = i.p;
 							if (incoming?.from === senderToken.value) return;
 							queueRef.current!.run(async () => {
-								const current = this.root.bear.state.get(k, { s: s, m: m, r: r });
+								const current = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
 								const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-								this.root.bear.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+								this.hub.root.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
 								return next;
 							});
 						}, k, s, m, r);
 	
-						this.root.bear.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+						this.hub.root.state.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
 	
 						const setLive = (next: any) => {
 							const t = typeof next === "function" ? next() : next;
@@ -13672,9 +11856,9 @@ export class SITH {
 					releaseNumericSlot(hadron, pid); // text, undefined, cleared — doesn't belong in the arena
 				}
 			}
-			const fn = (sheet: S, cell: S, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r, chain?: "chain" | "rechain") => MCR_Combo(this.j.DRS.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.computed ?? 0, chain);
-			fn.raw = (sheet: S, cell: S, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r) => this.j.DRS.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.raw;
-			fn.range = (sheet: S, ref: S, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r) => this.spreadsheet.rangeKeys(ref, sheet).map(row => row.map(k => this.j.DRS.cell(this.spreadsheet.envKeyOf(k), s, m, r)?.computed ?? 0));
+			const fn = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r, chain?: "chain" | "rechain") => MCR_Combo(this.j.DRS.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.computed ?? 0, chain);
+			fn.raw = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.j.DRS.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.raw;
+			fn.range = (sheet: S, ref: S, s: S = this.s, m: S = this.m, r: S = this.j.r) => this.spreadsheet.rangeKeys(ref, sheet).map(row => row.map(k => this.j.DRS.cell(this.spreadsheet.envKeyOf(k), s, m, r)?.computed ?? 0));
 			// HELPERS
 			fn.HISTORY_CAP = 200;
 			fn.envKey = (sheet: S, cell: S) => `${sheet}::${normalizeCellRef(cell)}`;
@@ -13777,24 +11961,28 @@ export class SITH {
 			};
 			fn.commit = (that: A, sheet: S, ref: S, raw: A, s: S, m: S, r: S) => {
 				const key = normalizeCellRef(ref, sheet);
-				let newDeps = new Set<S>();
-				if (isFormula(raw)) {
-					try {
-						newDeps = analyzeDependencies(qualifyAst(parseFormula(raw), sheet)).cells;
-					} catch {}
-				}
-	
-				const vols: S[] = this.spreadsheet.peek(this.spreadsheet.vk(sheet), s, m, r) ?? [];
+				let newDeps = new Set<string>();
+				if (isFormula(raw)) { try { newDeps = collectDependencies(qualifyAst(parseFormula(raw), sheet)); } catch {} }
+				const vols: string[] = this.spreadsheet.peek(this.spreadsheet.vk(sheet), s, m, r) ?? [];
+
 				const {g, seen} = this.spreadsheet.openGraph(s, m, r);
 				this.spreadsheet.loadSlice(g, seen, [key, ...vols], newDeps, s, m, r);
-	
+
 				const oldDeps = new Set(g.deps.get(key) ?? []);
-				const oldBoxes = g.ranges.get(key) ?? [];
-				const changed = raw === undefined ? clearGraphCellInPlace(g, ref, sheet, vols) : writeGraphCellInPlace(g, ref, raw, sheet, vols);
-				const newBoxes = g.ranges.get(key) ?? [];
-	
-				this.spreadsheet.persist(that, g, sheet, changed, new Set([...oldDeps, ...(g.deps.get(key) ?? [])]), true, s, m, r);
-				if (oldBoxes.length || newBoxes.length) this.spreadsheet.syncRangeIndex(that, key, oldBoxes, newBoxes, s, m, r);
+				const changed = raw === undefined ? clearGraphCellInPlace(g, ref, sheet) : writeGraphCellInPlace(g, ref, raw, sheet);
+
+				for (const k of changed) {
+					const env = {raw: g.cells.get(k)?.raw, computed: this.spreadsheet.visible(g, k) ?? 0, deps: [...(g.deps.get(k) ?? [])], t: Date.now()};
+					that.writeCell(this.spreadsheet.envKeyOf(k), env, s, m, r);
+					const h = this.spreadsheet.peek(`${this.spreadsheet.envKeyOf(k)}#h`, s, m, r) ?? [];
+					that.writeCell(`${this.spreadsheet.envKeyOf(k)}#h`, [...h, {raw: env.raw, computed: env.computed, t: env.t}].slice(-this.spreadsheet.HISTORY_CAP), s, m, r);
+				}
+
+				this.syncNumeric(g, changed); 
+
+				for (const d of new Set([...oldDeps, ...(g.deps.get(key) ?? [])])) {
+					that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);
+				}
 			};
 			fn.persist = (that: A, g: SpreadsheetGraphState, sheet: S, changed: ST<S>, depKeys: I<S>, history: B, s: S, m: S, r: S) => {
 				const rows = new Map<S, N>();
@@ -13812,6 +12000,7 @@ export class SITH {
 						rows.set(sh, Math.max(rows.get(sh) ?? 0, p.row));
 					}
 				}
+				this.syncNumeric(g, changed);
 				for (const d of depKeys) that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);
 				const rt = r
 				for (const [sh, r] of rows) {                                       // used-row extent per sheet (grow only)
@@ -13857,15 +12046,17 @@ export class SITH {
 					that.writeCell(this.spreadsheet.envKeyOf(k), env, s, m, r);
 					const h = this.spreadsheet.peek(`${this.spreadsheet.envKeyOf(k)}#h`, s, m, r) ?? [];
 					that.writeCell(`${this.spreadsheet.envKeyOf(k)}#h`, [...h, {raw: env.raw, computed: env.computed, t: env.t}].slice(-this.spreadsheet.HISTORY_CAP), s, m, r);
-
-					const pid = this.pids.intern(k);
-					if (typeof env.computed === "number" && Number.isFinite(env.computed)) {this.storeComputed(this.ensureNumericSlot(pid), env.computed);} 
-					else {this.releaseNumericSlot(pid);}
-
-					if (changed.size > PARALLEL_THRESHOLD) {                 // tune by profiling, not guessing
-						const levels = recalculateDirty.levels(g, [...changed], []);
-						this.hub.recalcParallel(levels.map(level => level.map(k => this.hub.pids.intern(k))));
-					}
+				}
+			
+				this.syncNumeric(g, changed);                              
+			
+				if (changed.size > PARALLEL_THRESHOLD) {                   
+					const levels = recalculateDirty.levels(g, [...changed], []);
+					this.recalcParallel(levels.map(level => level.map(k => this.pids.intern(k))));
+				}
+			
+				for (const d of new Set([...oldDeps, ...(g.deps.get(key) ?? [])])) {
+					that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);
 				}
 
 				
@@ -13945,21 +12136,54 @@ export class SITH {
 		// #endregion 
 		//                                                                                                                  [CONSTANTS] 
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public compile(ast: FormulaAst): Program {// main thread — walks the parsed AST once, emits flat bytecode. Runs on formula edit only.
+		public compile(ast: ASTNode): Program | undefined {
 			const code: N[] = [];
 			const consts: N[] = [];
-			const emit = (node: FormulaAst) => {
-				if (node.type === "num") { code.push(VM_OP.PUSH_CONST, consts.length); consts.push(node.value); }
-				else if (node.type === "ref") { code.push(VM_OP.PUSH_CELL, pids.intern(node.key)); }
-				else if (node.type === "bin") {
-					emit(node.left); emit(node.right);
-					code.push({ "+": VM_OP.ADD, "-": VM_OP.SUB, "*": VM_OP.MUL, "/": VM_OP.DIV }[node.op], 0);
-				}
-				// SUM_RANGE etc. compiled similarly from range nodes
+			const ranges: Int32Array[] = [];
+			let ok = true;
+
+			const rangePids = (node: ASTNode): N[] | undefined => {
+				if (node.type === "CellRef") return [this.pids.intern(cellKey(node.col, node.row, node.sheet))];
+				if (node.type !== "Range") return undefined;
+				const c1 = colToIndex(node.start.col), c2 = colToIndex(node.end.col);
+				const r1 = node.start.row, r2 = node.end.row;
+				const out: N[] = [];
+				for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++)
+					for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++)
+						out.push(this.pids.intern(cellKey(indexToCol(c), r, node.sheet)));
+				return out;
 			};
+			const AGG: Partial<Record<S, N>> = {
+				SUM: VM_OP.SUM_RANGE, AVERAGE: VM_OP.AVG_RANGE,
+				MIN: VM_OP.MIN_RANGE, MAX: VM_OP.MAX_RANGE, COUNT: VM_OP.COUNT_RANGE,
+			};
+
+			const emit = (node: ASTNode): V => {
+				if (!ok) return;
+				switch (node.type) {
+					case "Number": code.push(VM_OP.PUSH_CONST, consts.length); consts.push(node.value); return;
+					case "CellRef": code.push(VM_OP.PUSH_CELL, this.pids.intern(cellKey(node.col, node.row, node.sheet))); return;
+					case "BinOp": {
+						const op = { "+": VM_OP.ADD, "-": VM_OP.SUB, "*": VM_OP.MUL, "/": VM_OP.DIV }[node.op];
+						if (op === undefined) { ok = false; return; } // comparisons, &, ^ — outside this VM
+						emit(node.left); emit(node.right); code.push(op, 0); return;
+					}
+					case "FunctionCall": {
+						const opcode = node.args.length === 1 && AGG[node.name];
+						const pidList = opcode && rangePids(node.args[0]);
+						if (!opcode || !pidList) { ok = false; return; } // VLOOKUP, text fns, SUMIF, lambdas, etc.
+						code.push(opcode, ranges.length);
+						ranges.push(Int32Array.from(pidList));
+						return;
+					}
+					default: ok = false;
+				}
+			};
+
 			emit(ast);
+			if (!ok) return undefined;
 			code.push(VM_OP.RET, 0);
-			return { code: Int32Array.from(code), consts: Float64Array.from(consts) };
+			return { code: Int32Array.from(code), consts: Float64Array.from(consts), ranges };
 		}
 		private capacity: N;
 		private mask: N;
@@ -14023,7 +12247,6 @@ export class SITH {
 
 			this.f64Bits = new BigInt64Array(this.f64.buffer);
 			this.f64 = new Float64Array(new AB((SITH.f64Capacity ?? 1 << 18) * 8));
-			this.f64Bits = new BigInt64Array(this.f64.buffer);
 		}
 		// #endregion
 		//                                                                                                                   [HANDLERS] 
@@ -14139,6 +12362,17 @@ export class SITH {
 			this.unbind(pid);
 			this.freeF64Slot(s);
 		}
+		syncNumeric(g: SpreadsheetGraphState, changed: ST<S>): V {
+			for (const k of changed) {
+				const computed = this.spreadsheet.visible(g, k);
+				const pid = this.pids.intern(k);
+				if (typeof computed === "number" && Number.isFinite(computed)) {
+					this.storeComputed(this.ensureNumericSlot(pid), computed);
+				} else {
+					this.releaseNumericSlot(pid);
+				}
+			}
+		}
 		// #endregion
 		//                                                                                                                 [SOA ARENAS] 
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -14190,7 +12424,6 @@ export class SITH {
 				capacity: this.capacity, pidCapacity: this.pidCapacity, schedule: this.schedule, maxBatch: this.maxBatch,
 			};
 		}
-		// static, not instance — a worker has no "self" yet, it's building one from scratch around shared memory
 		static fromBuffers(buf: ReturnType<InstanceType<typeof THIS_CLASS>["exportBuffers"]>): THIS_CLASS_INSTANCE {
 			const self = Object.create(THIS_CLASS.prototype); //        bypass the allocating constructor entirely
 			self.capacity = buf.capacity; self.mask = buf.capacity - 1; self.pidCapacity = buf.pidCapacity;
@@ -14296,7 +12529,7 @@ export class SITH {
 	  
 		  this.nextPhase();
 		  return count;
-		}// Run one full revolution. The tracer particle advances only after every scheduled phase runs.
+		} 
 		public revolution(limit = this.maxBatch): number {
 		  let total = 0;
 	  
@@ -14306,7 +12539,7 @@ export class SITH {
 	  
 		  Atomics.add(this.clock, 0, 1);
 		  return total;
-		}// Run until all lanes are drained. Useful for shutdown, transaction boundaries, and tests.
+		} 
 		public drainAll(limit = this.maxBatch): number {
 		  let total = 0;
 	  
@@ -14326,7 +12559,7 @@ export class SITH {
 			this.workers[this.ownerOf(pid)].post({ type: "register", pid, program });
 		}
 		dispatchLevel(readyPids: N[]): V {
-			const byWorker = new Map<N, N[]>(); // cold path, small N — plain Map is fine here
+			const byWorker = new Map<N, N[]>();  
 			for (const pid of readyPids) {
 				const w = this.ownerOf(pid);
 				(byWorker.get(w) ?? byWorker.set(w, []).get(w)!).push(pid);
@@ -14334,7 +12567,7 @@ export class SITH {
 			Atomics.store(this.levelCounter, 0, readyPids.length);
 			for (const [w, pids] of byWorker) {
 				const buf = Int32Array.from(pids);
-				this.workers[w].post({ type: "computeLevel", pids: buf }, [buf.buffer]); // zero-copy transfer
+				this.workers[w].post({ type: "computeLevel", pids: buf }, [buf.buffer]);  
 			}
 		}
 		recalcParallel(levels: N[][]): V {
@@ -16333,6 +14566,19 @@ export class SITH {
 	
 	public r2x = new ()(this);
 }
+class PidTable {
+	#toPid: Record<S, N> = Object.create(null);
+	#toKey: S[] = [];
+	intern(key: S): N {
+		const existing = this.#toPid[key];
+		if (existing !== undefined) return existing;
+		const pid = this.#toKey.length;
+		this.#toPid[key] = pid;
+		this.#toKey.push(key);
+		return pid;
+	}
+	keyOf(pid: N): S { return this.#toKey[pid]; }
+}
 // #endregion
 // #endregion
 //                                                                                                                [RAVEN] STATE
@@ -16690,12 +14936,7 @@ class RAVEN {
 	public externalSubscribers = new Set<() => void>();
 	public readonly instanceId: string = `instance_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-	public onFlush(cb: FlushCallback): void { this.dirty.add(cb); this.scheduleDrain();	}
-	public scheduleDrain(): void {
-		if (this._flushScheduled) return;
-		this._flushScheduled = true;
-		queueMicrotask(this.drain);
-	}
+
 	public drain(): void {
 		this._flushScheduled = false;
 		if (this.dirty.size === 0) return;
@@ -17095,52 +15336,6 @@ class RAVEN {
 			this.flushSync();
 		}
 	};
-	public flushHookKey = (key: string) => {
-		const [componentId] = key.split(":");
-		/**
-		 * Store/global synthetic hook keys do not map to a component hook state.
-		 * They simply notify subscribers.
-		 */
-		if (componentId === "store") {
-			this._subscribers.get(key)?.forEach((callback: A) => {
-				if (typeof callback !== "function") return;
-				callback();
-				this.onFlush(callback);
-			});
-			return;
-		}
-
-		const component = this._components.get(componentId) ?? _root;
-		const hook = component?.hooks.get(key);
-
-		/**
-		 * Prefer direct DOM binding updates where bindings exist.
-		 */
-		if (hook?.bindings && hook.bindings.size > 0) {
-			for (const binding of hook.bindings) {
-				if (!binding.active) continue;
-
-				binding.update(binding.node, hook.value);
-			}
-
-			return;
-		}
-		this._subscribers.get(key)?.forEach((callback: A) => {
-			if (typeof callback !== "function") return;
-
-			callback();
-			this.onFlush(callback);
-		});
-	};
-	public _flushHookNotifications = () => {
-		this._flushScheduled = false;
-		const keys = Array.from(this._pendingNotifications);
-		this._pendingNotifications.clear();
-
-		for (const key of keys) {
-			this.flushHookKey(key);
-		}
-	};
 	public getCurrentComponent = (): ComponentInstance => {
 		if (isReact === true && IS_THE_WIZARD === false) {
 			if (this._currentComponent) return this._currentComponent;
@@ -17223,8 +15418,60 @@ class RAVEN {
 			queueMicrotask(this._flushHookNotifications);
 		}
 	}
+	public scheduleDrain(): void {
+		if (this._flushScheduled) return;
+		this._flushScheduled = true;
+		queueMicrotask(this.drain);
+	}
+	public _flushHookNotifications = () => {
+		this._flushScheduled = false;
+		const keys = Array.from(this._pendingNotifications);
+		this._pendingNotifications.clear();
+
+		for (const key of keys) {
+			this.flushHookKey(key);
+		}
+	};
+	public onFlush(cb: FlushCallback): void { this.dirty.add(cb); this.scheduleDrain();	}
 	public endHookDependencyCapture() { this._currentHookState = null;	}
 	public beginHookDependencyCapture(hook: HookState) { this._currentHookState = hook;	}
+	public flushHookKey = (key: string) => {
+		const [componentId] = key.split(":");
+		/**
+		 * Store/global synthetic hook keys do not map to a component hook state.
+		 * They simply notify subscribers.
+		 */
+		if (componentId === "store") {
+			this._subscribers.get(key)?.forEach((callback: A) => {
+				if (typeof callback !== "function") return;
+				callback();
+				this.onFlush(callback);
+			});
+			return;
+		}
+
+		const component = this._components.get(componentId) ?? _root;
+		const hook = component?.hooks.get(key);
+
+		/**
+		 * Prefer direct DOM binding updates where bindings exist.
+		 */
+		if (hook?.bindings && hook.bindings.size > 0) {
+			for (const binding of hook.bindings) {
+				if (!binding.active) continue;
+
+				binding.update(binding.node, hook.value);
+			}
+
+			return;
+		}
+		this._subscribers.get(key)?.forEach((callback: A) => {
+			if (typeof callback !== "function") return;
+
+			callback();
+			this.onFlush(callback);
+		});
+	};
 	public registerDOMBinding(node: Node, update: (node: Node, value: A) => void) {
 		const hook = this._currentHookState;
 		if (!hook) return;
@@ -22061,6 +20308,7 @@ export interface BackpressureConfig {
     retry?: N;
     timeout?: N;
 }
+
 type COALESCED_GROUP = {
     items: Array<{ msg: CSEMessage; resolve: (v: A) => void; reject: (e: A) => void }>;
     flushed: B;
@@ -23060,6 +21308,7 @@ export const HOOK = BIND_ATOM("HOOK", ({ self, master, config }: any) => ({
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 import { BINARY_CODEC } from "./comps/binary";
 import { BUS_CRYPTO } from "./comps/DISRUPTOR_CRYPTO";
+import { CellVM } from "./comps/cell-worker";
 export interface HttpEnvelope {
     rt: string;
     ms: string;
