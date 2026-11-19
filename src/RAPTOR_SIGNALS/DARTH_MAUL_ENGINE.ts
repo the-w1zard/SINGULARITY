@@ -145,7 +145,7 @@ export interface ChannelRecord {
   p: unknown;
 }
 
-export class WARLOCK_NGIN {
+export class DARTH_MAUL_ENGINE {
   public hub: unknown;
 
   private readonly capacity: number;

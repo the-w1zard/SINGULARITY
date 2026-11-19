@@ -1406,7 +1406,6 @@ class BOOSTER_DISRUPTOR {
 	   this.values.fill(0);
 	   this.flags.fill(0);
    }
-	constructor() {}
 	// reg fns
 	public write() {}
 	public read() {}

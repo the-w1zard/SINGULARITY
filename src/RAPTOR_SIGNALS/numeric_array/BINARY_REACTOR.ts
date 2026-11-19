@@ -36,1205 +36,456 @@ export class BINARY_REACTOR {
     // --------------------------------------------------
     private keyIds = new Map<KEY, number>();
     private keyValues: (KEY | undefined)[] = [];
-
     private keyRefs = new Uint32Array(256);
-
     private keyNextFree = new Uint32Array(256);
-
-
-
     private keyCount = 0;
-
     private keyFreeHead = 0;
-
-
-
     private retainKey(key: KEY): number {
-
         const existing = this.keyIds.get(key);
-
-
-
         if (existing !== undefined) {
-
             this.keyRefs[existing]++;
-
             return existing;
-
         }
-
-
-
         let id: number;
-
-
-
         if (this.keyFreeHead) {
-
             id = this.keyFreeHead;
-
             this.keyFreeHead = this.keyNextFree[id];
-
         } else {
-
             id = ++this.keyCount;
-
-
-
             if (id >= this.keyRefs.length) {
-
                 this.keyRefs = this.grow(this.keyRefs);
-
                 this.keyNextFree = this.grow(this.keyNextFree);
-
             }
-
         }
-
-
-
         this.keyValues[id] = key;
-
         this.keyRefs[id] = 1;
-
         this.keyNextFree[id] = 0;
-
         this.keyIds.set(key, id);
-
-
-
         return id;
-
     }
-
-
-
     private findKey(key: KEY): number {
-
         return this.keyIds.get(key) ?? 0;
-
     }
-
-
-
     private releaseKey(id: number): void {
-
         if (!id || !this.keyRefs[id]) return;
-
-
-
         if (--this.keyRefs[id]) return;
-
-
-
         const key = this.keyValues[id];
-
-
-
         if (key !== undefined) {
-
             this.keyIds.delete(key);
-
         }
-
-
-
         this.keyValues[id] = undefined;
-
-
-
         this.keyNextFree[id] = this.keyFreeHead;
-
         this.keyFreeHead = id;
-
     }
-
-
-
     // --------------------------------------------------
-
     // VALUE ARENA
-
     // --------------------------------------------------
-
-
-
     private values: PAYLOAD[] = [undefined];
-
     private valueRefs = new Uint32Array(256);
-
     private valueNextFree = new Uint32Array(256);
-
-
-
     private valueCount = 0;
-
     private valueFreeHead = 0;
-
-
-
     private encode(p: PAYLOAD): number {
-
         let id: number;
-
-
-
         if (this.valueFreeHead) {
-
             id = this.valueFreeHead;
-
             this.valueFreeHead = this.valueNextFree[id];
-
         } else {
-
             id = ++this.valueCount;
-
-
-
             if (id >= this.valueRefs.length) {
-
                 this.valueRefs = this.grow(this.valueRefs);
-
                 this.valueNextFree = this.grow(this.valueNextFree);
-
             }
-
         }
-
-
-
         this.values[id] = p;
-
         this.valueRefs[id] = 1;
-
         this.valueNextFree[id] = 0;
-
-
-
         return id;
-
     }
-
-
-
     private decode(id: number): PAYLOAD {
-
         return this.values[id];
-
     }
-
-
 
     private releaseValue(id: number): void {
-
         if (!id || !this.valueRefs[id]) return;
-
-
-
         if (--this.valueRefs[id]) return;
-
-
-
         this.values[id] = undefined;
-
-
-
         this.valueNextFree[id] = this.valueFreeHead;
-
         this.valueFreeHead = id;
-
     }
-
-
-
     // --------------------------------------------------
-
     // CELL ARENA
-
     // --------------------------------------------------
-
-
-
     private cellState = new Uint8Array(256);
-
     private cellGeneration = new Uint32Array(256);
-
     private cellNextFree = new Uint32Array(256);
-
-
-
     private cellValue = new Uint32Array(256);
-
     private cellVersion = new Float64Array(256);
-
-
-
     private cellR = new Uint32Array(256);
-
     private cellM = new Uint32Array(256);
-
     private cellS = new Uint32Array(256);
-
     private cellK = new Uint32Array(256);
-
-
-
     private cellSubscribers = new Uint32Array(256);
-
     private cellComputed = new Uint32Array(256);
-
     private cellDirtyQueued = new Uint8Array(256);
-
-
-
     private cellCount = 0;
-
     private cellFreeHead = 0;
-
-
-
     // --------------------------------------------------
-
     // ADDRESS TABLE
-
     // 0 = empty
-
     // 0xFFFFFFFF = tombstone
-
     // --------------------------------------------------
-
-
-
     private addressTable = new Uint32Array(512);
-
     private addressCount = 0;
-
     private addressTombstones = 0;
-
-
-
     private hashAddress(
-
         r: number,
-
         m: number,
-
         s: number,
-
         k: number
-
     ): number {
-
         let h = 2166136261;
-
-
-
         h = Math.imul(h ^ r, 16777619);
-
         h = Math.imul(h ^ m, 16777619);
-
         h = Math.imul(h ^ s, 16777619);
-
         h = Math.imul(h ^ k, 16777619);
-
-
-
         return h >>> 0;
-
     }
-
-
-
     private addressSlot(
-
         r: number,
-
         m: number,
-
         s: number,
-
         k: number
-
     ): number {
-
         const mask = this.addressTable.length - 1;
-
-
-
         let index = this.hashAddress(r, m, s, k) & mask;
-
         let tombstone = -1;
-
-
-
         while (true) {
-
             const id = this.addressTable[index];
-
-
-
             if (id === EMPTY) {
-
                 return tombstone === -1 ? index : tombstone;
-
             }
-
-
-
             if (id === TOMBSTONE) {
-
                 if (tombstone === -1) tombstone = index;
-
             } else if (
-
                 this.cellR[id] === r &&
-
                 this.cellM[id] === m &&
-
                 this.cellS[id] === s &&
-
                 this.cellK[id] === k
-
             ) {
-
                 return index;
-
             }
-
-
-
             index = (index + 1) & mask;
-
         }
-
     }
-
-
-
     private findCell(
-
         r: KEY,
-
         m: KEY,
-
         s: KEY,
-
         k: KEY
-
     ): number {
-
         const ri = this.findKey(r);
-
         const mi = this.findKey(m);
-
         const si = this.findKey(s);
-
         const ki = this.findKey(k);
-
-
-
         if (!ri || !mi || !si || !ki) return 0;
-
-
-
         const mask = this.addressTable.length - 1;
-
-
-
         let index = this.hashAddress(ri, mi, si, ki) & mask;
-
-
-
         while (true) {
-
             const id = this.addressTable[index];
-
-
-
             if (id === EMPTY) return 0;
-
-
-
             if (
-
                 id !== TOMBSTONE &&
-
                 this.cellR[id] === ri &&
-
                 this.cellM[id] === mi &&
-
                 this.cellS[id] === si &&
-
                 this.cellK[id] === ki
-
             ) {
-
                 return id;
-
             }
-
-
-
             index = (index + 1) & mask;
-
         }
-
     }
-
-
-
     private insertAddress(id: number): void {
-
         if (
-
             (this.addressCount + this.addressTombstones + 1) * 4 >=
-
             this.addressTable.length * 3
-
         ) {
-
             this.rehashAddresses();
-
         }
-
-
-
         const index = this.addressSlot(
-
             this.cellR[id],
-
             this.cellM[id],
-
             this.cellS[id],
-
             this.cellK[id]
-
         );
-
-
-
         if (this.addressTable[index] === TOMBSTONE) {
-
             this.addressTombstones--;
-
         }
-
-
-
         this.addressTable[index] = id;
-
         this.addressCount++;
-
     }
-
-
-
     private removeAddress(id: number): void {
-
         const index = this.addressSlot(
-
             this.cellR[id],
-
             this.cellM[id],
-
             this.cellS[id],
-
             this.cellK[id]
-
         );
-
-
-
         if (this.addressTable[index] !== id) return;
-
-
-
         this.addressTable[index] = TOMBSTONE;
-
         this.addressCount--;
-
         this.addressTombstones++;
-
     }
-
-
-
-    private rehashAddresses(): void {
-
+   private rehashAddresses(): void {
         const length = this.addressTable.length;
-
-
-
         this.addressTable = new Uint32Array(length * 2);
-
         this.addressCount = 0;
-
         this.addressTombstones = 0;
-
-
-
         for (let id = 1; id <= this.cellCount; id++) {
-
             if (this.cellState[id] === CELL.ACTIVE) {
-
                 this.insertAddress(id);
-
             }
-
         }
-
     }
-
-
-
     // --------------------------------------------------
-
     // EXECUTION ARENA
-
     // --------------------------------------------------
-
-
-
     private execState = new Uint8Array(256);
-
     private execGeneration = new Uint32Array(256);
-
     private execNextFree = new Uint32Array(256);
-
-
-
     private execDirty = new Uint8Array(256);
-
     private execQueued = new Uint8Array(256);
-
     private execRunning = new Uint8Array(256);
-
     private execHasRun = new Uint8Array(256);
-
-
-
     private execOutput = new Uint32Array(256);
-
     private execDependencies = new Uint32Array(256);
-
-
-
     private execFn: (EXECUTOR | undefined)[] = [];
-
-
-
     private execCount = 0;
-
     private execFreeHead = 0;
-
-
-
     // --------------------------------------------------
-
     // SUBSCRIBER ARENA
-
     // --------------------------------------------------
-
-
-
     private edgeActive = new Uint8Array(256);
-
-
-
     private edgeCell = new Uint32Array(256);
-
     private edgeExec = new Uint32Array(256);
-
-
-
     private edgeNextCell = new Uint32Array(256);
-
     private edgePrevCell = new Uint32Array(256);
-
-
-
-    private edgeNextExec = new Uint32Array(256);
-
+        private edgeNextExec = new Uint32Array(256);
     private edgePrevExec = new Uint32Array(256);
-
-
-
     private edgeNextFree = new Uint32Array(256);
-
-
-
     private edgeSeenVersion = new Float64Array(256);
-
     private edgeRunStamp = new Float64Array(256);
-
-
-
     private edgeCount = 0;
-
     private edgeFreeHead = 0;
-
-
-
     // --------------------------------------------------
-
-    // QUEUES
-
     // --------------------------------------------------
-
-
-
     private executionQueue = new Uint32Array(256);
-
     private executionQueueGeneration = new Uint32Array(256);
-
-
-
     private executionHead = 0;
-
     private executionTail = 0;
-
-
-
     private dirtyQueue = new Uint32Array(256);
-
     private dirtyHead = 0;
-
     private dirtyTail = 0;
-
-
-
     // --------------------------------------------------
-
     // SCHEDULER STATE
-
-    // --------------------------------------------------
-
-
-
+    // -------------------------------------------------
     private epoch = 0;
-
     private currentExecution = 0;
-
     private currentStamp = 0;
-
-
-
     private batchDepth = 0;
-
     private flushing = false;
-
-
-
-    // --------------------------------------------------
-
+    // -------------------------------------------------
     // BOUNDARY LISTENERS
-
     // --------------------------------------------------
-
-
-
     private listeners: ((
-
         (previous: PAYLOAD, next: PAYLOAD) => void
-
     )[] | undefined)[] = [];
-
-
-
     // --------------------------------------------------
-
     // ARRAY GROWTH
-
-    // --------------------------------------------------
-
-
-
+    // -------------------------------------------------
     private grow<T extends Uint8Array | Uint32Array | Float64Array>(
-
         old: T
-
     ): T {
-
         const Constructor = old.constructor as {
-
             new(length: number): T
-
         };
-
-
-
         const next = new Constructor(old.length * 2);
-
         next.set(old);
-
-
-
         return next;
-
     }
-
-
-
     private growCells(): void {
-
         this.cellState = this.grow(this.cellState);
-
         this.cellGeneration = this.grow(this.cellGeneration);
-
         this.cellNextFree = this.grow(this.cellNextFree);
-
-
-
         this.cellValue = this.grow(this.cellValue);
-
         this.cellVersion = this.grow(this.cellVersion);
-
-
-
         this.cellR = this.grow(this.cellR);
-
         this.cellM = this.grow(this.cellM);
-
         this.cellS = this.grow(this.cellS);
-
         this.cellK = this.grow(this.cellK);
-
-
-
-        this.cellSubscribers = this.grow(this.cellSubscribers);
-
+                this.cellSubscribers = this.grow(this.cellSubscribers);
         this.cellComputed = this.grow(this.cellComputed);
-
         this.cellDirtyQueued = this.grow(this.cellDirtyQueued);
-
     }
-
-
-
     private growExecutions(): void {
-
         this.execState = this.grow(this.execState);
-
         this.execGeneration = this.grow(this.execGeneration);
-
         this.execNextFree = this.grow(this.execNextFree);
-
-
-
         this.execDirty = this.grow(this.execDirty);
-
         this.execQueued = this.grow(this.execQueued);
-
         this.execRunning = this.grow(this.execRunning);
-
         this.execHasRun = this.grow(this.execHasRun);
-
-
-
         this.execOutput = this.grow(this.execOutput);
-
         this.execDependencies = this.grow(this.execDependencies);
-
     }
-
-
-
     private growEdges(): void {
-
         this.edgeActive = this.grow(this.edgeActive);
-
-
-
         this.edgeCell = this.grow(this.edgeCell);
-
         this.edgeExec = this.grow(this.edgeExec);
-
-
-
         this.edgeNextCell = this.grow(this.edgeNextCell);
-
         this.edgePrevCell = this.grow(this.edgePrevCell);
-
-
-
         this.edgeNextExec = this.grow(this.edgeNextExec);
-
         this.edgePrevExec = this.grow(this.edgePrevExec);
-
-
-
         this.edgeNextFree = this.grow(this.edgeNextFree);
-
-
-
         this.edgeSeenVersion = this.grow(this.edgeSeenVersion);
-
         this.edgeRunStamp = this.grow(this.edgeRunStamp);
-
     }
-
-
-
-    // --------------------------------------------------
-
+   // --------------------------------------------------
     // CELL ALLOCATION
-
     // --------------------------------------------------
-
-
-
     private allocateCell(
-
-        r: KEY,
-
-        m: KEY,
-
+        r: KEY,    
+            m: KEY,
         s: KEY,
-
         k: KEY,
-
         p: PAYLOAD
-
     ): number {
-
         let id: number;
-
-
-
         if (this.cellFreeHead) {
-
             id = this.cellFreeHead;
-
             this.cellFreeHead = this.cellNextFree[id];
-
         } else {
-
             id = ++this.cellCount;
-
-
-
             if (id >= this.cellState.length) {
-
                 this.growCells();
-
-            }
-
+                        }
         }
-
-
-
         this.cellState[id] = CELL.ACTIVE;
-
-
-
         if (!this.cellGeneration[id]) {
-
             this.cellGeneration[id] = 1;
-
         }
-
-
-
         this.cellR[id] = this.retainKey(r);
-
         this.cellM[id] = this.retainKey(m);
-
         this.cellS[id] = this.retainKey(s);
-
         this.cellK[id] = this.retainKey(k);
-
-
-
         this.cellValue[id] = this.encode(p);
-
         this.cellVersion[id] = 0;
-
-
-
         this.cellSubscribers[id] = 0;
-
         this.cellComputed[id] = 0;
-
         this.cellDirtyQueued[id] = 0;
-
-
-
         this.cellNextFree[id] = 0;
-
         this.listeners[id] = [];
-
-
-
         this.insertAddress(id);
-
-
-
         return id;
-
     }
-
-
-
     private assertCell(id: number, generation: number): void {
-
         if (
-
             this.cellState[id] !== CELL.ACTIVE ||
-
             this.cellGeneration[id] !== generation
-
         ) {
-
             throw new Error("Attempted to access a disposed atom.");
-
         }
-
     }
-
-
-
     // --------------------------------------------------
-
     // EXECUTION ALLOCATION
-
     // --------------------------------------------------
-
-
-
     private allocateExecution(
-
         kind: EXEC,
-
         fn: EXECUTOR
-
     ): number {
-
         let id: number;
-
-
-
-        if (this.execFreeHead) {
-
+                if (this.execFreeHead) {
             id = this.execFreeHead;
-
             this.execFreeHead = this.execNextFree[id];
-
         } else {
-
-            id = ++this.execCount;
-
-
-
+           id = ++this.execCount;
             if (id >= this.execState.length) {
-
                 this.growExecutions();
-
             }
-
         }
-
-
-
         this.execGeneration[id]++;
-
         if (!this.execGeneration[id]) this.execGeneration[id] = 1;
-
-
-
-        this.execState[id] = kind;
-
+       this.execState[id] = kind;
         this.execDirty[id] = 1;
-
         this.execQueued[id] = 0;
-
         this.execRunning[id] = 0;
-
         this.execHasRun[id] = 0;
-
-
-
         this.execOutput[id] = 0;
-
         this.execDependencies[id] = 0;
-
         this.execNextFree[id] = 0;
-
-
-
         this.execFn[id] = fn;
-
-
-
         return id;
-
     }
-
-
-
     private releaseExecution(id: number): void {
-
         if (this.execState[id] === EXEC.EMPTY) return;
-
-
-
         this.cleanupDependencies(id);
-
-
-
         const output = this.execOutput[id];
-
-
-
         if (output && this.cellComputed[output] === id) {
-
             this.cellComputed[output] = 0;
-
         }
-
-
-
         this.execState[id] = EXEC.EMPTY;
-
         this.execDirty[id] = 0;
-
         this.execQueued[id] = 0;
-
         this.execRunning[id] = 0;
-
         this.execHasRun[id] = 0;
-
-
-
         this.execOutput[id] = 0;
-
         this.execFn[id] = undefined;
-
-
-
         this.execGeneration[id]++;
-
-
-
         this.execNextFree[id] = this.execFreeHead;
-
         this.execFreeHead = id;
-
     }
-
-
-
-    // --------------------------------------------------
-
+  // --------------------------------------------------
     // SUBSCRIBER ALLOCATION
-
-    // --------------------------------------------------
-
-
-
+    // -------------------------------------------------
     private allocateEdge(
-
         cell: number,
-
         execution: number,
-
         stamp: number
-
     ): number {
-
         let edge: number;
-
-
-
         if (this.edgeFreeHead) {
-
             edge = this.edgeFreeHead;
-
             this.edgeFreeHead = this.edgeNextFree[edge];
-
         } else {
-
             edge = ++this.edgeCount;
-
-
-
             if (edge >= this.edgeActive.length) {
-
                 this.growEdges();
-
             }
-
         }
-
-
-
         this.edgeActive[edge] = 1;
-
         this.edgeCell[edge] = cell;
-
         this.edgeExec[edge] = execution;
-
-
-
         this.edgeSeenVersion[edge] = this.cellVersion[cell];
-
         this.edgeRunStamp[edge] = stamp;
-
-
-
         const cellHead = this.cellSubscribers[cell];
-
-
-
         this.edgePrevCell[edge] = 0;
-
         this.edgeNextCell[edge] = cellHead;
-
-
-
         if (cellHead) {
-
             this.edgePrevCell[cellHead] = edge;
-
         }
-
-
-
         this.cellSubscribers[cell] = edge;
-
-
-
         const execHead = this.execDependencies[execution];
-
-
-
         this.edgePrevExec[edge] = 0;
-
         this.edgeNextExec[edge] = execHead;
-
-
-
         if (execHead) {
-
-            this.edgePrevExec[execHead] = edge;
-
+           this.edgePrevExec[execHead] = edge;
         }
-
-
-
         this.execDependencies[execution] = edge;
-
         this.edgeNextFree[edge] = 0;
-
-
-
         return edge;
-
     }
-
-
-
     private removeEdge(edge: number): void {
-
         if (!this.edgeActive[edge]) return;
 
 
@@ -1322,9 +573,6 @@ export class BINARY_REACTOR {
         this.edgeFreeHead = edge;
 
     }
-
-
-
     private cleanupDependencies(execution: number): void {
 
         let edge = this.execDependencies[execution];
@@ -1346,9 +594,6 @@ export class BINARY_REACTOR {
         this.execDependencies[execution] = 0;
 
     }
-
-
-
     private track(cell: number): void {
 
         const execution = this.currentExecution;
@@ -1386,9 +631,6 @@ export class BINARY_REACTOR {
         this.allocateEdge(cell, execution, stamp);
 
     }
-
-
-
     private commitDependencies(
 
         execution: number,
@@ -1420,9 +662,6 @@ export class BINARY_REACTOR {
         }
 
     }
-
-
-
     private rollbackDependencies(
 
         execution: number,
@@ -1454,17 +693,9 @@ export class BINARY_REACTOR {
         }
 
     }
-
-
-
     // --------------------------------------------------
-
     // EPOCHS
-
     // --------------------------------------------------
-
-
-
     private nextEpoch(): number {
 
         this.epoch++;
@@ -1484,17 +715,9 @@ export class BINARY_REACTOR {
         return this.epoch;
 
     }
-
-
-
     // --------------------------------------------------
-
     // QUEUES
-
     // --------------------------------------------------
-
-
-
     private enqueueExecution(id: number): void {
 
         if (
@@ -1576,9 +799,6 @@ export class BINARY_REACTOR {
         this.executionTail++;
 
     }
-
-
-
     private enqueueDirtyCell(id: number): void {
 
         if (this.cellDirtyQueued[id]) return;
@@ -1624,17 +844,9 @@ export class BINARY_REACTOR {
         this.dirtyQueue[this.dirtyTail++] = id;
 
     }
-
-
-
     // --------------------------------------------------
-
     // INVALIDATION
-
     // --------------------------------------------------
-
-
-
     private invalidate(cell: number): void {
 
         this.enqueueDirtyCell(cell);
@@ -1648,9 +860,6 @@ export class BINARY_REACTOR {
         }
 
     }
-
-
-
     private propagate(): void {
 
         while (this.dirtyHead < this.dirtyTail) {
@@ -1737,17 +946,9 @@ export class BINARY_REACTOR {
         this.dirtyTail = 0;
 
     }
-
-
-
     // --------------------------------------------------
-
     // COMPUTED VALIDATION
-
     // --------------------------------------------------
-
-
-
     private ensureComputed(cell: number): void {
 
         const execution = this.cellComputed[cell];
@@ -1769,9 +970,6 @@ export class BINARY_REACTOR {
         this.runExecution(execution);
 
     }
-
-
-
     private dependenciesChanged(execution: number): boolean {
 
         let edge = this.execDependencies[execution];
@@ -1817,17 +1015,9 @@ export class BINARY_REACTOR {
         return false;
 
     }
-
-
-
     // --------------------------------------------------
-
     // EXECUTION
-
     // --------------------------------------------------
-
-
-
     private runExecution(execution: number): void {
 
         const kind = this.execState[execution];
@@ -1981,17 +1171,9 @@ export class BINARY_REACTOR {
         }
 
     }
-
-
-
     // --------------------------------------------------
-
     // SCHEDULER
-
     // --------------------------------------------------
-
-
-
     private flush(): void {
 
         if (this.flushing || this.batchDepth || this.currentExecution) {
@@ -2095,17 +1277,9 @@ export class BINARY_REACTOR {
         if (hasError) throw firstError;
 
     }
-
-
-
     // --------------------------------------------------
-
     // CELL READ / WRITE
-
     // --------------------------------------------------
-
-
-
     private readCell(
 
         id: number,
@@ -2145,9 +1319,6 @@ export class BINARY_REACTOR {
         return this.decode(this.cellValue[id]);
 
     }
-
-
-
     private writeCell(
 
         id: number,
@@ -2261,17 +1432,9 @@ export class BINARY_REACTOR {
         return p;
 
     }
-
-
-
     // --------------------------------------------------
-
     // ATOM HANDLE
-
     // --------------------------------------------------
-
-
-
     private makeAtom<T>(
 
         id: number,
@@ -2437,17 +1600,9 @@ export class BINARY_REACTOR {
         };
 
     }
-
-
-
     // --------------------------------------------------
-
     // PUBLIC ATOM
-
     // --------------------------------------------------
-
-
-
     atom<T>(
 
         p: T,
@@ -2487,17 +1642,9 @@ export class BINARY_REACTOR {
         );
 
     }
-
-
-
     // --------------------------------------------------
-
     // PUBLIC EFFECT
-
     // --------------------------------------------------
-
-
-
     effect(fn: EXECUTOR): DISPOSE {
 
         const execution = this.allocateExecution(EXEC.EFFECT, fn);
@@ -2561,17 +1708,9 @@ export class BINARY_REACTOR {
         };
 
     }
-
-
-
     // --------------------------------------------------
-
     // PUBLIC COMPUTED
-
     // --------------------------------------------------
-
-
-
     computed<T>(
 
         fn: () => T,
@@ -2651,17 +1790,9 @@ export class BINARY_REACTOR {
         );
 
     }
-
-
-
     // --------------------------------------------------
-
     // PUBLIC BATCH
-
     // --------------------------------------------------
-
-
-
     batch<T>(fn: () => T): T {
 
         this.batchDepth++;
@@ -2723,17 +1854,9 @@ export class BINARY_REACTOR {
         return result;
 
     }
-
-
-
     // --------------------------------------------------
-
     // PUBLIC DISPOSAL
-
     // --------------------------------------------------
-
-
-
     disposeCell(id: number, generation: number): void {
 
         this.assertCell(id, generation);
@@ -2873,7 +1996,6 @@ export class BINARY_REACTOR {
         }
 
     }
-
 }
 
 

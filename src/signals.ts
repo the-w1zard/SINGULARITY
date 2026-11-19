@@ -51,20 +51,86 @@ import { Registry } from "@the-w1zard/the-registry";
 import { queue, Queue } from "./comps/queue";
 import { M2 } from "#dx";
 import { parseFormula, removeDependencies, registerDependencies, evaluateSpreadsheetAst, writeGraphCell, collectAffected, recalculateCell, recalculateAffected, createEvalContext, isFormula, normalizeCellRef, parseCellRef, cloneGraph, createSpreadsheetGraph, round, gcd, combin, looseEqual, compare, approxMatch, wildcardMatch, matchCriteria, stddev, variance, correl, covariance, linreg, normalPDF, normalCDF, normalInv, dateSerial, fromSerial, networkDays, workday, dateDif, toRoman, formatText, evaluate, toNum, toStr, toBool, isErr, looseEq, cellKey, resolveCell, expandRange, flattenRange, colToIndex, indexToCol, parseRangeStr, tokenize, Parser, SpreadsheetMode, SpreadsheetChain, SpreadsheetRaw, SpreadsheetCell, SpreadsheetGraphState, SpreadsheetCellRef, qualifyAst, clearGraphCellInPlace, writeGraphCellInPlace, isVolatileAst, recalculateDirty, RangeBox, RangeEntry, boxContains, analyzeDependencies, collectDependencies, ASTNode, } from './comps/cell';
+import { BUS_CRYPTO } from "./comps/DISRUPTOR_CRYPTO";
+import { BINARY_CODEC } from "./comps/binary";
+import { MCR_Combo } from "@the-w1zard/dx/twx";
+import { CellVM } from "./comps/cell-worker";
 //import { M2 } from "@the-w1zard/dx";
 
 
 // #endregion
 //                                                                                                                       TYPPES
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-interface DOMBindingNode extends ReactiveNode {
-	read: () => unknown;
-	node: object;
-	update: (node: object, value: unknown) => void;
-	active: boolean;
-	value: unknown;
-	hasValue: boolean;
+export interface Rx<T> {
+	(): T;
+	(value: T): void;
+	readonly id: string;
+	readonly node: Node | null;
+	readonly el: Element | null;
+	attach(parent: Node): this;
+	dispose(): void;
 }
+interface Binding<T = unknown> {
+	v: T;
+	node: Node | null;
+	el: Element | null;
+	owned: Node[];
+	write(v: unknown): void;
+}
+interface EffectScopeNode extends ReactiveNode {}
+interface EffectNode extends ReactiveNode {	fn(): (() => V) | V; cleanup?: () => V;}
+interface ComputedNode<T = any> extends ReactiveNode {	value: T | UD;	getter: (previousValue?: T) => T;} 
+interface SignalNode<T = any> extends ReactiveNode { 
+	currentValue: T; 
+	pendingValue: T;
+}
+export interface SignalOptions { injectDom?: B; triggerRender: B}
+interface PARTICLE {
+	pid: Pid;
+	/** The value. Nothing outside of the collider holds this. */
+	p: U;
+	/** Queued op to be executed when this particle passes the send pass. */
+	op: N;
+	/** Edit fn carried with the particle (OP.EDIT), executed in the pass. */
+	edit?: (p: A) => A;
+}
+interface PARTICLE_QUEUE {
+	/** enqueue a particle for the matching tier; returns a drain promise */
+	submit(pid: Pid, tierName: S, work?: (p: PARTICLE) => U): P<U>;
+	/** drain pass: run all queued work in tiered concurrent batches */
+	drain(): P<V>;
+	readonly pending: N;
+}
+export interface HttpEnvelope {
+	r: string;
+	m: string;
+	s: string;
+	k: string;
+	p: unknown;
+	seq?: number;
+	ts?: number;
+	id?: string;
+}
+type StoreListener<T = A> = (v: RiftRecord<T>) => void;
+type BUS_HANDLER<P = U, T = U> = (p?: P, msg?: SIG_BUS_Message1) => T | Promise<T>;
+interface SIG_BUS_Message1 {
+	id?: string;
+	r?: S;
+	m?: S;
+	s: S;
+	k: S;
+	p?: any;
+	ts?: number;
+	_ack?: boolean;
+	_reply?: boolean;
+	_rid?: string;
+	ackTo?: string;
+}
+interface BUS_CHANNEL {
+	handler?: BUS_HANDLER<any, any>;
+	push?: Set<(msg: SIG_BUS_Message1) => void>;
+}
+interface Program { code: Int32Array; consts: Float64Array; ranges: Int32Array[] } 
 
 export interface CustomCodecResult {
 	type: string;
@@ -91,7 +157,7 @@ export interface CustomCodecResult {
   }
 export interface GATE_ACCESS {
     /** Reads the cell's GATE_SHARD if one is bound. Undefined = bare fast path = always open. */
-    gateOf(cell: ATOM | null | UD): typeof GATE | UD;
+    gateOf(cell: ATOM | null | UD):  SIGNALS["maul"]["ATOMS"]["GATE"] | UD;
     isSealed(cell: ATOM | null | UD): B;
     isFrozen(cell: ATOM | null | UD): B;
 }
@@ -437,16 +503,11 @@ type SIG_BUS_Message<P = A> = {
   export const sameValue = (a: A, b: A): B =>
 	Object.is(a, b) || (a instanceof Date && b instanceof Date && +a === +b);
   type QuadSub<V> = (v: V | UD) => void;
-  const enum VM_OP {
-	PUSH_CONST = 0, // arg: index into consts[]
-	PUSH_CELL = 1, // arg: pid — read from shared f64 arena via pidToSlot
-	ADD = 2,
-	SUB = 3,
-	MUL = 4,
-	DIV = 5,
-	SUM_RANGE = 6, // args: startPid count — reads a contiguous slot run
-	RET = 7,
-  }
+  export const enum VM_OP {
+	PUSH_CONST = 0, PUSH_CELL = 1, ADD = 2, SUB = 3, MUL = 4, DIV = 5, RET = 7,
+	SUM_RANGE = 6, AVG_RANGE = 8, MIN_RANGE = 9, MAX_RANGE = 10, COUNT_RANGE = 11,
+}
+
   interface Program {
 	code: Int32Array; // [op, arg, op, arg, ...]
 	consts: Float64Array;
@@ -561,7 +622,7 @@ class GOVERNOR {
 // #endregion
 //                                                                                                [DARTH MAUL] DISRPTOR SIGNALS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-const queued: (EffectNode | UD)[] = [];
+const queued = [];
 export const enum ReactiveFlags {
 	None = 0,
 	Mutable = 1,
@@ -577,8 +638,26 @@ let runDepth = 0;
 let batchDepth = 0;
 let notifyIndex = 0;
 let queuedLength = 0;
-// let notifySubscribers = true
-let activeSub: ReactiveNode | UD;
+let activeSub;
+let _n = 0;
+const _rxid = () => `${_signals_root.id}:rx${++_n}`;;
+let _seq = 0;
+const seqId = () => `seq${++_seq}`;
+const str = (v: unknown) => (v == null ? '' : String(v));
+let _signals_root = {
+	id: "THE_WIZARD_SIGNALS_ROOT",
+	hooks: new O2<string, A>(),
+	unmount: new Set(),
+	contextProviders: new O2<string, A>(),
+};
+const rx = new O2<string, Binding>().$debug(128);// ONE store. id -> binding, and the binding holds the value.
+rx.on((e) => {
+	if (e.op !== 'set' && e.op !== 'upd') return;
+	(e.v as Binding).write((e.v as Binding).v);
+});
+const get = <T>(id: string) => rx.g(id)!.v as T;
+const set = <T>(id: string, v: T) => rx.mutate(id, (b) => { b.v = v; return b; });
+
 class SIGNALS {
 	public root: DEATH_STAR
 	constructor(root: DEATH_STAR) { this.root = root }
@@ -606,7 +685,7 @@ class SIGNALS {
 	public rx = new (class RX {// REACTIVE ENGINE
 		public root: DEATH_STAR
 		public hub: SIGNALS
-		public signals: typeof this.hub.signals
+		public signals: SIGNALS["signals"]
 		constructor(s: SIGNALS) { 
 			this.root = s.root;
 			this.hub = s;
@@ -1195,19 +1274,19 @@ class SIGNALS {
 				}
 			})();
 			public write = (() => {
-				const fn = <T = A>(v?: T | (() => T), k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
+				const fn = <T = A>(v: T | (() => T), k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
 					const rL = this.get_root(c, r);
 					const mL = (rL[m] ??= Object.create(null));
 					const registry = (mL[s] ??= Object.create(null));
 					const t = UF(v);
-					const atom = signal<T>(t);
+					const atom = signal(t);
 					registry[k] = atom;
 					return atom;
 				}
-				fn.hot =  <T = A>(v?: T | (() => T), k: S) => {
+				fn.hot =  <T = A>(v: T | (() => T), k: S) => {
 					const registry = this._signal_cells
 					const t = UF(v);
-					const atom = signal<T>(t);
+					const atom = signal(t);
 					registry[k] = atom;
 					return atom;
 				}
@@ -1270,7 +1349,7 @@ class SIGNALS {
 				return fn;
 			})();
 			public signal = (() => {
-				const fn = <T = A,>(v?: T | (() => T), k: SignalKey, s = this.s, m = this.m, r = this.r, c = "signal_cells") => {
+				const fn = <T = A,>(v: T | (() => T), k: SignalKey, s = this.s, m = this.m, r = this.r, c = "signal_cells") => {
 					const rL = this.get_root(c, r);
 					const mL = (rL[m] ??= Object.create(null));
 					const registry = (mL[s] ??= Object.create(null));
@@ -1284,7 +1363,7 @@ class SIGNALS {
 					}
 			
 					const initialValue = UF(v);
-					atom = signal<T>(initialValue);
+					atom = signal(initialValue);
 					registry[k] = atom;
 					return atom;
 				};
@@ -1300,7 +1379,7 @@ class SIGNALS {
 					}
 			
 					const initialValue = UF(v);
-					atom = signal<T>(initialValue);
+					atom = signal(initialValue);
 					registry[k] = atom;
 					return atom;
 				};
@@ -1597,7 +1676,7 @@ class SIGNALS {
 		 } */
 	})(this);
 	public maul_ngin = new (class DARTH_MAUL_ENGINE {// DISRUPTOR SIGNALS ENGINE
-		public maul: typeof this.signals.maul; 
+		public maul:  SIGNALS["maul"]
 		public root: DEATH_STAR
 		public signals: SIGNALS
 		//                                                                                                                    CONSTANTS
@@ -2618,7 +2697,7 @@ class SIGNALS {
 		public hub: DEATH_STAR;
 		public signals: SIGNALS
 		public state: RAVEN
-		public DARTH_MAUL_ENGINE: typeof  this.signals.maul_ngin
+		public DARTH_MAUL_ENGINE: SIGNALS["maul_ngin"]
 	
 		public r: S = "this.r";
 		public m: S = "this.m";
@@ -2680,6 +2759,9 @@ class SIGNALS {
 			}
 			return metaMap;
 		}
+		// #endregion
+		//                                                                                                                ATOMS
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		public ATOM = (() => {
 			function mergeInto<T extends object>(target: T, source: object): T {
 				Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
@@ -2721,12 +2803,6 @@ class SIGNALS {
 				});
 				return { selfProxy, liveTarget };
 			}
-			const OPEN_CELLS: any[] = []; 
-			// useCell.obj — the merge variant Illusionist uses:
-			//   const [o, o$] = root.DISRUPTOR.useCell.obj(liveTarget, prim_label, categoryName)
-			//   o$.merge(result)
-			// A bound atom's self: its own namespace, plus the master's root fields.
-			// Nothing here stores state — it reads and writes liveTarget directly.
 			function nsSelf(liveTarget: any, name: string, publish: () => void, useCell: () => any) {
 				const rec = () => (liveTarget[name] ??= {});
 				return new Proxy({}, {
@@ -2766,7 +2842,7 @@ class SIGNALS {
 				return h;
 			}
 			function requiredBindables() {
-				return { gate: GATE, subscription: SUBSCRIPTION, context: CONTEXT };
+				return { gate: SIGNALS["maul"]["ATOMS"]["GATE"], subscription: SIGNALS["maul"]["ATOMS"]["SUBSCRIPTION"], context:SIGNALS["maul"]["ATOMS"]["CONTEXT"]  };
 			}
 			function withoutKeys(obj: any, keys: string[]) {
 				const desc: any = Object.getOwnPropertyDescriptors(obj);
@@ -2777,7 +2853,7 @@ class SIGNALS {
 				const kindFactory = resolveFactory(this.signals.signals.state.get(kind));
 				if (!kindFactory) throw new TypeError(`Unknown master atom: ${kind}`);
 			
-				const instanceId = `${kind}:${this.root.REGISTRY._sid}`;
+				const instanceId = `${kind}:${this.root.REGISTRY._sid()}`;
 				const { selfProxy, liveTarget } = createLiveSelf(instanceId);
 				const names = new Set<string>();
 				const refreshers: Record<string, () => void> = {};
@@ -2859,11 +2935,11 @@ class SIGNALS {
 				return withTypoGuard(api, instanceId.split(":")[1]);
 			}
 			const z = () => {}
-			z.MASTER = (name: string, arg: any)=>{ const f = resolveFactory(arg); this.root.signals.signals.cell.set(name, f); return f; }
-			z.BIND=(name: string, arg: any)=> { const f = resolveFactory(arg); this.root.signals.signals.cell.set(name, f); return f; }
+			z.MASTER = (name: string, arg: any)=>{ const f = resolveFactory(arg); this.root.state.state.set(name, f); return f; }
+			z.BIND=(name: string, arg: any)=> { const f = resolveFactory(arg); this.root.state.state.set(name, f); return f; }
 			z.BINDABLE=(factory: any)=> { return factory; }
 			z.CONTRACT=(arg1: any, arg2?: any): any =>{
-				const id = `${this.root.REGISTRY._sid}`;
+				const id = `${this.root.REGISTRY._sid()}`;
 				const categoryName = typeof arg1 === "string" ? arg1 : `ATOM_CONTRACT${id}`;
 				const rawConfig = typeof arg1 === "string" ? arg2 : arg1;
 				if (rawConfig === undefined || rawConfig === null) throw new Error("Self is required");
@@ -2932,40 +3008,22 @@ class SIGNALS {
 				value: config.value as U,
 				read() {
 					const r = self.value;
-					if (r !== null) { if (GATE !== undefined && gate.sealed) throw new SEALED_ERROR.log(self.k); }
+					if (r !== null) { if (gate?.sealed || gate?.frozen) throw new SEALED_ERROR.log(self.k); }
 					return self.value;
 				},
-				write1(next: U): B {
-					const r = self.registry;
-					if (r === null) { self.value = next; return true; }
-					if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
-					const previous = self.value;
-					if (Object.is(previous, next)) return false;
-					self.value = next;
-					if (subscription !== undefined) subscription.notify({ key: self.key, previous, current: next });
-					return true;
-				},
-				write(next) {
+				write(next: U) {
 					if (gate?.sealed || gate?.frozen) return false;
 					const current = self.value;
 					if (Object.is(current, next)) return false;
-				  
 					const decision = conflict.check({
 					  current,
 					  incoming: next,
 					  previous: self.previous ?? current,
 					});
-				  
-					if (!decision.accepted) {
-					  return false;
-					}
-				  
+					if (!decision.accepted) {  return false; }
 					const resolved = decision.value;
-				  
 					if (Object.is(current, resolved)) return false;
-				  
 					self.useCell().set("value", resolved);
-				  
 					return true;
 				  },
 				subscribe(listener: LISTENER<A>): UNSUBSCRIBE { return subscription.subscribe(listener); },
@@ -3241,6 +3299,8 @@ class SIGNALS {
 		})(); 
 		public ATOMS = (() => {
 			const z = () => {}
+			z.LIFECYCLE = this.ATOM.BIND("ADAPTER", ({ self, master, config }: any) => ({}));
+			z.ASYNC = this.ATOM.BIND("ADAPTER", ({ self, master, config }: any) => ({}));
 			z.ADAPTER = this.ATOM.BIND("ADAPTER", ({ self, master, config }: any) => ({}));
 			z.AW_SET = this.ATOM.BIND("AW_SET", ({ self, master, config }: any) => ({}));
 			z.CASUAL_CURSOR = this.ATOM.BIND("CASUAL_CURSOR", ({ self, master, config }: any) => ({}));
@@ -5642,7 +5702,7 @@ class SIGNALS {
 				m: config.m ?? "SAURON_MASTER_REG",
 				r: config.r ?? "THE_WIZARD_ROOT_REG",
 			
-				hooks: new Map<S, HOOK_ENTRY>(),
+				hooks: new Map<S, A>(),
 				factories: new Map<S, () => A>(),
 			
 				/** Register a hook factory. The factory runs once, lazily, on first read. */
@@ -5710,22 +5770,22 @@ class SIGNALS {
 					self.factories.clear();
 				},
 			}));
-			z.HTTP_TRANSPORT = this.ATOM.BIND("HTTP_TRANSPORT", ({ self, master, config }: any) => ({
+			z.HTTP_TRANSPORT = this.ATOM.BIND("HTTP_TRANSPORT", ({ self, master, config }: A) => ({
 				k: config.k ?? "__SIGNALS__",
 				s: config.s ?? "SAURON_SLAVE_REG",
 				m: config.m ?? "SAURON_MASTER_REG",
 				r: config.r ?? "THE_WIZARD_ROOT_REG",
 			
 				token: config.token as string,
-				timeoutMs: (config.timeoutMs ?? 10_000) as number,
-				backoffMs: (config.backoffMs ?? 100) as number,
-				maxBackoffMs: (config.maxBackoffMs ?? 5_000) as number,
-				maxAttempts: (config.maxAttempts ?? 3) as number,
+				timeoutMs: (config.timeoutMs ?? 10_000) as N,
+				backoffMs: (config.backoffMs ?? 100) as N,
+				maxBackoffMs: (config.maxBackoffMs ?? 5_000) as N,
+				maxAttempts: (config.maxAttempts ?? 3) as N,
 				codec: BINARY_CODEC as typeof BINARY_CODEC,
-				onError: (config.onError ?? (() => {})) as (err: unknown) => void,
+				onError: (config.onError ?? (() => {})) as (err: U) => void,
 			
 				/** Inbound dispatcher — set at attach(). Receives decoded envelopes. */
-				dispatch: null as ((env: HttpEnvelope) => Promise<unknown> | unknown) | null,
+				dispatch: null as ((env: HttpEnvelope) => P<U> | U) | NU,
 			
 				// ── OUTBOUND: send an envelope to another IP ─────────────────────────────
 				async send(
@@ -5837,10 +5897,10 @@ class SIGNALS {
 					const e = env as Partial<HttpEnvelope>;
 			
 					if (
-						typeof e.rt !== "string" ||
-						typeof e.ms !== "string" ||
-						typeof e.sl !== "string" ||
-						typeof e.key !== "string"
+						typeof e.r !== "string" ||
+						typeof e.m !== "string" ||
+						typeof e.s !== "string" ||
+						typeof e.k !== "string"
 					) {
 						return ack(false, undefined, "malformed envelope: rt/ms/sl/key required");
 					}
@@ -6311,7 +6371,7 @@ class SIGNALS {
 					self.assertContracts(next, prev);
 			
 					for (const l of self.listeners) { try { l(next); } catch (e) {} }
-					root.bus.send(next,self.k,self.s, self.m, self.r, );
+					root.bus.marek.send(next,self.k,self.s, self.m, self.r, );
 			 
 					for (const w of self.waiters) { try { w(next); } catch (e) {} }
 					if (options.recordHistory !== false) { self.recordHistory(prev, next, self.lastWriteSource); }
@@ -6375,7 +6435,7 @@ class SIGNALS {
 				setBoundary() {},
 				validate<T = A>(next: T): T {
 					if (!self.schema) return next;
-					return root.signals._.validateSchema(self.schema, next);
+					return this._.validateSchema(self.schema, next);
 				},
 			
 				assertContracts<T = A>(next: T, previous: T): void {
@@ -6554,17 +6614,17 @@ class SIGNALS {
 			z.vertexContract = this.ATOM.CONTRACT(() => ({
 				atom: "VERTEX",
 				value: { count: 0 },
-				bindables: { conflict: CONFLICT, ttl: TTL },
+				bindables: { conflict: this.ATOMS.CONFLICT, ttl: this.ATOMS.TTL },
 			}));
 			z.atomMasterContract = this.ATOM.CONTRACT(() => ({
 				atom: "ATOM",
 				value: 0,
-				bindables: { ttl: TTL },
+				bindables: { ttl: this.ATOMS.TTL },
 			}));
 			z.moduleContract = this.ATOM.CONTRACT(() => ({
 				atom: "MODULE",
 				value: [],
-				bindables: { conflict: CONFLICT },
+				bindables: { conflict: this.ATOMS.CONFLICT },
 			}));
 			return z
 		})(); 
@@ -6715,7 +6775,7 @@ class SIGNALS {
 				return atom as ATOM<T> 
 			}
 			const initialValue = typeof v === "function" ? (v as () => T)() : v;
-			atom = this._contracts.DEFAULT(initialValue, k, s, m, r);
+			atom = this.contracts.DEFAULT(initialValue, k, s, m, r);
 			registry.set(k, atom);
 			return atom as ATOM<T> | T;
 		}
@@ -7293,13 +7353,11 @@ class SIGNALS {
 		//                                                                                                                        ASYNC
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		public async = (() => {
-			const fn = <T,>(k: A, fetcher: (signal: AbortSignal) => P<T>, s = this.s, m = this.m, r = this.r, options?: { fallback?: T }) => {
+			const fn = <T,>(k: A, fetcher: (signal: AbortSignal) => P<T>, s = this.s, m = this.m, r = this.r, options?: { fallback?: T,triggerRender?:B }) => {
 				const reg = this.hub.wr._signals;
-				let atom = reg.get(k) as SIGNAL_CELL<T> | UD;
+				let atom = reg.get(k) as ATOM<T> | UD;
 	
-				if (!atom) {
-					atom = this.create(k, options?.fallback as T, { trigger_render: false }, s, m, r) as SIGNAL_CELL<T>;
-				}
+				if (!atom) { atom = this.create(k, options?.fallback as T, { triggerRender: false }, s, m, r) as ATOM<T>; }
 	
 				const dataKey = `${String(k)}:data`;
 				const loadingKey = `${String(k)}:loading`;
@@ -7839,593 +7897,637 @@ class SIGNALS {
 // #endregion
 //                                                                                                         [DARTH MAUL] SIGNALS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function createReactiveSystem({ update, notify, unwatched,}: { update(sub: ReactiveNode): B;	notify(sub: ReactiveNode): V; unwatched(sub: ReactiveNode): V;}) {
-	return { link, unlink, propagate, checkDirty, shallowPropagate,	};
-	function link(dep: ReactiveNode, sub: ReactiveNode, version: number): void {
-		const prevDep = sub.depsTail;
-		if (prevDep !== undefined && prevDep.dep === dep) { return; }
-		const nextDep = prevDep !== undefined ? prevDep.nextDep : sub.deps;
-		if (nextDep !== undefined && nextDep.dep === dep) {
-			nextDep.version = version;
-			sub.depsTail = nextDep;
-			return;
-		}
-		const prevSub = dep.subsTail;
-		if (prevSub !== undefined && prevSub.version === version && prevSub.sub === sub) { return; }
-		const newLink
-			= sub.depsTail
-			= dep.subsTail
-			= {
-				version,
-				dep,
-				sub,
-				prevDep,
-				nextDep,
-				prevSub,
-				nextSub: undefined,
-			};
-		if (nextDep !== undefined) { nextDep.prevDep = newLink; }
-		if (prevDep !== undefined) { prevDep.nextDep = newLink; }
-		else { sub.deps = newLink; }
-		if (prevSub !== undefined) { prevSub.nextSub = newLink; }
-		else { dep.subs = newLink; }
-	}
-	function unlink(link: Link, sub = link.sub): Link | undefined {
-		const { dep, prevDep, nextDep, nextSub, prevSub } = link;
-		if (nextDep !== undefined) {
-			nextDep.prevDep = prevDep;
-		} else {
-			sub.depsTail = prevDep;
-		}
-		if (prevDep !== undefined) {
-			prevDep.nextDep = nextDep;
-		} else {
-			sub.deps = nextDep;
-		}
-		if (nextSub !== undefined) {
-			nextSub.prevSub = prevSub;
-		} else {
-			dep.subsTail = prevSub;
-		}
-		if (prevSub !== undefined) {
-			prevSub.nextSub = nextSub;
-		} else if ((dep.subs = nextSub) === undefined) {
-			unwatched(dep);
-		}
-		return nextDep;
-	}
-	function propagate(link: Link, innerWrite: boolean): void {
-		let next = link.nextSub;
-		let stack: Stack<Link | undefined> | undefined;
-
-		top: do {
-			const sub = link.sub;
-			let flags = sub.flags;
-
-			if (!(flags & (ReactiveFlags.RecursedCheck | ReactiveFlags.Recursed | ReactiveFlags.Dirty | ReactiveFlags.Pending))) {
-				sub.flags = flags | ReactiveFlags.Pending;
-				if (innerWrite) {
-					sub.flags |= ReactiveFlags.Recursed;
-				}
-			} else if (!(flags & (ReactiveFlags.RecursedCheck | ReactiveFlags.Recursed))) {
-				flags = ReactiveFlags.None;
-			} else if (!(flags & ReactiveFlags.RecursedCheck)) {
-				sub.flags = (flags & ~ReactiveFlags.Recursed) | ReactiveFlags.Pending;
-			} else if (!(flags & (ReactiveFlags.Dirty | ReactiveFlags.Pending)) && isValidLink(link, sub)) {
-				sub.flags = flags | (ReactiveFlags.Recursed | ReactiveFlags.Pending);
-				flags &= ReactiveFlags.Mutable;
-			} else {
-				flags = ReactiveFlags.None;
-			}
-
-			if (flags & ReactiveFlags.Watching) { notify(sub); }
-
-			if (flags & ReactiveFlags.Mutable) {
-				const subSubs = sub.subs;
-				if (subSubs !== undefined) {
-					const nextSub = (link = subSubs).nextSub;
-					if (nextSub !== undefined) {
-						stack = { value: next, prev: stack };
-						next = nextSub;
-					}
-					continue;
-				}
-			}
-
-			if ((link = next!) !== undefined) {
-				next = link.nextSub;
-				continue;
-			}
-
-			while (stack !== undefined) {
-				link = stack.value!;
-				stack = stack.prev;
-				if (link !== undefined) {
-					next = link.nextSub;
-					continue top;
-				}
-			}
-
-			break;
-		} while (true);
-	}
-	function checkDirty(link: Link, sub: ReactiveNode): boolean {
-		let stack: Stack<Link> | undefined;
-		let checkDepth = 0;
-		let dirty = false;
-
-		top: do {
-			const dep = link.dep;
-			const flags = dep.flags;
-
-			if (sub.flags & ReactiveFlags.Dirty) {
-				dirty = true;
-			} else if ((flags & (ReactiveFlags.Mutable | ReactiveFlags.Dirty)) === (ReactiveFlags.Mutable | ReactiveFlags.Dirty)) {
-				const subs = dep.subs!;
-				if (update(dep)) {
-					if (subs.nextSub !== undefined) { shallowPropagate(subs); }
-					dirty = true;
-				}
-			} else if ((flags & (ReactiveFlags.Mutable | ReactiveFlags.Pending)) === (ReactiveFlags.Mutable | ReactiveFlags.Pending)) {
-				stack = { value: link, prev: stack };
-				link = dep.deps!;
-				sub = dep;
-				++checkDepth;
-				continue;
-			}
-
-			if (!dirty) {
-				const nextDep = link.nextDep;
-				if (nextDep !== undefined) { link = nextDep; continue; }
-			}
-
-			while (checkDepth--) {
-				link = stack!.value;
-				stack = stack!.prev;
-				if (dirty) {
-					const subs = sub.subs!;
-					if (update(sub)) {
-						if (subs.nextSub !== undefined) {
-							shallowPropagate(subs);
-						}
-						sub = link.sub;
-						continue;
-					}
-					dirty = false;
-				} else {
-					sub.flags &= ~ReactiveFlags.Pending;
-				}
-				sub = link.sub;
-				const nextDep = link.nextDep;
-				if (nextDep !== undefined) {
-					link = nextDep;
-					continue top;
-				}
-			}
-
-			return dirty && !!sub.flags;
-		} while (true);
-	}
-	function shallowPropagate(link: Link): void {
-		do {
-			const sub = link.sub;
-			const flags = sub.flags;
-			if ((flags & (ReactiveFlags.Pending | ReactiveFlags.Dirty)) === ReactiveFlags.Pending) {
-				sub.flags = flags | ReactiveFlags.Dirty;
-				if ((flags & (ReactiveFlags.Watching | ReactiveFlags.RecursedCheck)) === ReactiveFlags.Watching) {
-					notify(sub);
-				}
-			}
-		} while ((link = link.nextSub!) !== undefined);
-	}
-	function isValidLink(checkLink: Link, sub: ReactiveNode): boolean {
-		let link = sub.depsTail;
-		while (link !== undefined) {
-			if (link === checkLink) {
-				return true;
-			}
-			link = link.prevDep;
-		}
-		return false;
-	}
-}
-interface EffectScopeNode extends ReactiveNode {}
-interface EffectNode extends ReactiveNode {	fn(): (() => V) | V; cleanup?: () => V;}
-interface ComputedNode<T = any> extends ReactiveNode {	value: T | UD;	getter: (previousValue?: T) => T;} 
-interface SignalNode<T = any> extends ReactiveNode { 
-	currentValue: T; 
-	pendingValue: T;
-	injectDom: boolean;
-	domBindings?: Set<DOMBinding<T>>;
-}
-export interface SignalOptions { injectDom?: boolean;}
-const {	link, unlink, propagate, checkDirty, shallowPropagate,} = createReactiveSystem({	
-	update(node: SignalNode | ComputedNode | EffectScopeNode): boolean {
-		if ('getter' in node) { return updateComputed(node); }
-		if ('currentValue' in node) { return updateSignal(node); }
-		node.flags = ReactiveFlags.Mutable;
-		return true;
-	},
-	notify(effect: EffectNode) {
-		let insertIndex = queuedLength;
-		let firstInsertedIndex = insertIndex;
-		do {
-			queued[insertIndex++] = effect;
-			effect.flags &= ~ReactiveFlags.Watching;
-			effect = effect.subs?.sub as EffectNode;
-			if (effect === undefined || !(effect.flags & ReactiveFlags.Watching)) { break; }
-		} while (true);
-
-		queuedLength = insertIndex;
-
-		while (firstInsertedIndex < --insertIndex) {
-			const left = queued[firstInsertedIndex];
-			queued[firstInsertedIndex++] = queued[insertIndex];
-			queued[insertIndex] = left;
-		}
-	},
-	unwatched(node: SignalNode | ComputedNode | EffectNode | EffectScopeNode) {
-		if ('getter' in node) {
-			if (node.depsTail !== undefined) {
-				node.flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
-				disposeAllDepsInReverse(node);
-			}
-		}
-		else if ('currentValue' in node) { }// Nothing to do for signals, they are always mutable and never dirty until pendingValue changes
-		else if ('fn' in node) { effectOper.call(node); }
-		else { effectScopeOper.call(node); }
-	},
+const { link, unlink, propagate, checkDirty, shallowPropagate, } = createReactiveSystem({
+    update(node) {
+        if ('getter' in node) {
+            return updateComputed(node);
+        }
+        if ('currentValue' in node) {
+            return updateSignal(node);
+        }
+        node.flags = 1;
+        return true;
+    },
+    notify(effect) {
+        let insertIndex = queuedLength;
+        let firstInsertedIndex = insertIndex;
+        do {
+            queued[insertIndex++] = effect;
+            effect.flags &= ~2;
+            effect = effect.subs?.sub;
+            if (effect === undefined || !(effect.flags & 2)) {
+                break;
+            }
+        } while (true);
+        queuedLength = insertIndex;
+        while (firstInsertedIndex < --insertIndex) {
+            const left = queued[firstInsertedIndex];
+            queued[firstInsertedIndex++] = queued[insertIndex];
+            queued[insertIndex] = left;
+        }
+    },
+    unwatched(node) {
+        if ('getter' in node) {
+            if (node.depsTail !== undefined) {
+                node.flags = 1 | 16;
+                disposeAllDepsInReverse(node);
+            }
+        }
+        else if ('currentValue' in node) {
+        }
+        else if ('fn' in node) {
+            effectOper.call(node);
+        }
+        else {
+            effectScopeOper.call(node);
+        }
+    },
 });
-function updateComputed(c: ComputedNode): B {
-	if (c.flags & HasChildEffect) {
-		let link = c.depsTail;
-		while (link !== undefined) {
-			const prev = link.prevDep;
-			const dep = link.dep;
-			if (!('getter' in dep) && !('currentValue' in dep)) {
-				unlink(link, c);
-			}
-			link = prev;
-		}
-	}
-	c.depsTail = undefined;
-	c.flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
-	const prevSub = setActiveSub(c);
-	try {
-		++cycle;
-		const oldValue = c.value;
-		return oldValue !== (c.value = c.getter(oldValue));
-	} finally {
-		activeSub = prevSub;
-		c.flags &= ~ReactiveFlags.RecursedCheck;
-		purgeDeps(c);
-	}
+function updateComputed(c) {
+    if (c.flags & HasChildEffect) {
+        let link = c.depsTail;
+        while (link !== undefined) {
+            const prev = link.prevDep;
+            const dep = link.dep;
+            if (!('getter' in dep) && !('currentValue' in dep)) {
+                unlink(link, c);
+            }
+            link = prev;
+        }
+    }
+    c.depsTail = undefined;
+    c.flags = 1 | 4;
+    const prevSub = setActiveSub(c);
+    try {
+        ++cycle;
+        const oldValue = c.value;
+        return oldValue !== (c.value = c.getter(oldValue));
+    }
+    finally {
+        activeSub = prevSub;
+        c.flags &= ~4;
+        purgeDeps(c);
+    }
 }
-function updateSignal(s: SignalNode): B {	
-	s.flags = ReactiveFlags.Mutable;
-	const previous = s.currentValue;
-	const next = s.pendingValue;
-	s.currentValue = next;
-	return !Object.is(previous, next);
+function updateSignal(s) { s.flags = 1; return s.currentValue !== (s.currentValue = s.pendingValue);}
+function run(e) {
+    const flags = e.flags;
+    if (flags & 16
+        || (flags & 32
+            && checkDirty(e.deps, e))) {
+        if (flags & HasChildEffect) {
+            let link = e.depsTail;
+            while (link !== undefined) {
+                const prev = link.prevDep;
+                const dep = link.dep;
+                if (!('getter' in dep) && !('currentValue' in dep)) {
+                    unlink(link, e);
+                }
+                link = prev;
+            }
+        }
+        if (e.cleanup) {
+            runCleanup(e);
+            if (!e.flags) {
+                return;
+            }
+        }
+        e.depsTail = undefined;
+        e.flags = 2 | 4;
+        const prevSub = setActiveSub(e);
+        try {
+            ++cycle;
+            ++runDepth;
+            e.cleanup = e.fn();
+        }
+        finally {
+            --runDepth;
+            activeSub = prevSub;
+            e.flags &= ~4;
+            purgeDeps(e);
+        }
+    }
+    else if (e.deps !== undefined) {
+        e.flags = 2 | (flags & HasChildEffect);
+    }
 }
-function run(e: EffectNode): V {
-	const flags = e.flags;
-	if (
-		flags & ReactiveFlags.Dirty
-		|| (
-			flags & ReactiveFlags.Pending
-			&& checkDirty(e.deps!, e)
-		)
-	) {
-		if (flags & HasChildEffect) {
-			let link = e.depsTail;
-			while (link !== undefined) {
-				const prev = link.prevDep;
-				const dep = link.dep;
-				if (!('getter' in dep) && !('currentValue' in dep)) {
-					unlink(link, e);
-				}
-				link = prev;
-			}
-		}
-		if (e.cleanup) {
-			runCleanup(e);
-			if (!e.flags) {
-				return;
-			}
-		}
-		e.depsTail = undefined;
-		e.flags = ReactiveFlags.Watching | ReactiveFlags.RecursedCheck;
-		const prevSub = setActiveSub(e);
-		try {
-			++cycle;
-			++runDepth;
-			const result = e.fn();
-			e.cleanup = typeof result === "function" ? result : undefined;
-		} finally {
-			--runDepth;
-			activeSub = prevSub;
-			e.flags &= ~ReactiveFlags.RecursedCheck;
-			purgeDeps(e);
-		}
-	} else if (e.deps !== undefined) {
-		e.flags = ReactiveFlags.Watching | (flags & HasChildEffect);
-	}
+function flush() {
+    try {
+        while (notifyIndex < queuedLength) {
+            const effect = queued[notifyIndex];
+            queued[notifyIndex++] = undefined;
+            run(effect);
+        }
+    }
+    finally {
+        while (notifyIndex < queuedLength) {
+            const effect = queued[notifyIndex];
+            queued[notifyIndex++] = undefined;
+            effect.flags |= 2 | 8;
+        }
+        notifyIndex = 0;
+        queuedLength = 0;
+    }
 }
-function flush(): V {
-	try {
-		while (notifyIndex < queuedLength) {
-			const effect = queued[notifyIndex]!;
-			queued[notifyIndex++] = undefined;
-			run(effect);
-		}
-	} finally {
-		while (notifyIndex < queuedLength) {
-			const effect = queued[notifyIndex]!;
-			queued[notifyIndex++] = undefined;
-			effect.flags |= ReactiveFlags.Watching | ReactiveFlags.Recursed;
-		}
-		notifyIndex = 0;
-		queuedLength = 0;
-	}
+function computedOper() {
+    const flags = this.flags;
+    if (flags & 16
+        || (flags & 32
+            && (checkDirty(this.deps, this)
+                || (this.flags = flags & ~32, false)))) {
+        if (updateComputed(this)) {
+            const subs = this.subs;
+            if (subs !== undefined) {
+                shallowPropagate(subs);
+            }
+        }
+    }
+    else if (!flags) {
+        this.flags = 1 | 4;
+        const prevSub = setActiveSub(this);
+        try {
+            this.value = this.getter();
+        }
+        finally {
+            activeSub = prevSub;
+            this.flags &= ~4;
+        }
+    }
+    const sub = activeSub;
+    if (sub !== undefined) {
+        link(this, sub, cycle);
+    }
+    return this.value;
 }
-function computedOper<T>(this: ComputedNode<T>): T {
-	const flags = this.flags;
-	if ( flags & ReactiveFlags.Dirty || ( flags & ReactiveFlags.Pending && ( checkDirty(this.deps!, this) || (this.flags = flags & ~ReactiveFlags.Pending, false) ) ) ) {
-		if (updateComputed(this)) {
-			const subs = this.subs;
-			if (subs !== undefined) { shallowPropagate(subs); }
-		}
-	} else if (!flags) {
-		this.flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
-		const prevSub = setActiveSub(this);
-		try {
-			this.value = this.getter();
-		} finally {
-			activeSub = prevSub;
-			this.flags &= ~ReactiveFlags.RecursedCheck;
-		}
-	}
-	const sub = activeSub;
-	if (sub !== undefined) {
-		link(this, sub, cycle);
-	}
-	return this.value!;
+function signalOper(...value) {
+    if (value.length) {
+        if (this.pendingValue !== (this.pendingValue = value[0])) {
+            this.flags = 1 | 16;
+            const subs = this.subs;
+            if (subs !== undefined) {
+                propagate(subs, !!runDepth);
+                if (!batchDepth) {
+                    flush();
+                }
+            }
+        }
+    }
+    else {
+        if (this.flags & 16) {
+            if (updateSignal(this)) {
+                const subs = this.subs;
+                if (subs !== undefined) {
+                    shallowPropagate(subs);
+                }
+            }
+        }
+        const sub = activeSub;
+        if (sub !== undefined) {
+            link(this, sub, cycle);
+        }
+        return this.currentValue;
+    }
 }
-function signalOper<T>(this: SignalNode<T>, ...value: [T]): T | V {
-	if (value.length) {
-		if (this.pendingValue !== (this.pendingValue = value[0])) {
-			this.flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
-			const subs = this.subs;
-			if (subs !== undefined) {
-				propagate(subs, !!runDepth);
-				if (!batchDepth) {
-					flush();
-				}
-			}
-		}
-	} else {
-		if (value.length) {
-			const next = value[0];
+function runCleanup(e) {
+    const cleanup = e.cleanup;
+    e.cleanup = undefined;
+    const prevSub = activeSub;
+    activeSub = undefined;
+    try {
+        cleanup();
+    }
+    finally {
+        activeSub = prevSub;
+    }
+}
+function effectOper() { effectScopeOper.call(this); if (this.cleanup) { runCleanup(this); }
+}
+function effectScopeOper() {
+    this.flags = 0;
+    disposeAllDepsInReverse(this);
+    const sub = this.subs;
+    if (sub !== undefined) {
+        unlink(sub);
+    }
+}
+function disposeAllDepsInReverse(sub) {
+    let link = sub.depsTail;
+    while (link !== undefined) {
+        const prev = link.prevDep;
+        unlink(link, sub);
+        link = prev;
+    }
+}
+function purgeDeps(sub) {
+    const depsTail = sub.depsTail;
+    let dep = depsTail !== undefined ? depsTail.nextDep : sub.deps;
+    while (dep !== undefined) {
+        dep = unlink(dep, sub);
+    }
+}
+function makeRx<T>(id: string, b: Binding<T>): Rx<T> {
+	const fn = (...args: [] | [T]) => {
+		if (args.length === 0) return b.v;
+		set(id, args[0]);
+	};
 
-			if (!Object.is(this.pendingValue, next)) {
-				this.pendingValue = next;
-				this.flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
-				const subs = this.subs;
-				if (subs !== undefined) {
-					propagate(subs, !!runDepth);
-					if (!batchDepth) {
-						flush();
-					}
-				}
-			}
-		} else {
-			if (this.flags & ReactiveFlags.Dirty) {
-				if (updateSignal(this)) {
-					const subs = this.subs;
-					if (subs !== undefined) {
-						shallowPropagate(subs);
-					}
-				}
-			}
-			const sub = activeSub;
-			if (sub !== undefined) {
-				link(this, sub, cycle);
-			}
-			return this.currentValue;
-		}
-	}
+	const r = fn as unknown as Rx<T>;
+	Object.defineProperties(r, { id: { value: id }, node: { value: b.node }, el: { value: b.el } });
+
+	b.write(b.v);
+	rx.s(b, id);
+
+	r.attach = (parent) => { for (const n of b.owned) parent.appendChild(n); return r; };
+	r.dispose = () => {
+		rx.d(id);
+		_signals_root.unmount.delete(r.dispose); // idempotent under a second call
+		for (const n of b.owned) n.parentNode?.removeChild(n);
+	};
+
+	_signals_root.unmount.add(r.dispose);
+
+	return r;
 }
-function runCleanup(e: EffectNode): V {
-	const cleanup = e.cleanup!;
-	e.cleanup = undefined;
-	const prevSub = activeSub;
-	activeSub = undefined;
-	try {
-		cleanup();
-	} finally {
-		activeSub = prevSub;
-	}
-}
-function effectOper(this: EffectNode): V {
-	effectScopeOper.call(this);
-	if (this.cleanup) {
-		runCleanup(this);
-	}
-}
-function effectScopeOper(this: EffectScopeNode): V {
-	this.flags = ReactiveFlags.None;
-	disposeAllDepsInReverse(this);
-	const sub = this.subs;
-	if (sub !== undefined) {
-		unlink(sub);
-	}
-}
-function disposeAllDepsInReverse(sub: ReactiveNode): V {
-	let link = sub.depsTail;
-	while (link !== undefined) {
-		const prev = link.prevDep;
-		unlink(link, sub);
-		link = prev;
-	}
-}
-function purgeDeps(sub: ReactiveNode) {
-	const depsTail = sub.depsTail;
-	let dep = depsTail !== undefined ? depsTail.nextDep : sub.deps;
-	while (dep !== undefined) {
-		dep = unlink(dep, sub);
-	}
-}
-export function getActiveSub(): ReactiveNode | UD {	return activeSub;}
-export function setActiveSub(sub?: ReactiveNode) {
-	const prevSub = activeSub;
-	activeSub = sub;
-	return prevSub;
-}
-export function getBatchDepth(): N { return batchDepth;}
+export function getActiveSub() { return activeSub;}
+export function setActiveSub(sub) { const prevSub = activeSub; activeSub = sub; return prevSub;}
+export function getBatchDepth() { return batchDepth;}
 export function startBatch() { ++batchDepth;}
 export function endBatch() { if (!--batchDepth) { flush(); }}
-export function isSignal(fn: () => V): B {	return fn.name === 'bound ' + signalOper.name;}
-export function isComputed(fn: () => V): B { return fn.name === 'bound ' + computedOper.name;}
-export function isEffect(fn: () => V): B {	return fn.name === 'bound ' + effectOper.name;}
-export function isEffectScope(fn: () => V): B {	return fn.name === 'bound ' + effectScopeOper.name;}
-export function signal<T>(): {(): T | undefined; (value: T | undefined): void;};
-export function signal<T>(initialValue: T): {(): T;	(value: T): void;};
-export function signal<T>(initialValue?: T): {(): T | undefined; (value: T | undefined): void;} {
-	return signalOper.bind({
-		currentValue: initialValue,
-		pendingValue: initialValue,
-		subs: undefined,
-		subsTail: undefined,
-		flags: ReactiveFlags.Mutable,
-	}) as () => T | undefined;
+export function isSignal(fn) { return fn.name === 'bound ' + signalOper.name;}
+export function isComputed(fn) { return fn.name === 'bound ' + computedOper.name;}
+export function isEffect(fn) { return fn.name === 'bound ' + effectOper.name;}
+export function isEffectScope(fn) { return fn.name === 'bound ' + effectScopeOper.name;}
+
+export function computed(getter) {
+    return computedOper.bind({
+        value: undefined,
+        subs: undefined,
+        subsTail: undefined,
+        deps: undefined,
+        depsTail: undefined,
+        flags: 0,
+        getter: getter,
+    });
 }
-export function signalRx<T>()
-export function signalRx<T>(initialValue: T)
-export function signalRx<T>(initialValue?: T, injectDom = true, __sauron_id__ = _sid()) {}
-export function signalRxTxt<T>();
-export function signalRxTxt<T>(initialValue: T)
-export function signalRxTxt<T>(initialValue?: T, node?: Node, injectDom = true ,  __sauron_id__ = _sid()) {}
-export function signalRxAtr<T>()
-export function signalRxAtr<T>(initialValue: T)
-export function signalRxAtr<T>(initialValue?: T, node?: Element,  attributeName?: string, injectDom = true, __sauron_id__ = _sid()) {}
-export function computed<T>(getter: (previousValue?: T) => T): () => T {
-	return computedOper.bind({
-		value: undefined,
-		subs: undefined,
-		subsTail: undefined,
-		deps: undefined,
-		depsTail: undefined,
-		flags: ReactiveFlags.None,
-		getter: getter as (previousValue?: unknown) => unknown,
-	}) as () => T;
+export function effect(fn) {
+    const e = {
+        fn,
+        cleanup: undefined,
+        subs: undefined,
+        subsTail: undefined,
+        deps: undefined,
+        depsTail: undefined,
+        flags: 2 | 4,
+    };
+    const prevSub = setActiveSub(e);
+    if (prevSub !== undefined) {
+        link(e, prevSub, 0);
+        prevSub.flags |= HasChildEffect;
+    }
+    try {
+        ++runDepth;
+        e.cleanup = e.fn();
+    }
+    finally {
+        --runDepth;
+        activeSub = prevSub;
+        e.flags &= ~4;
+    }
+    return effectOper.bind(e);
 }
-export function effect(fn: () => V | (() => V)): () => V {
-	const e: EffectNode = {
-		fn,
-		cleanup: undefined,
-		subs: undefined,
-		subsTail: undefined,
-		deps: undefined,
-		depsTail: undefined,
-		flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
-	};
-	const prevSub = setActiveSub(e);
-	if (prevSub !== undefined) {
-		link(e, prevSub, 0);
-		prevSub.flags |= HasChildEffect;
-	}
-	try {
-		++runDepth;
-		const result = e.fn();
-		e.cleanup = typeof result === "function" ? result : undefined;
-	} finally {
-		--runDepth;
-		activeSub = prevSub;
-		e.flags &= ~ReactiveFlags.RecursedCheck;
-	}
-	return effectOper.bind(e);
+export function effectScope(fn) {
+    const e = {
+        deps: undefined,
+        depsTail: undefined,
+        subs: undefined,
+        subsTail: undefined,
+        flags: 1,
+    };
+    const prevSub = setActiveSub(e);
+    if (prevSub !== undefined) {
+        link(e, prevSub, 0);
+        prevSub.flags |= HasChildEffect;
+    }
+    try {
+        fn();
+    }
+    finally {
+        activeSub = prevSub;
+    }
+    return effectScopeOper.bind(e);
 }
-export function effectScope(fn: () => V): () => V {
-	const e: EffectScopeNode = {
-		deps: undefined,
-		depsTail: undefined,
-		subs: undefined,
-		subsTail: undefined,
-		flags: ReactiveFlags.Mutable,
-	};
-	const prevSub = setActiveSub(e);
-	if (prevSub !== undefined) {
-		link(e, prevSub, 0);
-		prevSub.flags |= HasChildEffect;
-	}
-	try {
-		fn();
-	} finally {
-		activeSub = prevSub;
-	}
-	return effectScopeOper.bind(e);
+export function trigger(fn) {
+    const sub = {
+        deps: undefined,
+        depsTail: undefined,
+        flags: 2,
+    };
+    const prevSub = setActiveSub(sub);
+    try {
+        fn();
+    }
+    finally {
+        activeSub = prevSub;
+        sub.flags = 0;
+        let link = sub.deps;
+        while (link !== undefined) {
+            const dep = link.dep;
+            link = unlink(link, sub);
+            const subs = dep.subs;
+            if (subs !== undefined) {
+                propagate(subs, !!runDepth);
+                shallowPropagate(subs);
+            }
+        }
+        if (!batchDepth) {
+            flush();
+        }
+    }
 }
-export function trigger(fn: () => V) {
-	const sub: ReactiveNode = {
-		deps: undefined,
-		depsTail: undefined,
-		flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
-	};
-	const prevSub = setActiveSub(sub);
-	++batchDepth;
-	try {
-		fn();
-	} finally {
-		activeSub = prevSub;
-		sub.flags = ReactiveFlags.None;
-		let link = sub.deps;
-		while (link !== undefined) {
-			const dep = link.dep;
-			link = unlink(link, sub);
-			const subs = dep.subs;
-			if (subs !== undefined) {
-				propagate(subs, !!runDepth);
-				shallowPropagate(subs);
-			}
-		}
-		if (!--batchDepth) {
-			flush();
-		}
-	}
+export function createReactiveSystem({ update, notify, unwatched, }) {
+    return {
+        link,
+        unlink,
+        propagate,
+        checkDirty,
+        shallowPropagate,
+    };
+    function link(dep, sub, version) {
+        const prevDep = sub.depsTail;
+        if (prevDep !== undefined && prevDep.dep === dep) {
+            return;
+        }
+        const nextDep = prevDep !== undefined ? prevDep.nextDep : sub.deps;
+        if (nextDep !== undefined && nextDep.dep === dep) {
+            nextDep.version = version;
+            sub.depsTail = nextDep;
+            return;
+        }
+        const prevSub = dep.subsTail;
+        if (prevSub !== undefined && prevSub.version === version && prevSub.sub === sub) {
+            return;
+        }
+        const newLink = sub.depsTail
+            = dep.subsTail
+                = {
+                    version,
+                    dep,
+                    sub,
+                    prevDep,
+                    nextDep,
+                    prevSub,
+                    nextSub: undefined,
+                };
+        if (nextDep !== undefined) {
+            nextDep.prevDep = newLink;
+        }
+        if (prevDep !== undefined) {
+            prevDep.nextDep = newLink;
+        }
+        else {
+            sub.deps = newLink;
+        }
+        if (prevSub !== undefined) {
+            prevSub.nextSub = newLink;
+        }
+        else {
+            dep.subs = newLink;
+        }
+    }
+    function unlink(link, sub = link.sub) {
+        const { dep, prevDep, nextDep, nextSub, prevSub } = link;
+        if (nextDep !== undefined) {
+            nextDep.prevDep = prevDep;
+        }
+        else {
+            sub.depsTail = prevDep;
+        }
+        if (prevDep !== undefined) {
+            prevDep.nextDep = nextDep;
+        }
+        else {
+            sub.deps = nextDep;
+        }
+        if (nextSub !== undefined) {
+            nextSub.prevSub = prevSub;
+        }
+        else {
+            dep.subsTail = prevSub;
+        }
+        if (prevSub !== undefined) {
+            prevSub.nextSub = nextSub;
+        }
+        else if ((dep.subs = nextSub) === undefined) {
+            unwatched(dep);
+        }
+        return nextDep;
+    }
+    function propagate(link, innerWrite) {
+        let next = link.nextSub;
+        let stack;
+        top: do {
+            const sub = link.sub;
+            let flags = sub.flags;
+            if (!(flags & (4 | 8 | 16 | 32))) {
+                sub.flags = flags | 32;
+                if (innerWrite) {
+                    sub.flags |= 8;
+                }
+            }
+            else if (!(flags & (4 | 8))) {
+                flags = 0;
+            }
+            else if (!(flags & 4)) {
+                sub.flags = (flags & ~8) | 32;
+            }
+            else if (!(flags & (16 | 32)) && isValidLink(link, sub)) {
+                sub.flags = flags | (8 | 32);
+                flags &= 1;
+            }
+            else {
+                flags = 0;
+            }
+            if (flags & 2) {
+                notify(sub);
+            }
+            if (flags & 1) {
+                const subSubs = sub.subs;
+                if (subSubs !== undefined) {
+                    const nextSub = (link = subSubs).nextSub;
+                    if (nextSub !== undefined) {
+                        stack = { value: next, prev: stack };
+                        next = nextSub;
+                    }
+                    continue;
+                }
+            }
+            if ((link = next) !== undefined) {
+                next = link.nextSub;
+                continue;
+            }
+            while (stack !== undefined) {
+                link = stack.value;
+                stack = stack.prev;
+                if (link !== undefined) {
+                    next = link.nextSub;
+                    continue top;
+                }
+            }
+            break;
+        } while (true);
+    }
+    function checkDirty(link, sub) {
+        let stack;
+        let checkDepth = 0;
+        let dirty = false;
+        top: do {
+            const dep = link.dep;
+            const flags = dep.flags;
+            if (sub.flags & 16) {
+                dirty = true;
+            }
+            else if ((flags & (1 | 16)) === (1 | 16)) {
+                const subs = dep.subs;
+                if (update(dep)) {
+                    if (subs.nextSub !== undefined) {
+                        shallowPropagate(subs);
+                    }
+                    dirty = true;
+                }
+            }
+            else if ((flags & (1 | 32)) === (1 | 32)) {
+                stack = { value: link, prev: stack };
+                link = dep.deps;
+                sub = dep;
+                ++checkDepth;
+                continue;
+            }
+            if (!dirty) {
+                const nextDep = link.nextDep;
+                if (nextDep !== undefined) {
+                    link = nextDep;
+                    continue;
+                }
+            }
+            while (checkDepth--) {
+                link = stack.value;
+                stack = stack.prev;
+                if (dirty) {
+                    const subs = sub.subs;
+                    if (update(sub)) {
+                        if (subs.nextSub !== undefined) {
+                            shallowPropagate(subs);
+                        }
+                        sub = link.sub;
+                        continue;
+                    }
+                    dirty = false;
+                }
+                else {
+                    sub.flags &= ~32;
+                }
+                sub = link.sub;
+                const nextDep = link.nextDep;
+                if (nextDep !== undefined) {
+                    link = nextDep;
+                    continue top;
+                }
+            }
+            return dirty && !!sub.flags;
+        } while (true);
+    }
+    function shallowPropagate(link) {
+        do {
+            const sub = link.sub;
+            const flags = sub.flags;
+            if ((flags & (32 | 16)) === 32) {
+                sub.flags = flags | 16;
+                if ((flags & (2 | 4)) === 2) {
+                    notify(sub);
+                }
+            }
+        } while ((link = link.nextSub) !== undefined);
+    }
+    function isValidLink(checkLink, sub) {
+        let link = sub.depsTail;
+        while (link !== undefined) {
+            if (link === checkLink) {
+                return true;
+            }
+            link = link.prevDep;
+        }
+        return false;
+    }
 }
-export function signal1<T>(initialValue?: T, injectDom: B = true): { (): T | UD; (value: T | UD): V;} {
-	return signalOper.bind({
-		currentValue: initialValue,
-		pendingValue: initialValue,
-		injectDom: injectDom ?? undefined,
-		subs: undefined,
-		subsTail: undefined,
-		flags: ReactiveFlags.Mutable,
-	}) as () => T | undefined;
+export function signal(initialValue) {
+    return signalOper.bind({
+        currentValue: initialValue,
+        pendingValue: initialValue,
+        subs: undefined,
+        subsTail: undefined,
+        flags: 1,
+    });
+}
+export function signalRx<T>(): Rx<T | undefined>;
+export function signalRx<T>(initialValue: T, injectDom?: boolean): Rx<T>;
+export function signalRx<T>(initialValue?: T, injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
+	const el = injectDom ? document.createElement('span') : null;
+	el?.setAttribute('data-sid', __sauron_id__);
+
+	return makeRx(__sauron_id__, {
+		v: initialValue, node: el, el, owned: el ? [el] : [],
+		write(v) { if (el) el.textContent = str(v); },
+	});
+}
+export function signalRxTxt<T>(): Rx<T | undefined>;
+export function signalRxTxt<T>(initialValue: T, node?: Node, injectDom?: boolean): Rx<T>;
+export function signalRxTxt<T>(initialValue?: T, node?: Node, injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
+	let text = (node as Text | null) ?? null;
+	const owned: Node[] = [];
+
+	if (!text && injectDom) owned.push(document.createComment(__sauron_id__), (text = document.createTextNode('')));
+
+	return makeRx(__sauron_id__, {
+		v: initialValue, node: text, el: text?.parentElement ?? null, owned,
+		write(v) { if (text) text.data = str(v); },
+	});
+}
+export function signalRxAtr<T>(): Rx<T | undefined>;
+export function signalRxAtr<T>(initialValue: T, node?: Element, attributeName?: string, injectDom?: boolean): Rx<T>;
+export function signalRxAtr<T>(initialValue?: T, node?: Element, attributeName = 'value',
+	injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
+
+	if (node && injectDom && !node.hasAttribute('data-sid')) node.setAttribute('data-sid', __sauron_id__);
+	const live = node instanceof HTMLInputElement && attributeName === 'value' ? node : null;
+
+	return makeRx(__sauron_id__, {
+		v: initialValue, node, el: node ?? null, owned: [],
+		write(v) {
+			if (!node) return;
+			if (v == null || v === false) node.removeAttribute(attributeName);
+			else node.setAttribute(attributeName, v === true ? '' : str(v));
+			if (live && live.value !== str(v) && document.activeElement !== live) live.value = str(v);
+		},
+	});
+}
+export function scanRoot(root: ParentNode = document, componentId = _signals_root.id) {
+	const out: Record<string, string | null> = Object.create(null);
+
+	for (const el of root.querySelectorAll('[data-sid]')) {
+		out[el.getAttribute('data-sid')!] = el.getAttribute('value') ?? el.textContent;
+	}
+
+	const w = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
+	while (w.nextNode()) {
+		const c = w.currentNode as Comment;
+		if (c.data.startsWith('rx')) out[c.data] = c.nextSibling?.textContent ?? null;
+	}
+
+	return out;
 }
 // #endregion
 //                                                               [SITH] [PALPATINE] [DARTH VADER] [GALEN MAREK] [RULE OF 2] BUS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-type BUS_HANDLER<P = U, T = U> = (p: P, msg: SIG_BUS_Message1) => T | Promise<T>;
-interface SIG_BUS_Message1 {
-	id?: string;
-	r?: S;
-	m?: S;
-	s: S;
-	k: S;
-	p?: any;
-	ts?: number;
-	_ack?: boolean;
-	_reply?: boolean;
-	_rid?: string;
-	ackTo?: string;
-}
-interface BUS_CHANNEL {
-	handler?: BUS_HANDLER<any, any>;
-	push?: Set<(msg: SIG_BUS_Message1) => void>;
-}
-interface Program { code: Int32Array; consts: Float64Array; ranges: Int32Array[] } 
 const THE_MESH_CACHE: R<S, R<S, R<S, R<S, V>>>> = O.create(null);
 type c_type = "mesh" | 'globalThis'
 class THE_MESH_STORE {
@@ -8467,7 +8569,7 @@ class THE_MESH_STORE {
 		this._handlers = this.getS('_handlers', this.m, this.r );
 		const rL = ((globalThis as A)[this.r] ??= O.create(null));
 		const mL = (rL[this.m] ??= O.create(null));
-		(globalThis as A)['_handlers'] = mL['_handlers'] ??= O.create(null); // this._globalThis
+		this._handlers = mL['_handlers'] ??= O.create(null); // this._globalThis
 		this._meta = this.getS('_meta', this.m, this.r);
 		this._signals = this.getS('_signals', this.m, this.r);
 		this._naked_signals = this.getS('_naked_signals', this.m, this.r);
@@ -8920,7 +9022,7 @@ class THE_MESH_STORE {
 			fn.hot = (k: S, s: S = '_atoms', m: S = this.m, r: S = this.r): B => {
 				if (!(k in this._atoms)) return false;
 				delete this._atoms[k];
-				this.atoms.emit(k, s, m, tr, undefined);
+				this.atoms.emit(k, s, m, r, undefined);
 				return true;
 			};
 			return fn;
@@ -9018,8 +9120,12 @@ class THE_MESH_STORE {
 		};
 		return fn;
 	})();
-	public async invokeHandlers(msg: SIG_BUS_Message): P<unknown> {
-		const set = this.root.se.getSubS(msg.s, msg.m, msg.r)[msg.k ?? "[NO_ADP_FOUND]"];
+	public async invokeHandlers(msg: SIG_BUS_Message): P<U> {
+		const root = this.THE_MESH_CACHE
+		const rL = (root[msg.r] ??= Object.create(null));
+		const mL = (rL[msg.m] ??= Object.create(null));
+		const channel = mL[msg.s] ??= Object.create(null);
+		const set = channel[msg.k]?.handler;
 		if (!set || !set.size) return { success: false };
 	
 		const results = await Promise.all(
@@ -9047,6 +9153,10 @@ class THE_MESH_STORE {
 	
 		return Object.keys(merged).length === 0 ? { success: true } : merged;
 	}
+}
+export type MaybePromise<R = any> = R;
+export function MaybePromise<R = any>(v: R): MaybePromise {
+    return v !== undefined ? v as R : Promise.resolve(v) as Promise<R> 
 }
 export class SITH {
 	public root: DEATH_STAR;
@@ -9720,7 +9830,7 @@ export class SITH {
 				}
 			}
 			fn.switch = <T = A> (p: U, k: A, s: S = this.s, m: S = this.m, r: S = this.r,  adapter = "ws") => {
-				const msg: SIG_BUS_Message = { id: this.hub.REGISTRY._sid(), r: r, m: m, s: s, k: k, p: { p }, ts: Date.now(), _ack: false };
+				const msg: SIG_BUS_Message = { id: this.hub.root.REGISTRY._sid(), r: r, m: m, s: s, k: k, p: { p }, ts: Date.now(), _ack: false };
 	
 				let v: A = this.DISPATCH(msg, adapter);
 				if (v !== undefined && !(v instanceof Promise)) {
@@ -10112,6 +10222,8 @@ export class SITH {
 		public mesh_store: THE_MESH_STORE;
 		public root: DEATH_STAR;
 		public hub: SITH;
+		public state: RAVEN["state"] 
+		public bus: SITH["marek"] 
 		constructor(hub: SITH) {
 			this.root = hub.root;
 			this.hub = hub;
@@ -10119,11 +10231,13 @@ export class SITH {
 			this.m = hub.m;
 			this.s = hub.s;
 			this.k = hub.k;
+			this.state = hub.root.state.state
+			this.bus = hub.root.bus.marek
 		}
 		
 		public send = (() => {
-			const fn = <T = A,>(p: U, k: A, s: S = this.s, m: S = this.m, r: S = this.r,  adapter = "ws") => {
 				//const msg: SIG_BUS_Message = { id: this.hub.REGISTRY._sid(), r: r, m: m, s: s, k: k,  p: p, ts: Date.now(), _ack: false };
+			const fn = <T = A>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, adapter = "ws") => {
 				let v: A = this.DISPATCH({ id: this.hub.root.REGISTRY._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
 				if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 				else {
@@ -10139,8 +10253,8 @@ export class SITH {
 				}
 			};
 			fn.gt = (() => {
-				const fn =<T = U, P = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r)  => {
-					const root = globalThis as any;
+				const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
+					const root = c === 'globalThis' ? globalThis as any : this.hub.mesh_store.THE_MESH_CACHE;
 					const rL = (root[r] ??= Object.create(null));
 					const mL = (rL[m] ??= Object.create(null));
 					const channel = mL[s] ??= Object.create(null);
@@ -10161,8 +10275,8 @@ export class SITH {
 					}
 				}
 				fn.hot = (() => {
-					const fn =<T = U, P = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
-						const handler = (globalThis as any)[s]?.[k]?.handler;
+					const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
+						const handler = this.hub.mesh_store[k]._handlers;
 						if (!handler) return undefined;
 						const v: A = handler(p, { r, m, s, k, p: p });
 						if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
@@ -10190,29 +10304,31 @@ export class SITH {
 				})();
 				return fn;
 			})();
-			fn.stream=<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | P<T> | UD =>{
-				const channel = (globalThis as any)[s];
-				const handler = channel[k]?.handler;
+			fn.stream=<T = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'): T | P<T> | UD =>{
+				const root =  c === 'globalThis' ? globalThis as any : this.hub.mesh_store.THE_MESH_CACHE;
+				const rL = (root[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const _listeners = mL[s] ??= Object.create(null);
+				const handler = _listeners[k]?.handler;
 				if (!handler) return undefined;
 				const msg: SIG_BUS_Message1 = { r, m, s, k, p: p, _ack: false };
 				const result = handler(p, msg);
-				const listeners = channel.push;
-				if (listeners) { for (const listener of listeners) listener(msg); }
+				if (handler) { for (const listener of handler) listener(msg); }
 				return result as T | P<T> | UD;
 			}
 			fn.nested = (() => {
-				const fn =(p: P, k: S, s: S = this.s, m: S = this.m, r: S = this.r)  => {
-					const root = globalThis as any;
+				const fn =(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
+					const root =  c === 'globalThis' ? globalThis as any : this.hub.mesh_store.THE_MESH_CACHE;
 					const rL = (root[r] ??= Object.create(null));
 					const mL = (rL[m] ??= Object.create(null));
 					const _listeners = mL[s] ??= Object.create(null);
-					const set = _listeners[k];
+					const set = _listeners[k]?.handler;
 					if (!set) return;
 					for (const fn of set) { fn(p); }
 				 }
 				fn.hot = (() => {
-					const fn = (p: P, k: S, s: S = this.s) =>{
-						const set = (globalThis as any)[s]?.[k];
+					const fn = (p: P, k: S, s: S = '_globalThis') =>{
+						const set = this.hub.mesh_store._handlers[k]?.handler;
 						if (!set) return;
 						for (const fn of set) { fn(p); }
 					 }
@@ -10220,10 +10336,10 @@ export class SITH {
 				})();
 				return fn;
 			})();
-			
+			return fn;
 		})();
 		public sub = (() => {
-			const fn = ( handler: A, k: S, s: S = this.s, m: S = this.m, r: S = this.r, c: c_type = "mesh" ): () => V => {
+			const fn = ( handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh" ): () => V => {
 				// CHANNEL LEVEL
 				const channelSet = (this.mesh_store.getR(r, c)[r] ??= new Set<A>()) as Set<A>;
 				channelSet.add(handler);
@@ -10274,11 +10390,12 @@ export class SITH {
 				return () => { handlers!.delete(handler); if (handlers!.size === 0) { delete root[k]; } };
 			}
 			fn.gt = (() => {
-				const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = this.s, m: S = this.m, r: S = this.r,): () => V=> {
-					const rL = ((globalThis as A)[r] ??= O.create(null));
+				const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'): () => V=> {
+					const root =  c === 'globalThis' ? globalThis as any : this.hub.mesh_store.THE_MESH_CACHE;
+					const rL = (root[r] ??= O.create(null));
 					const mL = (rL[m] ??= O.create(null));
-					const sl = mL['_globalThis'] ??= O.create(null); 
-					const channel = sl[k]
+					const sl = mL[s] ??= O.create(null); 
+					  const channel = (sl[k] ??= Object.create(null));
 					channel.handler = handler;
 						return () => {
 							if (channel.handler === handler) {
@@ -10287,8 +10404,8 @@ export class SITH {
 						};
 				 }
 				fn.hot = (() => {
-					const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = this.s): () => V =>{
-						const channel = (globalThis as A)[s]?.[k];
+					const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis'): () => V =>{
+						const channel =  this.hub.mesh_store._handlers[k]?.handler;
 						channel.handler = handler;
 						return () => {
 							if (channel.handler === handler) {
@@ -10301,16 +10418,17 @@ export class SITH {
 				return fn;
 			})();
 			fn.adapter = (() => {
-				const fn =( handler: A, k: S, s: S = this.s, m: S = this.m, r: S = this.r, c: c_type = "mesh")  => { }
+				const fn =( handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh")  => { }
 				fn.hot = (() => {
 					const fn = () =>{ }
 					return fn;
 				})();
 				return fn;
 			})();
-			fn.nested = (handler: (data: any) => void, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			fn.nested = (handler: (data: any) => void, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
 				if (r === this.r && m === this.m && s === this.s) {
-					const _listeners = this.mesh_store._handlers[k];
+					const root =  this.hub.mesh_store._handlers[k]?.handler; 
+					const _listeners = root[k];
 					if (!_listeners.has(k)) {
 						_listeners.set(k, new Set());
 					}
@@ -10323,7 +10441,11 @@ export class SITH {
 						}
 					};
 				} else {
-					const _listeners = this.map(s, m, r, "#BEAR");
+					const root = c === 'globalThis' ? globalThis as any : this.hub.mesh_store.THE_MESH_CACHE;
+					const rL = (root[r] ??= Object.create(null));
+					const mL = (rL[m] ??= Object.create(null));
+					let _listeners = mL[s] ??= Object.create(null);
+					_listeners = _listeners[k]
 					if (!_listeners.has(k)) {
 						_listeners.set(k, new Set());
 					}
@@ -10337,14 +10459,14 @@ export class SITH {
 					};
 				}
 			};
-			fn.nested3 = (p: P, k: S, s: S = this.s, m: S = this.m, r: S = this.r) => {
+			fn.nested3 = (p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r) => {
 				if (r === this.r && m === this.m && s === this.s) {
 				} else {
 				}
 			};
 			return fn;
 		})();
-		async *streamGen<P = A, R = A>(p: P, k: S, s: S = this.s, m: S = this.m, r: S = this.r, opts: { adapter?: S } = {}): AG<R, V, U> {
+		async *streamGen<P = A, R = A>(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, opts: { adapter?: S } = {}): AG<R, V, U> {
 			const replyTo = this.hub.root.REGISTRY._sid();
 			const queue: R[] = [];
 			let closed = false;
@@ -10433,7 +10555,7 @@ export class SITH {
 						if (error) { reject(error instanceof Error ? error : new Error(String(error))); }
 						else { resolve(); }
 					};
-					closeSubscription = this.j.sub(
+					closeSubscription = this.sub(
 						(data: StreamEvent) => {
 							if (closed) return;
 		
@@ -10450,7 +10572,7 @@ export class SITH {
 				return result;
 			};
 			fn.native = (k?: string, s = this.s, m = this.m, r = this.r): WritableStream => {
-				return new WritableStream({ write: (chunk) => { this.send(chunk, k, s, m, r).send(); }, });
+				return new WritableStream({ write: (chunk) => { this.send(chunk, k, s, m, r) }, });
 			};
 			fn.openSync = (k: S, s?: S, m?: S, r = this.r, opts?: {windowSize?: N}) => {
 				// Like syncStream, but for continuous/unbounded emission — no known chunk count up front. Adds a bounded in-flight window so a fast sender backs off instead of flooding a slow receiver.
@@ -10473,7 +10595,7 @@ export class SITH {
 		
 				const closeRetransmitSub = this.sub(async (reqData: any) => {
 						const missing = unacked.get(reqData?.seq);
-						if (missing) {missing.retries++;await this.send({streamId, seq: reqData.seq, data: missing.p, isRetry: true}, k, s, m, r);}
+						if (missing) {missing.retries++;await this.send.gt.hot({streamId, seq: reqData.seq, data: missing.p, isRetry: true}, k, s, m, r);}
 					}, k, `sync.${streamId}:retransmit`, m, r, );
 		
 				const drain = async () => {
@@ -10494,10 +10616,74 @@ export class SITH {
 					close: () => {closeAckSub();closeRetransmitSub();},
 				};
 			}; 
+			fn.sync = (k: S, s = this.s, m = this.m, r = this.r, opts: SyncStreamOptions = {}): SyncStreamSendHandle => {
+				const windowSize = opts.windowSize ?? 8;
+				const retransmitMs = opts.retransmitMs ?? 5000;
+				const inFlight = new Map<number, Outbound>();
+				let nextSeq = 0;
+				let closed = false;
+				self;
+				const unsub = this.sub( (data: unknown) => {
+						const d = data as {seq?: number} | null;
+						if (!d || typeof d.seq !== "number") return;
+						const o = inFlight.get(d.seq);
+						if (o && !o.acked) {
+							o.acked = true;
+							if (o.timer) clearTimeout(o.timer);
+							inFlight.delete(d.seq);
+						}
+					},`${k}:syncAck`,s,m,r,);
+				const unsubData = this.sub( (data: unknown) => {
+						const d = data as {sync?: boolean; seq?: number} | null;
+						if (d && d.sync === true && typeof d.seq === "number") {
+							this.send({seq: d.seq}, `${k}:syncAck`, s, m, r);
+						}
+					}, k, s, m, r, );
+		
+				const push = (p: unknown): void => {
+					if (closed) throw new Error(`syncStream ${r}: push after close`);
+					if (inFlight.size >= windowSize) { throw new Error(`syncStream ${r}: window full (${windowSize})`); }
+					const o: Outbound = {seq: nextSeq++, p, acked: false, sentAt: Date.now()};
+					inFlight.set(o.seq, o);
+					const send = () => this.send({sync: true, seq: o.seq, p: o.p}, k, s, m, r);
+					send();
+					const arm = () => {o.timer = setTimeout(() => {if (!o.acked) { send(); arm(); } }, retransmitMs); };
+					arm();
+				};
+		
+				const handle: SyncStreamSendHandle = {
+					push,
+					pendingCount: () => inFlight.size,
+					close: () => {
+						closed = true;
+						for (const o of inFlight.values()) if (o.timer) clearTimeout(o.timer);
+						unsub();
+						unsubData();
+					},
+				};
+				return handle;
+			};
+			fn.hot = (key: string, fn: (message: ChannelMessage) => void, s: string = this.s, m: string = this.m, r: string = this.r, ): () => void => {
+					const channel = this._hot[key]
+					const streamLink: StreamLink = { fn, prev: channel.streamTail, next: undefined, };
+					if (channel.streamTail !== undefined) {channel.streamTail.next = streamLink;}
+					else {channel.streamHead = streamLink;}
+					channel.streamTail = streamLink;
+					return () => {
+						const previous = streamLink.prev;
+						const next = streamLink.next;
+			
+						if (next !== undefined) next.prev = previous;
+						else channel.streamTail = previous;
+			
+						if (previous !== undefined) previous.next = next;
+						else channel.streamHead = next;
+					};
+			}
 			return fn;
 		})();
 		public handler = (() => {
-			const fn = (handler: (d: any) => any, k: string, s?: string, m?: string, r?: string, binary = false) => {
+			const fn = (handler: (d: A) => A, k: S = this.k, s: S = '_globalThis', m: S = this.m, r: S = this.r, binary = false): (() => V) => {
 				return this.sub(
 					async (inboundReq: any) => {
 						if (!inboundReq || !inboundReq.streamId) return;
@@ -10551,19 +10737,19 @@ export class SITH {
 					}, k, s, m, r,
 				);
 			};
-			fn.native = (k?: string, s = this.s, m = this.m, r = this.r) => {
+			fn.native = (k?: S, s = '_globalThis', m = this.m, r = this.r) => {
 				let unsubscribe: (() => void) | null = null;
 				return new ReadableStream({
 					start: (controller) => { unsubscribe = this.sub( (data) => { try { controller.enqueue(data); } catch {}  }, k, s, m, r, ); },
 					cancel: () => { if (unsubscribe) { unsubscribe(); unsubscribe = null; } },
 				});
 			};
-			fn.openSync = (handler: (chunk: any, seq: number) => Promise<void> | void, k: string, s: SU = this.s, m: SU = this.m, r: SU = this.r): (() => void) => {
-				const expectedSeqMap = new Map<string, number>();
-				const bufferMap = new Map<string, Map<number, any>>();
+			fn.openSync = (handler: (chunk: A, seq: N) => Promise<V> | V, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r): (() => V) => {
+				const expectedSeqMap = new Map<S, N>();
+				const bufferMap = new Map<S, Map<N, A>>();
 		
 				return this.sub(
-					async (inbound: any) => {
+					async (inbound: A) => {
 						if (!inbound?.streamId) return;
 						const {streamId, seq, data} = inbound;
 		
@@ -10604,17 +10790,83 @@ export class SITH {
 					r,
 				);
 			};
+			fn.sync = (k: string, s = '_globalThis', m = this.m, r = this.r): SyncStreamHandler => {
+				const seqs = new Map<number, unknown>();
+				const waiters = new Set<(p: unknown, seq: number) => void>();
+				const completes = new Set<() => void>();
+				let nextDeliver = 0;
+				let done = false;
+		
+				const deliver = (): void => {
+					while (seqs.has(nextDeliver)) {
+						const p = seqs.get(nextDeliver)!;
+						seqs.delete(nextDeliver);
+						for (const cb of [...waiters]) {
+							try {
+								cb(p, nextDeliver);
+							} catch {
+								/* Consumable errors isolated */
+							}
+						}
+						nextDeliver++;
+					}
+				};
+		
+				const unsub = this.sub(
+					(data: unknown) => {
+						const d = data as {sync?: boolean; seq?: number; p?: unknown; complete?: boolean} | null;
+						if (!d || d.sync !== true) return;
+						if (d.complete === true) {
+							done = true;
+							for (const cb of [...completes]) {
+								try {
+									cb();
+								} catch {
+									/* ignore */
+								}
+							}
+							return;
+						}
+						if (typeof d.seq !== "number") return;
+						if (d.seq >= nextDeliver && !seqs.has(d.seq)) {
+							seqs.set(d.seq, d.p);
+							deliver();
+						}
+					},
+					k,
+					s,
+					m,
+					r,
+				);
+		
+				return {
+					onOrdered(cb) {
+						waiters.add(cb);
+					},
+					onComplete(cb) {
+						completes.add(cb);
+					},
+					close() {
+						unsub();
+						waiters.clear();
+						completes.clear();
+					},
+				};
+			};
 			return fn;
 		})();
 		public duplex = (() => {
-			const fn = async <A = any, B = any>(k: string, s = this.s, m = this.m, r = this.r) => {
+			const fn = async <A = any, B = any>(k: string, s = '_globalThis', m = this.m, r = this.r) => {
 				const hub = {k, s, m, r}
-				return new duplex(hub)
+				return new this.hub.duplex(this, this, { k: k, s: s, m: m, r: r})
 			}	 
-			fn.stream = (readConfig: { k: S; sl?: S; ms?: S; rt?: S }, writeConfig: { k?: S; sl?: S; ms?: S; rt?: S }): { readable: ReadableStream; writable: WritableStream } => {
+			fn.stream = (
+				readConfig: { k: S; sl?: S; ms?: S; rt?: S },
+				writeConfig: { k?: S; sl?: S; ms?: S; rt?: S },
+			): { readable: ReadableStream; writable: WritableStream } => {
 				return {
-					readable: this.handler(readConfig.k, readConfig.sl, readConfig.ms, readConfig.rt),
-					writable: this.stream(writeConfig.k, writeConfig.sl, writeConfig.ms, writeConfig.rt),
+					readable: this.handler.native(readConfig.k,readConfig.sl,readConfig.ms,readConfig.rt,),
+					writable: this.stream.native(writeConfig.k,writeConfig.sl,writeConfig.ms,writeConfig.rt,),
 				};
 			};
 			fn.sx = <TUp = any, TDown = any>(k: string, s?: string, m?: string, r?: string, opts?: {windowSize?: number; livenessId?: string}) => {
@@ -10739,7 +10991,7 @@ export class SITH {
 					isFatallyErrored: () => fatallyErrored,
 				};
 			};
-			fn.async = <TUp = any, TDown = any>(k = this.j.k, s = this.s, m = this.m, r = this.r, opts?: {windowSize?: number}) => {
+			fn.async = <TUp = any, TDown = any>(k = this.k, s = this.s, m = this.m, r = this.r, opts?: {windowSize?: number}) => {
 				const windowSize = opts?.windowSize ?? 32;
 		 
 				const up = this.stream.sync(k, `${s}:up`, m, r, {windowSize});
@@ -10868,7 +11120,7 @@ export class SITH {
 				return dx;
 			};
 			fn.open = <T = any,>(opts = {highWaterMark: 32}, k: string, s = this.s, m = this.m, r = this.r) => {
-				const streamId = this.hub.REGISTRY._sid()
+				const streamId = this.hub.root.REGISTRY._sid()
 		 
 				const highWaterMark = opts?.highWaterMark ?? 32;
 		 
@@ -10941,14 +11193,14 @@ export class SITH {
 					close: async () => {
 						if (!writable && !readable) return;
 						writable = false;
-						await this.j.send({streamId, type: "close"}, k, s, m, r);
+						await this.send({streamId, type: "close"}, k, s, m, r);
 						unsubscribe();
 						closeHandlers.forEach(handler => handler());
 					},
 					abort: async (reason?: any) => {
 						writable = false;
 						readable = false;
-						await this.j.send({streamId, type: "error", error: reason}, k, s, m, r);
+						await this.send({streamId, type: "error", error: reason}, k, s, m, r);
 						unsubscribe();
 						errorHandlers.forEach(handler => handler(reason));
 					},
@@ -11089,7 +11341,7 @@ export class SITH {
 			const settle = (value?: T, error?: U) => {
 				if (settled) return; // first settlement wins
 				settled = true;
-				this.hub.REGISTRY.delete(replyTo);
+				this.hub.root.REGISTRY.delete(replyTo);
 				if (timer) clearTimeout(timer);
 				if (error !== undefined) rejectFn(error);
 				else resolveFn(value as T);
@@ -11103,7 +11355,7 @@ export class SITH {
 					}, timeoutMs);
 				}
 			});
-			this.hub.REGISTRY.set(replyTo, {
+			this.hub.root.REGISTRY.set(replyTo, {
 				// Register BEFORE queueing — a synchronous reply()inside a queued task still lands correctly.
 				resolve: (v: T) => settle(v),
 				reject: (e: unknown) => settle(undefined, e),
@@ -11147,8 +11399,9 @@ export class SITH {
 		public m: A = "SAURON_MASTER_REG";
 		public s: A = "SAURON_SLAVE_REG";
 		public k: A = "__SAURON__";
-		public abus: SITH
-		public bbus: SITH
+		public hub: SITH
+		public abus: A
+		public bbus: A
 		constructor(
 			abus: A, bbus: A, 
 			hub: { k: S; s: S; m: S; r: S } = { k: "__SAURON__", s: "SAURON_SLAVE_REG", m: "SAURON_MASTER_REG", r: "THE_WIZARD_ROOT_REG", }) {
@@ -11210,6 +11463,7 @@ export class SITH {
 		public r: S;
 		public k: S;
 		private channels: Record<S, BUS_CHANNEL>;
+		hot_path_test: BUS_HANDLER
 		constructor(k: A =  "__SAURON__",s: S = "SAURON_SLAVE_REG" as S, m: S = "SAURON_MASTER_REG" as S, r: S = "THE_WIZARD_ROOT_REG" as S) {
 			this.s = s;
 			this.m = m;
@@ -11229,6 +11483,9 @@ export class SITH {
 			const handler = channel?.handler;
 			if (!handler) return undefined;
 			return handler(p, { r, m, s, k, p: p });
+		}
+		public hot_send<T = U>(p: U, k: S,  path: S ): T | P<T> | UD {
+			return this.channels[k]?.handler({ p: p });
 		}
 		public sendStream<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | P<T> | UD {
 			const channel = this.channels[k];
@@ -11348,18 +11605,18 @@ export class SITH {
 		public m: A = "SAURON_MASTER_REG";
 		public s: A = "SAURON_SLAVE_REG";
 		public k: A = "__SAURON__";
- 	   public capacity: number;
-	   public mask: number;
-	   // ── Structure of Arrays (SoA) Event Lanes ──────────────────────────────
-	   public pids: Int32Array;
-	   public values: Float64Array;
-	   public flags: Uint8Array;
-	   // ── Cursors ────────────────────────────────────────────────────────────
-	   public writeCursor = 0;
-	   public readCursor = 0;
-	   public root: DEATH_STAR;
-	   public hub: SITH;
-	   constructor(hub: SITH) {
+		public capacity: number;
+		public mask: number;
+		// ── Structure of Arrays (SoA) Event Lanes ──────────────────────────────
+		public pids: Int32Array;
+		public values: Float64Array;
+		public flags: Uint8Array;
+		// ── Cursors ────────────────────────────────────────────────────────────
+		public writeCursor = 0;
+		public readCursor = 0;
+		public root: DEATH_STAR;
+		public hub: SITH;
+		constructor(hub: SITH) {
 		this.root = hub.root;
 		this.hub = hub;
 		this.r = hub.r;
@@ -11406,12 +11663,14 @@ export class SITH {
 	   }
     })(this);
 	public drs = new (class DRS {// DISTRIBUTED REACTIVE STATE
-		public r: A = "THE_WIZARD_ROOT_REG";
-		public m: A = "SAURON_MASTER_REG";
-		public s: A = "SAURON_SLAVE_REG";
-		public k: A = "__SAURON__";
+		public r: S = "THE_WIZARD_ROOT_REG";
+		public m: S = "SAURON_MASTER_REG";
+		public s: S = "SAURON_SLAVE_REG";
+		public k: S = "__SAURON__";
 		public root: DEATH_STAR;
 		public hub: SITH;
+		public state:  RAVEN["state"] 
+		public bus: SITH["marek"]  
 		constructor(hub: SITH) {
 			this.root = hub.root;
 			this.hub = hub;
@@ -11419,8 +11678,10 @@ export class SITH {
 			this.m = hub.m;
 			this.s = hub.s;
 			this.k = hub.k;
+			this.state = hub.root.state.state
+			this.bus = hub.root.bus.marek
 		}
-		public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
+		public state_setter(v: U, k: S = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) {
 			const existing = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
 			if (existing !== undefined) return existing;
 			const t = UF(v)
@@ -11428,29 +11689,27 @@ export class SITH {
 			return t;
 		}
 		public cell: SIG_BUS_CELL_FN = (() => {
-			const fn = <T = A,>(k: A, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r, chain?: CHAIN, v?: T) => {
+			const fn = <T = A,>(k: S, s: S = this.s, m: S = this.m, r: S = this.r, v?: T) => {
 				const [value, setValue] = darkState(() => { return this.state_setter(v, k, s, m, r); });
 	
-				this.j.sub( (i: A) => {
+				this.hub.marek.sub( (i: A) => {
 						const incoming = i.p;
 						this.hub.root.state.set(k, incoming, false, s, m, r);
 					}, k, s, m, r, );
 					this.hub.root.state.sub(k, (newValue: any) => setValue(newValue), s, m, r);
 	
-				return MCR_Combo(value, chain); // still no setter — this one was never meant to write
+				return value; // still no setter — this one was never meant to write
 			};
-			fn.send = async (p: U, k: A, s = this.j.s, m = this.j.m, r = this.j.r, chain?: CHAIN): P<U> => {
-				const msgId = this.j.root._id.b()
-				const msg: SIG_BUS_Message = {id: msgId, r: r, m: m, s: s, k: k, p: {p}, ts: Date.now(), _ack: false, priority: this.j.root.se.defaultPriority};
+			fn.send = async (p: U, k: S, s = this.s, m = this.m, r = this.r): P<U> => {
+				const msgId = this.hub.root.REGISTRY._sid()
+				const msg = {id: msgId, r: r, m: m, s: s, k: k, p: {p}, _ack: false};
 	
-				await this.j.DISPATCH(msg);
-				const rr = this.cell(`${k}${this.j.root.RTRN_TO_SDR}`, s, m, r);
+				await this.hub.marek.DISPATCH({id: msgId, r: r, m: m, s: s, k: k, p: {p}, _ack: false});
+				const rr = this.cell(`${k}${this.root.RTRN_TO_SDR}`, s, m, r);
 	
-				await this.j.root.se.BACK_END.run.afterSend(msg, rr);
+				await this.hub.marek.BACK_END.run.afterSend(msg, rr);
 	
-				log(`[SIGNALS][ENCRPYTION][CONFIGURE]`, {type: "sendsub", r: rr, m: m, s: s, k: k, id: msgId, detail: "[✔][SUCCESS]", p: msg, _ack: "UNKNOWN", _adapter: "UNKNOWN", priority: this.j.root.se.defaultPriority, tags: "UNKNOWN", streamId: "UNKNOWN", token: "UNKNOWN", error: "NONE", adapter_id: "UNKNOWN"}, t.deep);
-	
-				return MCR_Combo(rr, chain);
+				return rr
 	
 				//if (!(await this.BACK_END.run.beforeSend(msg))) return { success: false, blocked: true }
 	
@@ -11464,112 +11723,89 @@ export class SITH {
 					return { success: false, queued: true }
 				  } */
 			};
-			fn.cell = <T = A,>(k: A, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r, type: CELL = "cell", chain?: CHAIN, v?: T) => {
-				const cellKey = `${k}:${this.j.root.RTRN_TO_SDR}`;
+			fn.cell = <T = A,>(k: S, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "cell", chain?: CHAIN, v?: T) => {
+				const cellKey = `${k}:${this.root.RTRN_TO_SDR}`;
 	
-				const [value, setValue] = useState(() => {
-					const existing = get(k, s, m, r);
-					if (existing !== undefined) return existing;
-					if (v) return typeof v === "function" ? v() : v;
-				});
+				const [value, setValue] = darkState(() => {return this.state_setter(v, k, s, m, r);});
 	
-				this.j.sub(
-					(i: A) => {
+				this.hub.marek.sub( (i: A) => {
 						const incoming = i.p;
-						set(k, incoming, false, s, m, r);
-					},
-					k,
-					s,
-					m,
-					r,
-				);
-				sub(k, (newValue: any) => setValue(newValue), s, m, r);
+						setDark(k, incoming, false, s, m, r);
+				}, k, s, m, r, );
+				subDark( (newValue: any) => setValue(newValue), k, s, m, r);
 	
 				let rr: any;
 				if (type === "waitFor") {
-					this.j.send({cmd: "waitFor", k, s, m, r}, this.j.hc_disptacher, this.j.hc_sl_reg, SAURON_MASTER_REG, THE_WIZARD_ROOT_REG);
-					this.j.sub((m: any) => setValue(m.p), cellKey, s, m, r);
+					this.hub.marek.send({cmd: "waitFor", k, s, m, r}, k, s, m, r);
+					this.hub.marek.sub((m: any) => setValue(m.p), cellKey, s, m, r);
 				} else if (type === "sub") {
-					this.j.send({cmd: "subscribe", k, s, m, r}, this.j.hc_disptacher, this.j.hc_sl_reg, SAURON_MASTER_REG, THE_WIZARD_ROOT_REG);
-					this.j.sub((m: any) => setValue(m.p), cellKey, s, m, r);
+					this.hub.marek.send({cmd: "subscribe", k, s, m, r}, k, s, m, r);
+					this.hub.marek.sub((m: any) => setValue(m.p), cellKey, s, m, r);
 				} else if (type === "cell") {
 					r = this.cell(cellKey, s, m, r);
 				}
 	
-				useEffect(() => {
+				darkEffect(() => {
 					if (rr) setValue(rr);
 				}, [rr]);
 	
 				return MCR_Combo(value, chain); // still no setter — this one was never meant to write
 			};
-			fn.crdt = <T = A,>(k: A = this.j.k, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r, chain?: CHAIN, v?: T) => {
-				const [value, setValue] = useState(() => {
-					const existing = get(k, s, m, r);
-					if (existing !== undefined) return existing;
-					if (v) return typeof v === "function" ? v() : v;
-				});
+			fn.crdt = <T = A,>(k: A = this.k, s: S = this.s, m: S = this.m, r: S = this.r, chain?: CHAIN, v?: T) => {
+				const [value, setValue] = darkState(() => {return this.state_setter(v, k, s, m, r)	});
 	
-				this.j.sub(
-					(i: A) => {
+				this.hub.marek.sub( (i: A) => {
 						const incoming = i.p;
-						set(k, incoming, true, s, m, r);
-					},
-					k,
-					s,
-					m,
-					r,
-				);
-				sub(k, (newValue: any) => setValue(newValue), s, m, r);
+						setDark(k, incoming, true, s, m, r);
+					}, k, s, 	m, 	r, );
+					subDark((newValue: any) => setValue(newValue),k, s, m, r);
 	
 				return MCR_Combo(value, chain); // still no setter — this one was never meant to write
 			};
 			return fn;
 		})();
 		public useCell = (() => {
-			const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none", chain?: CHAIN, adapter:ADP = "http", options: StateOptions<A, any> = {}, __sauron_id__ = _sid() ) => {
-				const cellKey = `${k}:${this.j.RTRN_TO_SDR}`;
+			const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none",  options: StateOptions<A, any> = {}, __sauron_id__ = _sid() ) => {
+				const cellKey = `${k}:${this.root.RTRN_TO_SDR}`;
 	
-				const [state, setState] = darkState(() => {
-					return this.state_setter(v, k, s, m, r);
-				});
+				const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
 	
-				const senderTokenRef = this.j.root.SIGNALS.atom(this.j.root._id.b()); // this.j.root._id.b();
+				const senderTokenRef = this.root.signals.signals.atom(this.root.REGISTRY._sid()); // this.root._id.b();
 	
 				if (type === "none") {
-					this.j.sub(
-						(i: A) => {
+					this.hub.marek.sub( (i: A) => {
 							const incoming = i.p;
 							if (incoming?.from === senderTokenRef.value) return;
-							set(k, incoming.value, false, s, m, r);
+							this.root.state.set(k, incoming.value, false, s, m, r);
 							setState(incoming.value);
-						}, k, s, m, r, ); // stay in sync with local writes too (including our own setLive below)
-					sub(k, (newValue: any) => setState(newValue), s, m, r);
+					}, k, s, m, r, ); // stay in sync with local writes too (including our own setLive below)
+					sub( (newValue: any) => setState(newValue),k, s, m, r);
 				}
 	
 				const setLive = (next: any) => {
-					const newValue = typeof next === "function" ? next(get(k, s, m, r)) : next;
+					const newValue = typeof next === "function" ? next(getDark(k, s, m, r)) : next;
 					setState(newValue);
-					set(k, newValue, true, s, m, r); // local write
-					this.j.send({value: newValue, from: senderTokenRef.value}, k, s, m, r, undefined, undefined, false, adapter); // broadcast to the bus
+					setDark(k, newValue,  true, s, m , r); // local write
+					this.hub.marek.send({value: newValue, from: senderTokenRef.value}, k, s, m, r,); // broadcast to the bus
 				};
 	
 				let rr: any;
 				if (type === "waitFor") {
-					this.j.send({cmd: "waitFor", k, s, m, r}, this.j.hc_disptacher, this.j.hc_sl_reg, SAURON_MASTER_REG, THE_WIZARD_ROOT_REG);
-					this.j.sub((m: any) => setLive(m), cellKey, s, m, r);
+					this.hub.marek.send({cmd: "waitFor", k: cellKey, s, m, r}, k, s, m, r);
+					this.hub.marek.sub((m: any) => setLive(m), cellKey, s, m, r);
 				} else if (type === "sub") {
-					this.j.send({cmd: "subscribe", k, s, m, r}, this.j.hc_disptacher, this.j.hc_sl_reg, SAURON_MASTER_REG, THE_WIZARD_ROOT_REG);
-					this.j.sub((m: any) => setLive(m), cellKey, s, m, r);
+					this.hub.marek.send({cmd: "subscribe", k: cellKey, s, m, r}, k, s, m, r);
+					this.hub.marek.sub((m: any) => setLive(m), cellKey, s, m, r);
 				} else if (type === "cell") {
 					rr = this.cell(cellKey, s, m, r);
-					useEffect(() => {
+					darkEffect(() => {
 						if (rr !== undefined) {
-							set(k, rr, false, s, m, r);
+							setDark(k, rr, false, s, m, r);
 							setState(rr);
 						}
 					}, [rr]);
 				}
-				return [MCR_Combo(state, chain), setLive] as const;
+				return [state, setLive] as const;
 			}
 			fn.obj = <T extends Record<PropertyKey, any> = Record<string, any>>(v: T = {} as T, k: A = `_USECELL_OBJ`, s: S = this.s, m: S = this.m, r: S = this.r) => {
 				const [state, setLive] = fn(v, k, s, m, r, );
@@ -11677,7 +11913,7 @@ export class SITH {
 		})();
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		public useAntiMsgQ = (() => {
-			const fn = ( v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.REGISTRY._sid(),		) => {
+			const fn = ( v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.root.REGISTRY._sid(),		) => {
 				return root.state.createHookCell( "useAntiMsgQ", __sauron_id__, () => ({
 						value: {
 							current: this.state_setter(v, k, s, m, r),
@@ -11687,7 +11923,7 @@ export class SITH {
 					(state, key, notify) => {
 						const st = state.value;
 	
-						const senderToken = this.hub.bear.atom(this.hub.REGISTRY._sid());
+						const senderToken = this.root.signals.signals.atom(this.root.REGISTRY._sid());
 	
 						const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
 						const selector = options.selector ?? null;
@@ -11706,20 +11942,20 @@ export class SITH {
 							return next;
 						};
 	
-						this.hub.bear_bus.sub((i: A) => {
+						this.hub.marek.sub((i: A) => {
 							const incoming = i.p;
 							if (incoming?.from === senderToken.value) return;
-							this.hub.bear.state.set(k, incoming.value, { triggerRender: false, s: s, m: m, r: r });
+							setDark(k, incoming.value, false, s, m, r);
 							setValue(incoming.value);
 						}, k, s, m, r);
 	
-						this.hub.bear.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+						subDark((newValue: any) => setValue(newValue),k ,s ,m ,r);
 	
 						const setLive = (next: any) => {
-							const newValue = typeof next === "function" ? next(this.hub.bear.state.get(k, { s: s, m: m, r: r })) : next;
+							const newValue = typeof next === "function" ? next(getDark(k, s, m, r)) : next;
 							setValue(newValue);
-							this.hub.bear.state.set(k, newValue, { triggerRender: true, s: s, m: m, r: r });
-							this.hub.bear_bus.send({ value: newValue, from: senderToken.value }, k, s, m, r);
+							setDark(k, newValue,true ,s, m , r);
+							this.hub.marek.send({ value: newValue, from: senderToken.value }, k, s, m, r);
 						};
 	
 						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
@@ -11729,7 +11965,11 @@ export class SITH {
 					},
 				);
 			};
-			fn.mailbox = ( v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.REGISTRY._sid(),		) => {
+			fn.mailbox = ( v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.root.REGISTRY._sid(),		) => {
+
+				const senderToken = this.hub.root.signals.signals.atom(this.hub.root.REGISTRY._sid());
+				const queueRef = this.hub.root.signals.signals.atom<Queue | null>(null);
+
 				return root.state.createHookCell( "useAntiMsgQ.mailbox", __sauron_id__, () => ({
 						value: {
 							current: this.state_setter(v, k, s, m, r),
@@ -11738,13 +11978,7 @@ export class SITH {
 					}),
 					(state, key, notify) => {
 						const st = state.value;
-	
-						const senderToken = this.hub.bear.atom(this.hub.REGISTRY._sid());
-						const queueRef = this.hub.bear.atom<Queue | null>(null);
-	
-						if (!queueRef.current) {
-							queueRef.current = new Queue(1);
-						}
+						if (!queueRef.current) { queueRef.current = new Queue(1); }
 	
 						const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
 						const selector = options.selector ?? null;
@@ -11763,22 +11997,22 @@ export class SITH {
 							return next;
 						};
 	
-						this.hub.bear_bus.sub((i: A) => {
+						this.hub.marek.sub((i: A) => {
 							const incoming = i.p;
 							if (incoming?.from === senderToken.value) return;
 							queueRef.current!.run(async () => {
-								const current = this.hub.bear.state.get(k, { s: s, m: m, r: r });
+								const current = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
 								const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-								this.hub.bear.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+								this.hub.root.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
 								return next;
 							});
 						}, k, s, m, r);
 	
-						this.hub.bear.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+						this.hub.root.state.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
 	
 						const setLive = (next: any) => {
 							const t = typeof next === "function" ? next() : next;
-							this.hub.bear_bus.send({ value: t, from: senderToken.value }, k, s, m, r);
+							this.hub.root.bus.marek.send({ value: t, from: senderToken.value }, k, s, m, r);
 						};
 	
 						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
@@ -11788,7 +12022,6 @@ export class SITH {
 					},
 				);
 			};
-	
 			return fn;
 		})();
 		// #endregion
@@ -11803,62 +12036,9 @@ export class SITH {
 		//                                                                                                                  SPREADSHEET
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		public spreadsheet = (() => {
-			const programs: (Program | undefined)[] = [];
-			const program = programs[pid]; 
-			if (!program) continue; 
-			const vm = new CellVM(sharedF64, sharedPidToSlot);
-			hadron.sub(OP.EFFECT, (ring, from, to, epoch, d) => {
-				for (let seq = from; seq < to; seq++) {
-					const base = (seq & d.mask) * 8;
-					const pid = ring[base + 1];
-					const program = programs.get(pid);
-					if (!program) continue; 
-
-					const result = vm.run(program);
-					const slot = Atomics.load(sharedPidToSlot, pid);
-					Atomics.store(sharedF64 as A, slot, result);
-				}
-				Atomics.add(levelCounter, 0, -(to - from)); /
-				Atomics.notify(levelCounter, 0);
-			});
-			class SlotAllocator {
-				#free: N[] = [];
-				#nextFresh = 0;
-				constructor(public readonly capacity: N) {}
-			
-				alloc(): N {
-					if (this.#free.length) return this.#free.pop()!;
-					if (this.#nextFresh >= this.capacity) throw new Error("f64 arena exhausted — raise f64Capacity");
-					return this.#nextFresh++;
-				}
-				free(slot: N): V { this.#free.push(slot); }
-			}
-			const slots = new SlotAllocator(f64Capacity);
-			function ensureNumericSlot(hadron: HADRON_DISRUPTOR, pid: N): N {
-				const existing = hadron.slot(pid);
-				if (existing >= 0) return existing;
-				const s = slots.alloc();
-				hadron.bind(pid, s);
-				return s;
-			}
-			function releaseNumericSlot(hadron: HADRON_DISRUPTOR, pid: N): V {
-				const s = hadron.slot(pid);
-				if (s < 0) return;
-				hadron.unbind(pid);
-				slots.free(s);
-			}
-			function syncArena(hadron: HADRON_DISRUPTOR, f64: SharedF64, pid: N, raw: A, isFormula: B) {
-				if (isFormula) {
-					ensureNumericSlot(hadron, pid); // reserve the slot now; a worker fills it in once scheduled
-				} else if (typeof raw === "number") {
-					f64.store(ensureNumericSlot(hadron, pid), raw);
-				} else {
-					releaseNumericSlot(hadron, pid); // text, undefined, cleared — doesn't belong in the arena
-				}
-			}
-			const fn = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r, chain?: "chain" | "rechain") => MCR_Combo(this.j.DRS.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.computed ?? 0, chain);
-			fn.raw = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.j.DRS.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.raw;
-			fn.range = (sheet: S, ref: S, s: S = this.s, m: S = this.m, r: S = this.j.r) => this.spreadsheet.rangeKeys(ref, sheet).map(row => row.map(k => this.j.DRS.cell(this.spreadsheet.envKeyOf(k), s, m, r)?.computed ?? 0));
+			const fn = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r, chain?: "chain" | "rechain") => MCR_Combo(this.hub.drs.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.computed ?? 0, chain);
+			fn.raw = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.hub.drs.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.raw;
+			fn.range = (sheet: S, ref: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.spreadsheet.rangeKeys(ref, sheet).map(row => row.map(k => this.hub.drs.cell(this.spreadsheet.envKeyOf(k), s, m, r)?.computed ?? 0));
 			// HELPERS
 			fn.HISTORY_CAP = 200;
 			fn.envKey = (sheet: S, cell: S) => `${sheet}::${normalizeCellRef(cell)}`;
@@ -11887,9 +12067,9 @@ export class SITH {
 			fn.rk = (sheet: S) => `${sheet}::#ranges`; // [{ t: "sheet!B3", box }] range formulas reading this sheet
 			fn.xk = (sheet: S) => `${sheet}::#extent`; // { r: lastUsedRow }
 			// get() with the MaybePromise quirk removed: a missing key returns undefined, not a Promise
-			fn.peek = (k: A, s: S, m: S, r: S) => {
-				const v = get(k, s, m, r);
-				return v instanceof Promise ? undefined : v;
+			fn.peek = <X =A>(k: A, s: S, m: S, r: S) => {
+				const v = getDark(k, s, m, r);
+				return v instanceof Promise ? undefined : (v as X);
 			};
 			// what a cell currently shows: computed if it's a formula, else its raw value
 			fn.visible = (g: SpreadsheetGraphState, key: A) => g.computed.get(key) ?? g.cells.get(key)?.raw;
@@ -12063,7 +12243,7 @@ export class SITH {
 	
 				for (const d of new Set([...oldDeps, ...(g.deps.get(key) ?? [])])) {that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);	}
 			};
-			const fn = (sheet: S, cell: S, v?: A, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r, type: CELL = "none", chain?: CHAIN) => {
+			const fn = (sheet: S, cell: S, v?: A, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none", chain?: CHAIN) => {
 				const seed =
 					v === undefined ? undefined : (
 						() => {
@@ -12071,7 +12251,7 @@ export class SITH {
 							return this.spreadsheet.peek(this.spreadsheet.envKey(sheet, cell), s, m, r);
 						}
 					);
-				const [env] = this.j.DRS.useCell(this.spreadsheet.envKey(sheet, cell), seed, s, m, r, type);
+				const [env] = this.hub.drs.useCell(this.spreadsheet.envKey(sheet, cell), seed, s, m, r, type);
 	
 				const read = (ref: S) => this.spreadsheet.peek(this.spreadsheet.envKey(sheet, ref), s, m, r);
 				const write = (ref: S, raw: A) => commit(this, sheet, ref, raw, s, m, r);
@@ -12084,7 +12264,7 @@ export class SITH {
 	
 				return [getter, setter] as const;
 			};
-			fn.grid = (sheet: S, cell: S, v?: A, s: S = this.j.s, m: S = this.j.m, r: S = this.j.r, type: CELL = "none", chain?: CHAIN) => {
+			fn.grid = (sheet: S, cell: S, v?: A, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none", chain?: CHAIN) => {
 				const seed =
 					v === undefined ? undefined : (
 						() => {
@@ -12092,7 +12272,7 @@ export class SITH {
 							return this.spreadsheet.peek(this.spreadsheet.envKey(sheet, cell), s, m, r);
 						}
 					);
-				const [env] = this.j.DRS.useCell(this.spreadsheet.envKey(sheet, cell), seed, s, m, r, type);
+				const [env] = this.DRS.useCell(this.spreadsheet.envKey(sheet, cell), seed, s, m, r, type);
 	
 				const read = (ref: S) => this.spreadsheet.peek(this.spreadsheet.envKey(sheet, ref), s, m, r);
 				const write = (ref: S, raw: A) => commit(this, sheet, ref, raw, s, m, r);
@@ -12424,8 +12604,8 @@ export class SITH {
 				capacity: this.capacity, pidCapacity: this.pidCapacity, schedule: this.schedule, maxBatch: this.maxBatch,
 			};
 		}
-		static fromBuffers(buf: ReturnType<InstanceType<typeof THIS_CLASS>["exportBuffers"]>): THIS_CLASS_INSTANCE {
-			const self = Object.create(THIS_CLASS.prototype); //        bypass the allocating constructor entirely
+		static fromBuffers(buf: ReturnType<InstanceType<typeof SITH>["spreadsheet"]["exportBuffers"]>): SITH {
+			const self = Object.create(SITH.prototype); //        bypass the allocating constructor entirely
 			self.capacity = buf.capacity; self.mask = buf.capacity - 1; self.pidCapacity = buf.pidCapacity;
 			self.schedule = buf.schedule; self.maxBatch = buf.maxBatch; self.wait = "yield"; self.shared = true;
 			self.rings = buf.rings.map((b: SharedArrayBuffer) => new Int32Array(b));
@@ -13078,6 +13258,8 @@ export class SITH {
 			return n;
 	}})(this);
 	public codecs = (() => {
+		//                                                                                                CODECS
+		// #region ══════════════════════════════════════════════════════════════════════════════════════════════════════
 		const z = () => {}
 		z.beam = new (class BEAM_CODEC {// ENCODING / DECODING
 			/*  =============================================================================
@@ -13341,13 +13523,8 @@ export class SITH {
 				}
 		})(this);
 		z.cbor = new (class BINARY_CBOR {
-			encodeJSONEnvelope(envelope: any): Uint8Array {
-				return new TextEncoder().encode(JSON.stringify(envelope))
-			}
-		
-			decodeJSONEnvelope(bytes: Uint8Array): any {
-				return JSON.parse(new TextDecoder().decode(bytes))
-			}
+			encodeJSONEnvelope(envelope: any): Uint8Array { return new TextEncoder().encode(JSON.stringify(envelope)) }
+			decodeJSONEnvelope(bytes: Uint8Array): any { return JSON.parse(new TextDecoder().decode(bytes)) }
 			private readonly encoder = new TextEncoder()
 			private readonly decoder = new TextDecoder()
 			private ensureAvailable(buf: Uint8Array, pos: number, length: number): void { if (pos < 0 || length < 0 || pos + length > buf.length) throw new Error("CBOR: truncated buffer") }
@@ -13485,84 +13662,7 @@ export class SITH {
 					return null;
 				}
 			}
-		})(this);
-		z.soa = new ( class SOA_CODEC {
-			// HIGH_PERFORMANCE_SOA_CODEC
-			public readonly maxPids: number;
-			public hub: HUB
-				
-			// SoA Memory Layout (Typed Arrays for Cache Locality)
-			public readonly channelMap: Int32Array;
-			public readonly subChannelMap: Int32Array;
-			public readonly tripChannelMap: Int32Array;
-			public readonly keyMap: Int32Array;
-		
-			public readonly listeners: Array<((pid: number, val?: number) => void) | undefined>;
-			public nextPid = 1;
-		
-			constructor(hub: SITH = this, maxPids = 8192) {
-				this.maxPids = maxPids;
-				this.hub = hub
-				this.channelMap = new Int32Array(maxPids);
-				this.subChannelMap = new Int32Array(maxPids);
-				this.tripChannelMap = new Int32Array(maxPids);
-				this.keyMap = new Int32Array(maxPids);
-				this.listeners = new Array(maxPids);
-			}// Hot path lookup or allocation: O(1) inline integer assignment
-			public allocatePid(rId: number, mId: number, sId: number, kId: number): number {
-				// In a true LMAX disruptor ring or fixed socket registry,
-				// PIDs can be pre-mapped or statically routed at startup.
-				const pid = this.nextPid++;
-				if (pid >= this.maxPids) throw new Error("PID capacity exceeded");
-		
-				this.channelMap[pid] = rId;
-				this.subChannelMap[pid] = mId;
-				this.tripChannelMap[pid] = sId;
-				this.keyMap[pid] = kId;
-		
-				return pid;
-			}
-			/**
-			 * Encodes a columnar batch (e.g., a spreadsheet column or database table chunk)
-			 * directly into a parallel SoA byte slab.
-			 */
-			public encodeBatch(ids: Int32Array, values: Float64Array): Uint8Array {
-				const headerLength = 8; // 4 bytes for count, 4 bytes for flags
-				const idBytes = ids.byteLength;
-				const valBytes = values.byteLength;
-				
-				const totalSize = headerLength + idBytes + valBytes;
-				const slab = new Uint8Array(totalSize);
-				const view = new DataView(slab.buffer);
-		
-				// Write header metadata
-				view.setInt32(0, ids.length, true);
-				view.setInt32(4, 0, true); // reserved flags
-		
-				// Copy raw typed array memory directly into the slab (Zero allocation overhead)
-				slab.set(new Uint8Array(ids.buffer, ids.byteOffset, idBytes), headerLength);
-				slab.set(new Uint8Array(values.buffer, values.byteOffset, valBytes), headerLength + idBytes);
-		
-				return slab;
-			}
-			/**
-			 * Decodes / Views the binary slab directly as SoA arenas 
-			 * without creating individual JavaScript objects.
-			 */
-			public decodeBatchView(slab: Uint8Array): { ids: Int32Array, values: Float64Array } {
-				const view = new DataView(slab.buffer, slab.byteOffset, slab.byteLength);
-				const count = view.getInt32(0, true);
-				const headerLength = 8;
-		
-				const idByteLen = count * 4; // Int32 = 4 bytes
-				const valByteLen = count * 8; // Float64 = 8 bytes
-		
-				const ids = new Int32Array(slab.buffer, slab.byteOffset + headerLength, count);
-				const values = new Float64Array(slab.buffer, slab.byteOffset + headerLength + idByteLen, count);
-		
-				return { ids, values };
-			}
-		})(this);
+		})();
 		z.serializer = (() => {
 			const SKIP = Symbol('ser:skip');
 			const DEFAULT_CONFIG: Required<SerFormatConfig> = {
@@ -13752,7 +13852,6 @@ export class SITH {
 			z.dec = new (this.codecs.serializer.decoder)({});
 			return z
 		})(); 
-		z.pids = new ()(this);
 		const AVRO_ERROR_SCHEMA: AVROSchema = {
 			type: "record",
 			name: "AVROError",
@@ -13960,7 +14059,7 @@ export class SITH {
 				}
 			}
 		
-			private #write(w: AVROWriter, schema: AVROSchema, value: AVROValue): V {
+			private #write(w: SITH["codecs"]["avro_writer"], schema: AVROSchema, value: AVROValue): V {
 				schema = this.#resolve(schema);
 		
 				if (Array.isArray(schema)) {
@@ -14068,7 +14167,7 @@ export class SITH {
 				}
 			}
 		
-			private #read(r: AVROReader, schema: AVROSchema): AVROValue {
+			private #read(r: SITH["codecs"]["avro_reader"], schema: AVROSchema): AVROValue {
 				schema = this.#resolve(schema);
 		
 				if (Array.isArray(schema)) {
@@ -14204,6 +14303,7 @@ export class SITH {
 				}
 			}
 		}
+		z.avro = new (this.codecs.BINARY_AVRO)(this);
 		z.contracts = (() => {
 			const z = () => {}
 			z.AVROI = new this.codecs.BINARY_AVRO({
@@ -14218,7 +14318,465 @@ export class SITH {
 			});
 			return z
 		})(); 
-		z.BUS_ =  class DISRUPTOR_CRYPTO {
+		// #endregion
+		//                                                                                                PIDS
+		// #region ══════════════════════════════════════════════════════════════════════════════════════════════════════
+		z.soa = new ( class SOA_CODEC {
+			// HIGH_PERFORMANCE_SOA_CODEC
+			public readonly maxPids: number;
+			public hub: SITH
+				
+			// SoA Memory Layout (Typed Arrays for Cache Locality)
+			public readonly channelMap: Int32Array;
+			public readonly subChannelMap: Int32Array;
+			public readonly tripChannelMap: Int32Array;
+			public readonly keyMap: Int32Array;
+		
+			public readonly listeners: Array<((pid: number, val?: number) => void) | undefined>;
+			public nextPid = 1;
+		
+			constructor(hub: SITH, maxPids = 8192) {
+				this.maxPids = maxPids;
+				this.hub = hub
+				this.channelMap = new Int32Array(maxPids);
+				this.subChannelMap = new Int32Array(maxPids);
+				this.tripChannelMap = new Int32Array(maxPids);
+				this.keyMap = new Int32Array(maxPids);
+				this.listeners = new Array(maxPids);
+			}// Hot path lookup or allocation: O(1) inline integer assignment
+			public allocatePid(rId: number, mId: number, sId: number, kId: number): number {
+				// In a true LMAX disruptor ring or fixed socket registry,
+				// PIDs can be pre-mapped or statically routed at startup.
+				const pid = this.nextPid++;
+				if (pid >= this.maxPids) throw new Error("PID capacity exceeded");
+		
+				this.channelMap[pid] = rId;
+				this.subChannelMap[pid] = mId;
+				this.tripChannelMap[pid] = sId;
+				this.keyMap[pid] = kId;
+		
+				return pid;
+			}
+			/**
+			 * Encodes a columnar batch (e.g., a spreadsheet column or database table chunk)
+			 * directly into a parallel SoA byte slab.
+			 */
+			public encodeBatch(ids: Int32Array, values: Float64Array): Uint8Array {
+				const headerLength = 8; // 4 bytes for count, 4 bytes for flags
+				const idBytes = ids.byteLength;
+				const valBytes = values.byteLength;
+				
+				const totalSize = headerLength + idBytes + valBytes;
+				const slab = new Uint8Array(totalSize);
+				const view = new DataView(slab.buffer);
+		
+				// Write header metadata
+				view.setInt32(0, ids.length, true);
+				view.setInt32(4, 0, true); // reserved flags
+		
+				// Copy raw typed array memory directly into the slab (Zero allocation overhead)
+				slab.set(new Uint8Array(ids.buffer, ids.byteOffset, idBytes), headerLength);
+				slab.set(new Uint8Array(values.buffer, values.byteOffset, valBytes), headerLength + idBytes);
+		
+				return slab;
+			}
+			/**
+			 * Decodes / Views the binary slab directly as SoA arenas 
+			 * without creating individual JavaScript objects.
+			 */
+			public decodeBatchView(slab: Uint8Array): { ids: Int32Array, values: Float64Array } {
+				const view = new DataView(slab.buffer, slab.byteOffset, slab.byteLength);
+				const count = view.getInt32(0, true);
+				const headerLength = 8;
+		
+				const idByteLen = count * 4; // Int32 = 4 bytes
+				const valByteLen = count * 8; // Float64 = 8 bytes
+		
+				const ids = new Int32Array(slab.buffer, slab.byteOffset + headerLength, count);
+				const values = new Float64Array(slab.buffer, slab.byteOffset + headerLength + idByteLen, count);
+		
+				return { ids, values };
+			}
+		})(this);
+		interface ScopeComponents {
+			r: N;
+			m: N;
+			s: N;
+			k: N;
+		}
+		const FLYWEIGHT_SCOPE:ScopeComponents = { r: 0, m: 0, s: 0, k: 0 };
+		z.pids = new (class INJECTION_CODEC {
+			/*  ==========================================================================================================================
+			 Flat, zero-heap Outbound Notification & Scope Registry. Replaces Sauron nested Map trees with direct PID-indexed arrays.
+			========================================================================== ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [INJECTION_CODEC] */
+			private ids = new Map<S, N>();
+			private names: S[] = [];
+			private pids = new Map<S, N>(); // "a:b:c:d" → pid
+			private addresses = new Map<N, [N, N, N, N]>(); // pid → [a,b,c,d]
+			private nextId = 0;
+			public readonly maxPids: N;
+			public readonly listeners: Array<ListenerFn | UD>;
+			public nextAllocatedPid = 1; // 0 = TRACER_PID
+			public readonly channelMap: I32;
+			public readonly subChannelMap: I32;
+			public readonly tripChannelMap: I32;
+			public readonly dirtyPids: I32;
+			public dirtyCount = 0;
+			public _flushScheduled = false;
+		
+			constructor(maxPids = 8192) {
+				this.maxPids = maxPids;
+				this.listeners = new Array(maxPids);
+				this.dirtyPids = new Int32Array(maxPids);
+				this.channelMap = new Int32Array(maxPids);
+				this.subChannelMap = new Int32Array(maxPids);
+				this.tripChannelMap = new Int32Array(maxPids);
+			}
+			private intern(value: S): N {
+				let id = this.ids.get(value);
+				if (id === undefined) {
+					id = this.nextId++;
+					this.ids.set(value, id);
+					this.names[id] = value;
+				}
+				return id;
+			} /** Exact identity: encode address → pid (interned, no collisions). */
+			public encode(pid_key: S, sl: S, ms: S, rt: S): N {
+				const a = this.intern(rt);
+				const b = this.intern(ms);
+				const c = this.intern(sl);
+				const d = this.intern(pid_key);
+				const addressKey = `${a}:${b}:${c}:${d}`;
+		
+				let pid = this.pids.get(addressKey);
+				if (pid === undefined) {
+					pid = this.nextAllocatedPid++;
+					if (pid >= this.maxPids) throw new Error("INJECTION_CODEC: PID capacity exceeded");
+					this.pids.set(addressKey, pid);
+					this.addresses.set(pid, [a, b, c, d]);
+					// populate SoA lanes from the interned ids (no re-hash)
+					this.channelMap[pid] = a;
+					this.subChannelMap[pid] = b;
+					this.tripChannelMap[pid] = c;
+				}
+				return pid;
+			} /** Exact decode: pid → address. */
+			public decode(pid: N): { key: S; sl: S; ms: S; rt: S } {
+				const addr = this.addresses.get(pid);
+				if (!addr) throw new Error(`INJECTION_CODEC: unknown pid ${pid}`);
+				const [a, b, c, d] = addr;
+				return { rt: this.names[a], ms: this.names[b], sl: this.names[c], key: this.names[d] };
+			}
+			public parseScopeKey(pid: N): ScopeComponents {
+				FLYWEIGHT_SCOPE.r = this.channelMap[pid];
+				FLYWEIGHT_SCOPE.m = this.subChannelMap[pid];
+				FLYWEIGHT_SCOPE.s = this.tripChannelMap[pid];
+				return FLYWEIGHT_SCOPE;
+			}
+			public markDirty(pid: N): V {
+				this.dirtyPids[this.dirtyCount++] = pid;
+			}
+			public subscribe(pid: N, fn: ListenerFn): () => V {
+				this.listeners[pid] = fn;
+				return () => {
+					this.listeners[pid] = undefined;
+				};
+			}
+			public flushNotifications(): V {
+				this._flushScheduled = false;
+				for (let i = 0; i < this.dirtyCount; i++) {
+					const pid = this.dirtyPids[i];
+					const fn = this.listeners[pid];
+					if (fn !== undefined) fn(pid);
+				}
+				this.dirtyCount = 0;
+			}
+			public notifyHook(key: S): V {
+				const pid = this.encode(key, "", "", "");
+				this.markDirty(pid);
+				if (!this._flushScheduled) {
+					this._flushScheduled = true;
+					queueMicrotask(() => {
+						this._flushScheduled = false;
+						this.flushNotifications();
+					});
+				}
+			}
+			public notifyPid(pid: N, value: N): V {
+				const fn = this.listeners[pid];
+				if (fn !== undefined) fn(pid, value);
+			}
+		})();
+		z.byte_nested_maps = new (class BYTE_NESTED_MAPS {
+			/*  ==========================================================================================================================
+			 maps single strings or multi-channel routing paths to compact numeric PIDs using typed arrays for high-performance, 
+			 zero-allocation messaging. It interns strings to enable ultra-fast encoding and decoding on performance-critical 
+			 execution paths.
+			========================================================================== ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [BYTE_ATOM_REG] */
+			/**
+			const registry = new UnifiedRegistry(8192);
+			const disruptor = new DisruptorSoA(8192);
+			
+			// 1. Register a Single String
+			const pidSingle = registry.resolveSingle("user:logged_in");
+			
+			// 2. Register a Multi-Channel address
+			const pidMulti = registry.resolveMulti("THE_WIZARD", "SAURON_MASTER", "SLAVE_01", "STATE_MUTATION");
+			
+			// 3. Publish both raw PIDs into the Disruptor (Hot path - 0 allocations)
+			disruptor.publish(pidSingle, 1, 0);
+			disruptor.publish(pidMulti, 99.5, 1);
+			
+			// 4. Consume and decode depending on what kind of PID it is
+			while (disruptor.poll((pid, value, flag) => {
+				// Check type lane or call decode based on your routing context
+				if (registry.typeMap[pid] === 0) {
+					const key = registry.decodeSingle(pid);
+					console.log(`[SINGLE] Key: "${key}" | Value: ${value}`);
+				} else {
+					const scope = registry.decodeMulti(pid);
+					console.log(`[MULTI] Channels: ${scope.r} > ${scope.m} > ${scope.s} > ${scope.k} | Value: ${value}`);
+				}
+			})) {
+				// Drains ring buffer
+			}
+			 */
+			private stringToId = new Map<string, number>();
+			private idToString: string[] = [];
+			private addressToPidMap = new Map<string, number>();
+			public nextPid = 1;
+			// SoA Memory Lanes (Indexed by PID)
+			public readonly typeMap: Uint8Array; // 0 = Single String, 1 = Multi-Channel
+			public readonly channelMap: Int32Array; // r channel
+			public readonly subChannelMap: Int32Array; // m channel
+			public readonly tripChannelMap: Int32Array; // s channel
+			public readonly keyMap: Int32Array; // k channel / single key string ID
+			// Zero-alloc flyweight for multi-channel decoding
+			public readonly multiFlyweight = { r: "", m: "", s: "", k: "" };
+			constructor(maxPids = 65536) {
+				this.typeMap = new Uint8Array(maxPids);
+				this.channelMap = new Int32Array(maxPids);
+				this.subChannelMap = new Int32Array(maxPids);
+				this.tripChannelMap = new Int32Array(maxPids);
+				this.keyMap = new Int32Array(maxPids);
+			}
+			private intern(val: string): number {
+				let id = this.stringToId.get(val);
+				if (id === undefined) {
+					id = this.idToString.length;
+					this.stringToId.set(val, id);
+					this.idToString[id] = val;
+				}
+				return id;
+			} // Input Style A: Register a SINGLE string key -> returns a PID.
+			public resolveSingle(key: string): number {
+				let pid = this.addressToPidMap.get(key);
+				if (pid === undefined) {
+					pid = this.nextPid++;
+					this.addressToPidMap.set(key, pid);
+		
+					this.typeMap[pid] = 0; // Mark as Single String
+					this.keyMap[pid] = this.intern(key);
+				}
+				return pid;
+			} // Input Style B: Register 3-4 channel strings -> returns a PID.
+			public resolveMulti(r: string, m: string, s: string, k = ""): number {
+				const addressKey = `${r}:${m}:${s}:${k}`;
+				let pid = this.addressToPidMap.get(addressKey);
+				if (pid === undefined) {
+					pid = this.nextPid++;
+					this.addressToPidMap.set(addressKey, pid);
+		
+					this.typeMap[pid] = 1; // Mark as Multi-Channel
+					this.channelMap[pid] = this.intern(r);
+					this.subChannelMap[pid] = this.intern(m);
+					this.tripChannelMap[pid] = this.intern(s);
+					this.keyMap[pid] = this.intern(k);
+				}
+				return pid;
+			} // Decode PID back into a Single String (if registered that way).
+			public decodeSingle(pid: number): string {
+				return this.idToString[this.keyMap[pid]] ?? "";
+			} // Decode PID back into 3-4 Channels (zero-alloc flyweight mutation).
+			public decodeMulti(pid: number): typeof this.multiFlyweight {
+				this.multiFlyweight.r = this.idToString[this.channelMap[pid]] ?? "";
+				this.multiFlyweight.m = this.idToString[this.subChannelMap[pid]] ?? "";
+				this.multiFlyweight.s = this.idToString[this.tripChannelMap[pid]] ?? "";
+				this.multiFlyweight.k = this.idToString[this.keyMap[pid]] ?? "";
+				return this.multiFlyweight;
+			}
+		} )();
+
+		z.example = new (class EXAMPLE{})();
+		
+		// #endregion
+		//                                                                                                 TOYS
+		// #region ══════════════════════════════════════════════════════════════════════════════════════════════════════
+		z.byte_map = new (class BYTE_MAP {
+			/*  ==========================================================================================================================
+			 provides O(1) particle-ID-to-slot lookups using a typed array, with -1 indicating an unmapped particle. It supports 
+			 constant-time assignment, retrieval, and deletion without searching a registry.
+			======================================================================= ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [DIRECT_SLOT_INDEX] */
+			readonly pidToSlot: I32;
+			constructor(maxParticles: N = 1024) {
+				this.pidToSlot = new Int32Array(maxParticles).fill(-1);
+			}
+			set(pid: N, slot: N): V {
+				this.pidToSlot[pid] = slot;
+			}
+			get(pid: N): N {
+				return this.pidToSlot[pid];
+			}
+			delete(pid: N): V {
+				this.pidToSlot[pid] = -1;
+			}
+		})();
+		z.byte_clock = new (class BYTE_CODE_CLOCK {
+				/*  ==========================================================================================================================
+				 maintains a lightweight 8-bit sequence counter, incrementing an epoch whenever the sequence wraps around. 
+				 hasCompletedCycle() uses signed 8-bit arithmetic to detect whether the sequence has advanced since a starting point.
+				========================================================================== ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [BYTE_CODE_CLOCK] */
+				readonly register = new Uint8Array(4);
+				tick(): V {
+					const seq = (this.register[3] + 1) & 0xff;
+					this.register[3] = seq;
+					if (seq === 0) this.register[1] = (this.register[1] + 1) & 0xff;
+				}
+				hasCompletedCycle(startSeq: N, currentSeq: N): B { return ((currentSeq - startSeq) << 24) >> 24 > 0; }
+				get seq(): N { return this.register[3]; }
+				get epoch(): N { return this.register[1]; }
+		})();
+		z.concurrent_batching = new (class CONCURRENT_BYTE_BATCH implements PARTICLE_QUEUE {
+			/*  ==========================================================================================================================
+			 - Tier ordering: original runs numeric tiers sequentially; remake runs all tiers concurrently.
+			 - Concurrency: original enforces a per-tier concurrency limit; remake's Promise.all can run the entire batch simultaneously, ignoring tier.concurrency.
+			 - Staging: original holds tasks until execute() releases a tier; remake queues particle IDs until drain().
+			 - Task lifecycle: original supports retries, timeouts, error handling, and collected results; remake lacks those mechanisms.	======================================================================= ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [DIRECT_SLOT_INDEX] */
+			private queues = new Map<S, { pids: Pid[]; resolvers: AR<(v: U) => V> }>();
+			constructor(
+				private tiers: TransformTier[],
+				private collider: A, //HC4
+			) {
+				for (const t of tiers) this.queues.set(t.name, { pids: [], resolvers: [] });
+			}
+			tier(name: S): TransformTier | UD {
+				return this.tiers.find((t) => t.name === name);
+			}
+			submit(pid: Pid, tierName: S, work?: (p: PARTICLE) => U): P<U> {
+				let q = this.queues.get(tierName);
+				if (!q) {
+					// implicit tier: any tier name referenced before registration gets
+					// created on demand with sensible defaults (concurrency 4, batch 8)
+					const tier: TransformTier = { name: tierName, concurrency: 4, batch: 8, run: (p: A) => p.payload };
+					this.tiers.push(tier);
+					q = { pids: [], resolvers: [] };
+					this.queues.set(tierName, q);
+				}
+				return new Promise((resolve) => {
+					q.pids.push(pid);
+					q.resolvers.push(resolve);
+					if (work) this.collider.markTierWork(pid, tierName, work);
+				});
+			}
+			async drain(): P<V> {
+				// tiers run concurrently; within a tier, batches run concurrently
+				await Promise.all(
+					this.tiers.map(async (tier) => {
+						const q = this.queues.get(tier.name)!;
+						while (q.pids.length > 0) {
+							const batch = q.pids.splice(0, Math.min(tier.batch, q.pids.length));
+							const resolvers = q.resolvers.splice(0, batch.length);
+							await Promise.all(
+								batch.map(async (pid, i) => {
+									const particle = this.collider.particleAt(pid);
+									if (particle) await tier.run(particle);
+									resolvers[i]?.(particle?.payload);
+									this.collider.clearTierWork(pid);
+								}),
+							);
+							if (tier.concurrency === 1) continue; // preserve order for serial tiers
+						}
+					}),
+				);
+			}
+			get pending(): N {
+				let n = 0;
+				for (const q of this.queues.values()) n += q.pids.length;
+				return n;
+			}
+		})(this, this);
+		z.queued_tiered_concurrent_batches = new (class QUEUED_TIERED_CONCURRENT_BYTE_BATCHES implements PARTICLE_QUEUE {
+			/*  ==========================================================================================================================
+			 groups particle work into named tiers, processing batches concurrently across tiers and resolving each submission when
+			 its particle is processed. Each tier supports configurable batch sizes and concurrency settings, with implicit tier 
+			 creation for unregistered names.
+			================================================== ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [QUEUED_TIERED_CONCURRENT_BYTE_BATCHES] */
+			private queues = new Map<S, { pids: Pid[]; resolvers: AR<(v: U) => V> }>();
+			constructor(
+				private tiers: TransformTier[],
+				private collider: A, //HC4
+			) {
+				for (const t of tiers) this.queues.set(t.name, { pids: [], resolvers: [] });
+			}
+			tier(name: S): TransformTier | UD {
+				return this.tiers.find((t) => t.name === name);
+			}
+			submit(pid: Pid, tierName: S, work?: (p: PARTICLE) => U): P<U> {
+				let q = this.queues.get(tierName);
+				if (!q) {
+					this.tiers.push({ name: tierName, concurrency: 4, batch: 8, run: (p: A) => p.payload });
+					q = { pids: [], resolvers: [] };
+					this.queues.set(tierName, q);
+				}
+				return new Promise((resolve) => {
+					q!.pids.push(pid);
+					q!.resolvers.push(resolve);
+					if (work) this.collider.markTierWork(pid, tierName, work);
+				});
+			}
+			async drain(): P<V> {
+				for (let t = 0; t < this.tiers.length; t++) {
+					const tier = this.tiers[t];
+					const q = this.queues.get(tier.name)!;
+					const concurrency = Math.max(1, Math.floor(tier.concurrency) || 1);
+					const batchSize = Math.max(1, Math.floor(tier.batch) || 1);
+		
+					while (q.pids.length > 0) {
+						const batch = q.pids.splice(0, batchSize);
+						const resolvers = q.resolvers.splice(0, batch.length);
+						let next = 0;
+		
+						await Promise.all(
+							Array.from({ length: Math.min(concurrency, batch.length) }, async () => {
+								while (next < batch.length) {
+									const i = next++;
+									const pid = batch[i];
+									const particle = this.collider.particleAt(pid);
+		
+									try {
+										if (particle) await tier.run(particle);
+										resolvers[i]?.(particle?.payload as U);
+									} catch {
+										resolvers[i]?.(undefined as U);
+									} finally {
+										this.collider.clearTierWork(pid);
+									}
+								}
+							}),
+						);
+					}
+				}
+			}
+			get pending(): N {
+				let n = 0;
+				for (const q of this.queues.values()) n += q.pids.length;
+				return n;
+			}
+		})(this, this);
+		// #endregion
+		//                                                                                            ENCRYPTION
+		// #region ══════════════════════════════════════════════════════════════════════════════════════════════════════
+		z.BUS_ = class DISRUPTOR_CRYPTO {
 			ser(value: unknown): string {
 				if (value instanceof Map) {
 					return JSON.stringify({ __type: "Map", value: Array.from(value.entries()).map(([key, val]) => [this.ser(key), this.ser(val)]) });
@@ -14560,11 +15118,17 @@ export class SITH {
 			}
 		}
 		z.BUS_CRYPTO = this.codecs.BUS_
-		z.avro = new (this.codecs.BINARY_AVRO)(this);
 		return z
+		// #endregion
 	})(); 
-	
-	public r2x = new ()(this);
+}
+export interface ChannelMessage<P = U> {
+	r: S;
+	m: S;
+	s: S;
+	k: S;
+	p: P;
+	ts?: N;
 }
 class PidTable {
 	#toPid: Record<S, N> = Object.create(null);
@@ -15256,7 +15820,7 @@ class RAVEN {
 		get: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | undefined => {
 			return MaybePromise(this.store.get<T>(key, opts) as T);
 		},
-		set: <T = A,>(key: string | symbol, value: T | ((prev: T | undefined) => T), opts: { triggerRender?: boolean } & ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+		set: <T = A,>(key: string | symbol, value: T | ((prev: T | undefined) => T), opts: { triggerRender?: boolean } & ScopeOptions = { s: this.s, m: this.m, r: this.r, triggerRender: true }): void => {
 			const { s, m, r, triggerRender = true } = opts;
 			this.store.set(key, value, { triggerRender, s, m, r });
 			return MaybePromise(value as T);
@@ -16158,7 +16722,7 @@ export class WAR_ROOOM {
 	
 }
 // (globalThis as A)[r] //  STATE_CONTEXT === "sauron" ? : null;
-	// (globalThis as A)[r] = root;
+// (globalThis as A)[r] = root;
 // #endregion
 //                                                                                                             [DEATH STAR] HUB
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -16176,6 +16740,7 @@ export class DEATH_STAR {
 	public m: S = "SAURON_MASTER_REG";
 	public s: S = "SAURON_SLAVE_REG";
 	public k: A = "__SIGNALS__";
+	public RTRN_TO_SDR = 'RTRN_TO_SDR'
 
 	constructor(capacity = 1 << 20, REGISTRY: A = null, MESH: A = null) {
 		this.REGISTRY = REGISTRY;
@@ -16189,7 +16754,23 @@ export class DEATH_STAR {
 		this.governor = new GOVERNOR(this);
 	}
 }
+// send               p: U, k: A, s: S = '_globalThis', m: S = this.m, r: S = this.r, adapter = "ws"
+// send.gt.hot        p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'
+// sub                handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh"
+// sub.hot            handler: A, k: S
+// __sauron_id__ = this.root.REGISTRY._sid()
 export const root = new DEATH_STAR();
+function getDark<T = A>(key: A, s?: S, m?: S, r?: S) {
+	return MaybePromise(root.state.state.get<T>(key, { s, m, r }));
+}
+function setDark<T = A>(label: S, value: T, triggerRender:B = true, s?: S, m?: S, r?: S) {
+	root.state._broadcastSS(label, value, "sauron", "set");
+	return MaybePromise(root.state.state.set(label, value, { triggerRender, s, m, r }));
+}
+function subDark<T = A>(fn: (value: T) => void, k: S, s?: S, m?: S, r?: S): () => void {
+	if (!k || !fn) return () => {};
+	return MaybePromise(root.state.state.subscribe<T>(k, fn, { s, m, r }));
+}
 // #endregion
 //                                                                                                                    USE STATE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -16412,5886 +16993,7 @@ export function darkMemo<T>(factory: () => T, deps: A[], __sauron_id__ = this.hu
 }
 
 // #endregion
-//                                                                                                                 ATOM HELPERS
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-
-
-
-// #endregion
-//                                                                                                   NEED TO BE COMPLETED ATOMS
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-
-
-
-
-// #endregion
-//                                                                                                                  MASTER ATOM
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const SLAB = BIND_ATOM("SLAB_ATOM", <X = U>({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-    capacity: config.capacity as number,
-
-    values: new Float64Array(config.capacity),
-    versions: new Uint32Array(config.capacity),
-    nextFree: new Int32Array(config.capacity),
-    refCount: new Int32Array(config.capacity),
-
-    freeHead: -1,
-    allocated: 0,
-
-    slab: new Uint8Array(config.slabCapacity ?? (1 << 20)),
-    slabTail: 0,
-
-    slabOffsets: new Int32Array(config.capacity).fill(-1),
-    slabLengths: new Int32Array(config.capacity).fill(0),
-
-    inUse: new Uint8Array(config.capacity),
-
-    initialized: (() => {
-        const capacity = config.capacity as number;
-
-        if (!pow2(capacity)) {
-            throw new Error("slotCapacity must be a power of two");
-        }
-
-        self.nextFree.fill(-1);
-
-        // Slot 0 is reserved as the control slot (version counter).
-        self.allocated = 1;
-        self.refCount[0] = 1;
-        self.versions[0] = 0;
-        self.inUse[0] = 1;
-
-        // Build initial free list (skip slot 0).
-        // Link slots 1..capacity-1 in reverse order so we pop from the front.
-        for (let i = capacity - 1; i >= 1; i--) {
-            self.nextFree[i] = self.freeHead;
-            self.freeHead = i;
-        }
-
-        return true;
-    })(),
-
-    writeBinary(slot: N, data: U8, epoch: N): V {
-        self.assertLive(slot);
-        self.assertEpoch(epoch);
-
-        const oldOffset = self.slabOffsets[slot];
-        const oldLength = self.slabLengths[slot];
-        const length = data.length;
-
-        // Reuse the existing allocation when it is large enough.
-        if (oldOffset >= 0 && length <= oldLength) {
-            self.slab.set(data, oldOffset);
-
-            if (length < oldLength) {
-                self.freeBytes(oldOffset + length, oldLength - length);
-            }
-
-            self.slabOffsets[slot] = length === 0 ? 0 : oldOffset;
-            self.slabLengths[slot] = length;
-            self.values[slot] = 0;
-            self.versions[slot] = epoch;
-            return;
-        }
-
-        // Allocate first: exhaustion leaves the old payload intact.
-        const offset = self.allocBytes(length);
-
-        self.slab.set(data, offset);
-
-        if (oldOffset >= 0 && oldLength > 0) {
-            self.freeBytes(oldOffset, oldLength);
-        }
-
-        self.slabOffsets[slot] = offset;
-        self.slabLengths[slot] = length;
-        self.values[slot] = 0;
-        self.versions[slot] = epoch;
-    },
-
-    readBinary(slot: N): U8 {
-        const { offset, length } = self.ref(slot);
-        return self.slab.subarray(offset, offset + length);
-    },
-
-    allocBytes(length: N): N {
-        if (length === 0) return 0;
-
-        // First-fit allocation from reclaimed ranges.
-        for (let i = 0; i < self.freeRanges.length; i++) {
-            const range = self.freeRanges[i];
-
-            if (range.length < length) continue;
-
-            const offset = range.offset;
-
-            if (range.length === length) {
-                self.freeRanges.splice(i, 1);
-            } else {
-                range.offset += length;
-                range.length -= length;
-            }
-
-            return offset;
-        }
-
-        if (length > self.slab.length - self.slabTail) {
-            throw new RangeError("STORAGE_RING: no contiguous slab range large enough");
-        }
-
-        const offset = self.slabTail;
-        self.slabTail += length;
-        return offset;
-    },
-
-    freeBytes(offset: N, length: N): V {
-        if (length === 0) return;
-
-        const ranges = self.freeRanges;
-        let index = 0;
-
-        while (index < ranges.length && ranges[index].offset < offset) {
-            index++;
-        }
-
-        ranges.splice(index, 0, { offset, length });
-
-        // Merge with the preceding range.
-        if (
-            index > 0 &&
-            ranges[index - 1].offset + ranges[index - 1].length === offset
-        ) {
-            ranges[index - 1].length += length;
-            ranges.splice(index, 1);
-            index--;
-        }
-
-        // Merge with the following range.
-        if (
-            index + 1 < ranges.length &&
-            ranges[index].offset + ranges[index].length === ranges[index + 1].offset
-        ) {
-            ranges[index].length += ranges[index + 1].length;
-            ranges.splice(index + 1, 1);
-        }
-
-        // Return a free suffix to the unused slab tail.
-        const last = ranges[ranges.length - 1];
-
-        if (last !== undefined && last.offset + last.length === self.slabTail) {
-            self.slabTail = last.offset;
-            ranges.pop();
-        }
-    },
-
-    assertLive(slot: N): V {
-        if (
-            !Number.isInteger(slot) ||
-            slot <= 0 ||
-            slot >= self.allocated ||
-            self.refCount[slot] <= 0
-        ) {
-            throw new RangeError(`STORAGE_RING: invalid or released slot ${slot}`);
-        }
-    },
-
-    assertEpoch(epoch: N): V {
-        if (
-            !Number.isInteger(epoch) ||
-            epoch < 0 ||
-            epoch > 0xffffffff
-        ) {
-            throw new RangeError("STORAGE_RING: epoch must be a uint32");
-        }
-    },
-
-    tick(): number {
-        return self.versions[0];
-    },
-
-    advance(): number {
-        return ++self.versions[0];
-    },
-
-    alloc(value = 0): number {
-        const slot = self.freeHead;
-        if (slot === -1) return -1;
-
-        // Remove from free list.
-        self.freeHead = self.nextFree[slot];
-        self.nextFree[slot] = -1;
-
-        // Initialize slot.
-        self.values[slot] = value;
-        self.refCount[slot] = 1;
-        self.inUse[slot] = 1;
-
-        // Clear slab allocation for this slot.
-        self.slabOffsets[slot] = -1;
-        self.slabLengths[slot] = 0;
-
-        self.allocated++;
-
-        return slot;
-    },
-
-    retain(slot: number): boolean {
-        if (slot < 0 || slot >= self.capacity) return false;
-        if (!self.inUse[slot]) return false;
-
-        if (self.refCount[slot] === 0x7FFFFFFF) {
-            throw new Error("Reference count overflow");
-        }
-
-        self.refCount[slot]++;
-        return true;
-    },
-
-    release(slot: number): boolean {
-        if (slot < 0 || slot >= self.capacity) return false;
-        if (!self.inUse[slot]) return false;
-
-        if (self.refCount[slot] <= 0) {
-            throw new Error("Reference count underflow");
-        }
-
-        self.refCount[slot]--;
-
-        if (self.refCount[slot] === 0) {
-            self.inUse[slot] = 0;
-
-            // Clear slab data.
-            self.slabOffsets[slot] = -1;
-            self.slabLengths[slot] = 0;
-            self.values[slot] = 0;
-
-            // Add to free list.
-            self.nextFree[slot] = self.freeHead;
-            self.freeHead = slot;
-
-            self.allocated--;
-
-            return true;
-        }
-
-        return false;
-    },
-
-    write(slot: number, value: number, epoch: number): boolean {
-        if (slot < 0 || slot >= self.capacity) return false;
-        if (!self.inUse[slot]) return false;
-        if (self.refCount[slot] <= 0) return false;
-
-        // Epoch validation: the slot's version must match the expected epoch.
-        if (self.versions[slot] !== epoch) return false;
-
-        self.values[slot] = value;
-        return true;
-    },
-
-    read(slot: number): number {
-        if (slot < 0 || slot >= self.capacity) return NaN;
-        if (!self.inUse[slot]) return NaN;
-
-        return self.values[slot];
-    },
-
-    version(slot: number): number {
-        if (slot < 0 || slot >= self.capacity) return -1;
-        return self.versions[slot];
-    },
-
-    ref(slot: number): { offset: number; length: number } {
-        if (slot < 0 || slot >= self.capacity) {
-            return { offset: -1, length: 0 };
-        }
-
-        return {
-            offset: self.slabOffsets[slot],
-            length: self.slabLengths[slot],
-        };
-    },
-
-    storeSlab(slot: number, data: Uint8Array | ArrayBuffer): boolean {
-        if (slot < 0 || slot >= self.capacity) return false;
-        if (!self.inUse[slot]) return false;
-
-        const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-        const len = bytes.length;
-
-        if (len === 0) {
-            // Zero-length: clear slab assignment.
-            self.slabOffsets[slot] = -1;
-            self.slabLengths[slot] = 0;
-            return true;
-        }
-
-        // Simple bump allocator: check if we have room.
-        if (self.slabTail + len > self.slab.length) {
-            // Could implement compaction here, but for now just fail.
-            return false;
-        }
-
-        const offset = self.slabTail;
-        self.slab.set(bytes, offset);
-        self.slabTail += len;
-
-        self.slabOffsets[slot] = offset;
-        self.slabLengths[slot] = len;
-
-        return true;
-    },
-
-    loadSlab(slot: number): Uint8Array | null {
-        if (slot < 0 || slot >= self.capacity) return null;
-        if (!self.inUse[slot]) return null;
-
-        const offset = self.slabOffsets[slot];
-        const length = self.slabLengths[slot];
-
-        if (offset < 0 || length <= 0) return null;
-
-        return self.slab.subarray(offset, offset + length);
-    },
-
-    growthSlab(minAdditional: number): void {
-        const newCapacity = Math.max(self.slab.length * 2, self.slabTail + minAdditional);
-        const newSlab = new Uint8Array(newCapacity);
-        newSlab.set(self.slab);
-        self.slab = newSlab;
-    },
-
-    needsCompaction(): boolean {
-        if (self.allocated <= 1) return false;
-
-        let liveBytes = 0;
-        for (let i = 1; i < self.capacity; i++) {
-            if (self.inUse[i] && self.slabLengths[i] > 0) {
-                liveBytes += self.slabLengths[i];
-            }
-        }
-
-        const deadBytes = self.slabTail - liveBytes;
-        return deadBytes > self.slabTail * 0.5;
-    },
-
-    compact(): void {
-        if (!self.needsCompaction()) return;
-
-        const newSlab = new Uint8Array(self.slab.length);
-        let newTail = 0;
-
-        for (let i = 1; i < self.capacity; i++) {
-            if (!self.inUse[i]) continue;
-
-            const length = self.slabLengths[i];
-            if (length <= 0) continue;
-
-            const oldOffset = self.slabOffsets[i];
-            newSlab.set(
-                self.slab.subarray(oldOffset, oldOffset + length),
-                newTail,
-            );
-
-            self.slabOffsets[i] = newTail;
-            newTail += length;
-        }
-
-        // Copy back into original slab buffer.
-        self.slab.set(newSlab.subarray(0, newTail), 0);
-        self.slabTail = newTail;
-    },
-
-    stats(): {
-        capacity: number;
-        allocated: number;
-        freeSlots: number;
-        slabUsed: number;
-        slabCapacity: number;
-        slabUtilization: number;
-    } {
-        return {
-            capacity: self.capacity,
-            allocated: self.allocated,
-            freeSlots: self.capacity - self.allocated,
-            slabUsed: self.slabTail,
-            slabCapacity: self.slab.length,
-            slabUtilization: self.slabTail / self.slab.length,
-        };
-    },
-
-    validate(): string[] {
-        const errors: string[] = [];
-
-        let freeCount = 0;
-        let current = self.freeHead;
-        const seen = new Set<number>();
-
-        while (current !== -1) {
-            if (current < 1 || current >= self.capacity) {
-                errors.push(`Free list contains invalid slot: ${current}`);
-                break;
-            }
-
-            if (seen.has(current)) {
-                errors.push(`Free list contains cycle at slot: ${current}`);
-                break;
-            }
-
-            seen.add(current);
-            freeCount++;
-            current = self.nextFree[current];
-        }
-
-        if (freeCount !== self.capacity - self.allocated) {
-            errors.push(
-                `Free list has ${freeCount} entries, expected ${self.capacity - self.allocated}`,
-            );
-        }
-
-        for (let i = 1; i < self.capacity; i++) {
-            if (!self.inUse[i]) continue;
-
-            const offset = self.slabOffsets[i];
-            const length = self.slabLengths[i];
-
-            if (offset === -1 && length !== 0) {
-                errors.push(`Slot ${i}: offset -1 but length ${length}`);
-            } else if (offset !== -1) {
-                if (offset < 0 || offset + length > self.slabTail) {
-                    errors.push(
-                        `Slot ${i}: slab range [${offset}, ${offset + length}) out of bounds (tail=${self.slabTail})`,
-                    );
-                }
-            }
-        }
-
-        return errors;
-    },
-
-    get used(): N {
-        return self.allocated - 1 - self.freeCount();
-    },
-
-    get freeCount(): N {
-        return self.freeHead === FREE_LIST_END ? 0 : self.walkFree();
-    },
-
-    get slabUsed(): N {
-        return self.liveBytes;
-    },
-
-    get slabFree(): N {
-        return self.slab.length - self.liveBytes;
-    },
-
-    walkFree(): N {
-        let n = 0;
-        let p = self.freeHead;
-
-        while (p !== FREE_LIST_END) {
-            n++;
-            p = self.nextFree[p];
-        }
-
-        return n;
-    },
-}));
-// #endregion
-//                                                                                                                  MASTER DRS
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const DRS = MASTER_ATOM("DRS_ATOM", <X = U>({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    value: config.value as X,
-
-  
-
-    destroy(): V {
-        self.registry?.purgeAll();
-        self.registry = null;
-        BC().store.particle(self.s, self.m, self.r).delete(self.key)._REGISTRY_PROTON;
-    },
-
-    read(): X {
-        const r = self.registry;
-        if (r !== null) {
-            const gate = r.get(GATE_ELECTRON);
-            if (gate !== undefined && (gate as any).sealed) {
-                throw new SEALED_ERROR_ELECTRON(self.key);
-            }
-        }
-        return self.value;
-    },
-
-    write(next: X): B {
-        const r = self.registry;
-        if (r === null) {
-            self.value = next;
-            return true;
-        }
-
-        const gate = r.get(GATE_ELECTRON);
-        if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
-
-        const previous = self.value;
-        if (Object.is(previous, next)) return false;
-
-        self.value = next;
-
-        const subs = r.get(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD;
-        if (subs !== undefined) {
-            subs.notify({ key: self.key, previous, current: next });
-        }
-
-        return true;
-    },
-
-    subscribe(listener: LISTENER<X>): UNSUBSCRIBE {
-        const subs =
-            (self.shard(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD) ??
-            self.bind(new SUBSCRIPTION_ELECTRON<X>(self));
-
-        return subs.subscribe(listener);
-    },
-
-    waitFor() {},
-}));
-// #endregion
-//                                                                                                                          SUB
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-// 
-export const SUB = MASTER_ATOM("SUB_ATOM", <T = any>({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    pipeline: undefined as PIPELINE<MQ_CTX<T>> | undefined,
-
-    send(message: T, signal?: SIGNAL): B {
-        const ctx: MQ_CTX<T> = {
-            atom: self,
-            message,
-            signal,
-            meta: undefined,
-        };
-
-        return self.dispatch("beforeSend", ctx, () => {
-            self.deliver(ctx);
-            return true;
-        });
-    },
-
-    dispatch(hook: HOOK, ctx: MQ_CTX<T>, terminal: () => V): V {
-        const p = self.pipeline ??= self.compile();
-        return p.run(hook, ctx, terminal);
-    },
-
-    deliver(ctx: MQ_CTX<T>): V {
-        // bare transport / queue / subscriber fanout
-    },
-
-    compile(): PIPELINE<MQ_CTX<T>> {
-        const r = self.registry;
-        const behaviours: BEHAVIOUR<MQ_CTX<T>>[] = [];
-
-        if (r !== null) {
-            for (const shard of r.shards()) {
-                if ("behaviours" in shard) {
-                    behaviours.push(...(shard as any).behaviours());
-                }
-            }
-        }
-
-        return compilePipeline(behaviours);
-    },
-}));
-// #endregion
-//                                                                                                                       STREAM
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const STREAM = MASTER_ATOM("STREAM_ATOM", <T = any>({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    pipeline: undefined as PIPELINE<STREAM_CTX<T>> | undefined,
-
-    send(message: T, signal?: SIGNAL): B {
-        const ctx: STREAM_CTX<T> = {
-            atom: self,
-            message,
-            signal,
-            meta: undefined,
-        };
-
-        return self.dispatch("beforeSend", ctx, () => {
-            self.deliver(ctx);
-            return true;
-        });
-    },
-
-    dispatch(hook: HOOK, ctx: STREAM_CTX<T>, terminal: () => V): V {
-        const p = self.pipeline ??= self.compile();
-        return p.run(hook, ctx, terminal);
-    },
-
-    deliver(ctx: STREAM_CTX<T>): V {
-        // bare transport / queue / subscriber fanout
-    },
-
-    compile(): PIPELINE<STREAM_CTX<T>> {
-        const r = self.registry;
-        const behaviours: BEHAVIOUR<STREAM_CTX<T>>[] = [];
-
-        if (r !== null) {
-            for (const shard of r.shards()) {
-                if ("behaviours" in shard) {
-                    behaviours.push(...(shard as any).behaviours());
-                }
-            }
-        }
-
-        return compilePipeline(behaviours);
-    },
-}));
-// #endregion
-//                                                                                                                  SPREADSHEET
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const SPREADSHEET = MASTER_ATOM("SPREADSHEET_ATOM", <X = U>({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    key: config.key,
-    value: config.value as X,
-    registry: null as REGISTRY_PROTON | null,
-
-    bind<S extends SPREADSHEET_ATOM>(atom: S, owner: OWNERSHIP = "bespoke"): S {
-        if (self.registry === null) {
-            self.registry = new REGISTRY_PROTON(self.key, { atoms: [{ atom, owner }] });
-        } else {
-            self.registry.bind(atom, owner);
-        }
-        return atom;
-    },
-
-    shard<S extends SPREADSHEET_ATOM>(ctor: ATOM_CLASS<S>): S | UD {
-        return self.registry?.get(ctor);
-    },
-
-    unbind(ctor: ATOM_CLASS<any>): B {
-        if (self.registry === null) return false;
-
-        const removed = self.registry.unbind(ctor);
-
-        // A registry with nothing in it is dropped, returning the cell to the bare fast path.
-        if (self.registry.size === 0) {
-            BC().store.particle(self.s, self.m, self.r).delete(self.key)._REGISTRY_PROTON;
-            self.registry = null;
-        }
-
-        return removed;
-    },
-
-    destroy(): V {
-        self.registry?.purgeAll();
-        self.registry = null;
-        BC().store.particle(self.s, self.m, self.r).delete(self.key)._REGISTRY_PROTON;
-    },
-
-    read(): X {
-        const r = self.registry;
-        if (r !== null) {
-            const gate = r.get(GATE_ELECTRON);
-            if (gate !== undefined && (gate as any).sealed) {
-                throw new SEALED_ERROR_ELECTRON(self.key);
-            }
-        }
-        return self.value;
-    },
-
-    write(next: X): B {
-        const r = self.registry;
-        if (r === null) {
-            self.value = next;
-            return true;
-        }
-
-        const gate = r.get(GATE_ELECTRON);
-        if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
-
-        const previous = self.value;
-        if (Object.is(previous, next)) return false;
-
-        self.value = next;
-
-        const subs = r.get(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD;
-        if (subs !== undefined) {
-            subs.notify({ key: self.key, previous, current: next });
-        }
-
-        return true;
-    },
-
-    subscribe(listener: LISTENER<X>): UNSUBSCRIBE {
-        const subs =
-            (self.shard(SUBSCRIPTION_ELECTRON) as SUBSCRIPTION_ELECTRON<X> | UD) ??
-            self.bind(new SUBSCRIPTION_ELECTRON<X>(self));
-
-        return subs.subscribe(listener);
-    },
-
-    waitFor() {},
-
-    kind: undefined as SY,
-    purge(): V {}, 
-}));
-// #endregion
-//                                                                                                                         SEND
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const SEND = MASTER_ATOM("SEND_ATOM", <T = any>({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    pipeline: undefined as PIPELINE<MQ_CTX<T>> | undefined,
-
-    send(message: T, signal?: SIGNAL): B {
-        const ctx: MQ_CTX<T> = {
-            atom: self,
-            message,
-            signal,
-            meta: undefined,
-        };
-
-        return self.dispatch("beforeSend", ctx, () => {
-            self.deliver(ctx);
-            return true;
-        });
-    },
-
-    dispatch(hook: HOOK, ctx: MQ_CTX<T>, terminal: () => V): V {
-        const p = self.pipeline ??= self.compile();
-        return p.run(hook, ctx, terminal);
-    },
-
-    deliver(ctx: MQ_CTX<T>): V {
-        // bare transport / queue / subscriber fanout
-    },
-
-    compile(): PIPELINE<MQ_CTX<T>> {
-        const r = self.registry;
-        const behaviours: BEHAVIOUR<MQ_CTX<T>>[] = [];
-
-        if (r !== null) {
-            for (const shard of r.shards()) {
-                if ("behaviours" in shard) {
-                    behaviours.push(...(shard as any).behaviours());
-                }
-            }
-        }
-
-        return compilePipeline(behaviours);
-    },
-}));
-// #endregion
-//                                                                                                                        CLOUD
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const CLOUD = MASTER_ATOM("CLOUD_ATOM", <X = U>({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    value: config.value as X,
-    registry: null as REGISTRY_PROTON | null,
-
-    bind: <S extends ATOM>(shard: S, owner: OWNERSHIP = "bespoke"): S => {
-        if (self.registry === null) {
-            self.registry = new REGISTRY_PROTON(self.key, {
-                shards: [{ shard, owner }],
-            });
-        } else {
-            self.registry.bind(shard, owner);
-        }
-
-        return shard;
-    },
-
-    shard: <S extends ATOM>(ctor: ATOM_CLASS<S>): S | UD =>
-        self.registry?.get(ctor),
-
-    unbind: (ctor: SHARD_CLASS<any>): B => {
-        if (self.registry === null) return false;
-
-        const removed = self.registry.unbind(ctor);
-
-        if (self.registry.size === 0) {
-            BC().store.particle(self.s, self.m, self.r)
-                .delete(self.k)._REGISTRY_PROTON;
-
-            self.registry = null;
-        }
-
-        return removed;
-    },
-
-    destroy: (): void => {
-        self.registry?.purgeAll();
-        self.registry = null;
-
-        BC().store.particle(self.s, self.m, self.r)
-            .delete(self.k)._REGISTRY_PROTON;
-    },
-
-    read: (): X => {
-        const registry = self.registry;
-
-        if (registry !== null) {
-            const gate = registry.get(GATE_ELECTRON);
-
-            if (gate !== undefined && (gate as any).sealed) {
-                throw new SEALED_ERROR_ELECTRON(self.k);
-            }
-        }
-
-        return self.value;
-    },
-
-    write: (next: X): B => {
-        const registry = self.registry;
-
-        if (registry === null) {
-            self.value = next;
-            return true;
-        }
-
-        const gate = registry.get(GATE_ELECTRON);
-
-        if (gate !== undefined && (gate.sealed || gate.frozen)) {
-            return false;
-        }
-
-        const previous = self.value;
-
-        if (Object.is(previous, next)) return false;
-
-        self.value = next;
-
-        const subs = registry.get(SUBSCRIPTION_ELECTRON) as
-            SUBSCRIPTION_ELECTRON<X> | UD;
-
-        if (subs !== undefined) {
-            subs.notify({
-                key: self.k,
-                previous,
-                current: next,
-            });
-        }
-
-        return true;
-    },
-
-    subscribe: (listener: LISTENER<X>): UNSUBSCRIBE => {
-        const subs =
-            (self.shard(SUBSCRIPTION_ELECTRON) as
-                SUBSCRIPTION_ELECTRON<X> | UD) ??
-            self.bind(new SUBSCRIPTION_ELECTRON<X>(self));
-
-        return subs.subscribe(listener);
-    },
-
-    waitFor: () => {},
-}));
-// #endregion
-//                                                                                                                       DUPLEX
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const DUPLEX = MASTER_ATOM("DUPLEX", <T>({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    pipeline: undefined as PIPELINE<MQ_CTX<T>> | undefined,
-
-    send: (message: T, signal?: ATOM): B => {
-        const ctx: MQ_CTX<T> = {
-            atom: self,
-            message,
-            signal,
-            meta: undefined,
-        };
-
-        return self.dispatch("beforeSend", ctx, () => {
-            self.deliver(ctx);
-            return true;
-        });
-    },
-
-    dispatch: (
-        hook: HOOK,
-        ctx: MQ_CTX<T>,
-        terminal: () => V,
-    ): V => {
-        const p = self.pipeline ??= self.compile();
-        return p.run(hook, ctx, terminal);
-    },
-
-    deliver: (ctx: MQ_CTX<T>): V => {
-        // bare transport / queue / subscriber fanout
-    },
-
-    compile: (): PIPELINE<MQ_CTX<T>> => {
-        const registry = self.registry;
-        const behaviours: BEHAVIOUR<MQ_CTX<T>>[] = [];
-
-        if (registry !== null) {
-            for (const shard of registry.shards()) {
-                if ("behaviours" in shard) {
-                    behaviours.push(...(shard as any).behaviours());
-                }
-            }
-        }
-
-        return compilePipeline(behaviours);
-    },
-}));
-// #endregion
-//                                                                                                                [MODULE_ATOM]
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const MODULE = MASTER_ATOM("MODULE_ATOM", <T = any>({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    initial: undefined as T,
-    key: config.k ?? "__SIGNALS__",
-    module: undefined as T,
-    module_type: "class_fn_pool",
-    version: 0,
-    sealed: false,
-    frozen: true,
-    hasWritten: false,
-    persisted: false,
-
-    listeners: new Set<(change: Change<T>) => void>(),
-    waiters: new Set<(value: T) => void>(),
-    undoStack: undefined as HistoryEntry<T>[] | undefined,
-
-    conflict: undefined as ConflictPolicy | undefined,
-    historyIndex: 0,
-    history: undefined as AtomHistoryEntry<T>[] | undefined,
-    historyMax: 50,
-    lifecycle: undefined as SignalLifecycle | undefined,
-    async: undefined as AsyncSignalState<T> | undefined,
-    metrics: undefined as Metrics | undefined,
-    conflictStrategy: undefined as "latest" | "fail" | "accumulate" | undefined,
-
-    schema: undefined as SignalSchema | undefined,
-    contracts: new Map<string, AtomContract<T>>(),
-    causal: [] as CausalEntry[],
-    lastWriteSource: undefined as string | undefined,
-
-    batches: new Set<SignalKey>(),
-    batchQueue: new Map<SignalKey, unknown>(),
-    batchOpts: new Map<SignalKey, { triggerRender?: boolean }>(),
-
-    broadcast: true,
-    triggerRender: true,
-    boundary: "same-app" as Boundary,
-
-    initialize: (
-        initial: T,
-        options: MODULE_OPTIONS = {
-            module_type: "class_fn_pool",
-            broadcast: true,
-            frozen: true,
-        },
-    ): void => {
-        const ptype = options?.module_type
-            ? options.module_type
-            : self.module_type;
-        const shouldFreeze = options.frozen ?? self.frozen;
-
-        switch (ptype) {
-            case "fn":
-            case "comp":
-            case "node_module":
-                self.frozen = shouldFreeze;
-                self.module = initial;
-                self.initial = initial;
-                break;
-
-            case "class_fn_pool":
-            default:
-                self.frozen = false;
-                self.module = { ...initial };
-                self.initial = { ...initial };
-                break;
-        }
-
-        self.module_type = ptype;
-
-        if (options?.broadcast) self.broadcast = options.broadcast;
-        if (options?.module_type) self.module_type = options.module_type;
-        if (options?.schema) self.schema = options.schema;
-        if (options?.lifecycle) self.lifecycle = options.lifecycle;
-        if (options?.conflict) self.conflict = options.conflict;
-        if (options?.conflictStrategy) self.conflictStrategy = options.conflictStrategy;
-
-        if (options?.history) {
-            self.historyMax = Math.max(1, options.history.max ?? 50);
-            self.history = [{
-                k: 0,
-                value: initial,
-                timestamp: Date.now(),
-                source: "initial",
-            }];
-            self.historyIndex = 0;
-        }
-    },
-
-    read: (): T => self.module,
-
-    peek: (): T => self.module,
-
-    write: (
-        incoming: any | ((prev: T) => T),
-        options: AtomWriteOptions = {},
-    ): T => {
-        if (self.frozen) return self.peek();
-
-        const prev = self.module;
-        const resolved = incoming;
-
-        const next = self.module_type === "class_fn_pool"
-            ? resolved
-                ? { ...prev, ...resolved }
-                : prev
-            : resolved;
-
-        self.module = next;
-        self.hasWritten = true;
-        self.version += 1;
-        self.lastWriteSource = options.source ?? "write";
-        self.assertContracts(next, prev);
-
-        for (const l of self.listeners) {
-            try {
-                l(next);
-            } catch (e) {}
-        }
-
-        root.bus.send(self.key, next, self.s, self.m, self.r);
-
-        for (const w of self.waiters) {
-            try {
-                w(next);
-            } catch (e) {}
-        }
-
-        if (options.recordHistory !== false) {
-            self.recordHistory(prev, next, self.lastWriteSource);
-        }
-
-        self.recordCausal(next, self.lastWriteSource, options.cause);
-        self.waiters.clear();
-
-        self.notifyListeners({
-            key: self.key,
-            previous: prev,
-            current: next,
-            version: self.version,
-            timestamp: Date.now(),
-            source: self.lastWriteSource,
-        });
-
-        return next;
-    },
-
-    register: (name: string, val: any): T =>
-        self.write((prev: A) => ({ ...prev, [name]: val })),
-
-    unregister: (name: string): T =>
-        self.write((prev: A) => {
-            const { [name]: _gone, ...rest } = prev;
-            return rest;
-        }),
-
-    slot: (name: string): any => self.module[name],
-
-    on: (listener: RiftListener<any>): void => {
-        self.listeners.add(listener);
-        listener(self.module);
-    },
-
-    waitFor: (): Promise<T> =>
-        new Promise((resolve) => {
-            self.waiters.add(resolve);
-        }),
-
-    waitForSlot: async (name: string, timeoutMs = 0): Promise<any> => {
-        const existing = self.module[name];
-        if (existing !== undefined) return existing;
-
-        if (!timeoutMs) {
-            const next = await self.waitFor();
-            return (next as Record<string, any>)[name];
-        }
-
-        return Promise.race([
-            self.waitFor().then(
-                (next) => (next as Record<string, any>)[name],
-            ),
-            new Promise((_, reject) =>
-                setTimeout(
-                    () => reject(
-                        new Error(
-                            `[ModuleAtom] waitForSlot("${name}") timed out after ${timeoutMs}m`,
-                        ),
-                    ),
-                    timeoutMs,
-                ),
-            ),
-        ]);
-    },
-
-    inspect: (): T => ({ ...self.module }),
-
-    setSchema: (schema?: SignalSchema) => {
-        self.schema = schema;
-        return self;
-    },
-
-    setLifecycle: (lifecycle?: SignalLifecycle<T>) => {
-        self.lifecycle = lifecycle;
-        return self;
-    },
-
-    setConflict: (
-        conflict?: ConflictPolicy,
-        strategy?: "latest" | "fail" | "accumulate",
-    ) => {
-        self.conflict = conflict;
-        self.conflictStrategy = strategy;
-        return self;
-    },
-
-    setFrozen: (): void => {
-        self.frozen = true;
-    },
-
-    setUnfrozen: (): void => {
-        self.frozen = false;
-    },
-
-    setSealed: (): void => {
-        self.sealed = true;
-    },
-
-    setUnsealed: (): void => {
-        self.sealed = false;
-    },
-
-    setBoundary: (): void => {},
-
-    validate: (next: T): T => {
-        if (!self.schema) return next;
-        return root.signals._.validateSchema(self.schema, next);
-    },
-
-    assertContracts: (next: T, previous: T): void => {
-        for (const contract of self.contracts.values()) {
-            let valid = false;
-
-            try {
-                valid = contract.postcondition(next, previous);
-            } catch (error) {
-                console.error(
-                    `[Sauron] contract "${contract.name}" threw for "${String(self.key)}":`,
-                    error,
-                );
-            }
-
-            if (valid) continue;
-
-            const message =
-                `[Sauron] contract "${contract.name}" violated ` +
-                `on write to "${String(self.key)}"`;
-
-            if (contract.block) {
-                throw new Error(message);
-            }
-
-            console.error(message);
-        }
-    },
-
-    recordHistory: (previous: T, next: T, source?: string): void => {
-        if (!self.history) return;
-
-        self.history.splice(self.historyIndex + 1);
-
-        const last = self.history[self.history.length - 1];
-
-        self.history.push({
-            k: (last?.k ?? -1) + 1,
-            prev: previous,
-            value: next,
-            next,
-            timestamp: Date.now(),
-            source,
-            undone: false,
-        });
-
-        while (self.history.length > self.historyMax) {
-            self.history.shift();
-        }
-
-        self.historyIndex = self.history.length - 1;
-    },
-
-    getHistory: (): readonly AtomHistoryEntry<T>[] =>
-        self.history ?? [],
-
-    timeTravel: (steps = 1): T | undefined => {
-        if (!self.history?.length || steps <= 0) return undefined;
-
-        const idx = Math.max(
-            0,
-            Math.min(self.history.length - 1, self.historyIndex + steps),
-        );
-
-        if (idx === self.historyIndex) return undefined;
-
-        self.historyIndex = idx;
-        return self.replayHistory("time-travel");
-    },
-
-    back: (steps = 1): T | undefined =>
-        self.timeTravel(-Math.abs(steps)),
-
-    forward: (steps = 1): T | undefined =>
-        self.timeTravel(Math.abs(steps)),
-
-    goto: (sequence: number): T | undefined => {
-        if (!self.history?.length) return undefined;
-
-        const idx = self.history.findIndex(
-            (entry) => entry.k === sequence,
-        );
-
-        if (idx < 0 || idx === self.historyIndex) return undefined;
-
-        self.historyIndex = idx;
-        return self.replayHistory("time-travel.goto");
-    },
-
-    replayHistory: (source: string): T => {
-        const entry = self.history![self.historyIndex];
-
-        return self.write(entry.value as T, {
-            source,
-            cause: "time-travel",
-            triggerRender: true,
-            recordHistory: false,
-        });
-    },
-
-    recordCausal: (
-        value: T,
-        source?: string,
-        cause?: string,
-    ): void => {
-        self.causal.push({
-            value,
-            source,
-            cause,
-            timestamp: Date.now(),
-        } as CausalEntry);
-
-        if (self.causal.length > 100) {
-            self.causal.shift();
-        }
-    },
-
-    recordMetrics: (): void => {
-        if (!self.metrics) return;
-
-        self.metrics.writeCount += 1;
-        self.metrics.lastWrite = Date.now();
-    },
-	
-    notifyListeners: (change: Change<T>): void => {
-        const listeners = root.wr._listeners.get(self.key);
-        if (!listeners) return;
-
-        for (const listener of listeners) {
-            try {
-                listener(change);
-            } catch (error) {
-                console.error(
-                    `[Sauron:SIGNAL_CELL:${String(self.key)}] listener failed:`,
-                    error,
-                );
-            }
-        }
-    },
-
-    resolveWaiters: (value: T): void => {
-        const waiting = root.wr._waiters.get(self.key);
-        if (!waiting) return;
-
-        root.wr._waiters.delete(self.key);
-
-        for (const resolve of waiting) {
-            try {
-                resolve(value);
-            } catch (error) {
-                console.error(
-                    `[Sauron:SIGNAL_CELL:${String(self.key)}] waiter failed:`,
-                    error,
-                );
-            }
-        }
-    },
-
-    notifyExternalSubscribers: (): void => {
-        const subscribers = root.state._externalSubscribers.get(self.key);
-        if (!subscribers) return;
-
-        for (const callback of subscribers) {
-            try {
-                callback();
-            } catch (error) {
-                console.error(
-                    `[Sauron:SIGNAL_CELL:${String(self.key)}] external subscriber failed:`,
-                    error,
-                );
-            }
-        }
-    },
-}));
-// #endregion
-//                                                                                                      [MODULE_STORAGE_PROTON]
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const MODULE_STORAGE = MASTER_ATOM(
-    "MODULE_STORAGE_PROTON",
-    ({ self, master, config }: any) => ({
-        k: config.k ?? "__SIGNALS__",
-        s: config.s ?? "SAURON_SLAVE_REG",
-        m: config.m ?? "SAURON_MASTER_REG",
-        r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-        slots: new Map<S, MODULE_SLOT>(),
-
-        addr: (
-            k: S = self.k,
-            s: S = self.s,
-            c?: CACHE,
-            m: S = self.m,
-            r: S = self.r,
-        ): S =>
-            c !== undefined
-                ? `[${r}][${m}][${c}][${s}][${k}]` as S
-                : `[${r}][${m}][${s}][${k}]` as S,
-
-        set: (
-            value: MDV,
-            k: S,
-            s: S,
-            c: S,
-            m: S,
-            r: S,
-            options: {
-                owner?: OWNERSHIP;
-                onUnload?: (v: MDV) => V;
-            } = {},
-        ): MDV => {
-            const key = self.addr(k, s, c, m, r);
-            const prev = self.slots.get(key);
-
-            prev?.onUnload?.(prev.value);
-
-            self.slots.set(key, {
-                value,
-                registeredAt: Date.now(),
-                owner: options.owner ?? "bespoke",
-                onUnload: options.onUnload,
-            });
-
-            return value;
-        },
-
-        get: (
-            k: S,
-            s: S,
-            m: S,
-            r: S,
-        ): MODULE_VALUE | undefined =>
-            self.slots.get(self.addr(k, s, undefined, m, r))?.value,
-
-        has: (
-            k: S,
-            s: S,
-            m: S,
-            r: S,
-        ): B =>
-            self.slots.has(self.addr(k, s, undefined, m, r)),
-
-        drop: (
-            k: S,
-            s: S,
-            m: S,
-            r: S,
-            force: B = false,
-        ): B => {
-            const key = self.addr(k, s, undefined, m, r);
-            const slot = self.slots.get(key);
-
-            if (!slot) return false;
-            if (slot.owner === "shared" && !force) return false;
-
-            slot.onUnload?.(slot.value);
-            self.slots.delete(key);
-
-            return true;
-        },
-
-        list: (
-            s: S,
-            m: S,
-            r: S,
-        ): Array<{ k: S; owner: OWNERSHIP; registeredAt: N }> => {
-            const prefix = `[${r}][${m}][${s}][`;
-            const out: Array<{
-                k: S;
-                owner: OWNERSHIP;
-                registeredAt: N;
-            }> = [];
-
-            for (const [key, slot] of self.slots) {
-                if (key.startsWith(prefix)) {
-                    out.push({
-                        k: key.slice(0, -1).slice(prefix.length) as S,
-                        owner: slot.owner,
-                        registeredAt: slot.registeredAt,
-                    });
-                }
-            }
-
-            return out;
-        },
-
-        inspect: (): Array<{ address: S; owner: OWNERSHIP; kind: S }> =>
-            [...self.slots.entries()].map(([address, slot]) => ({
-                address,
-                owner: slot.owner,
-                kind: typeof slot.value === "function"
-                    ? (slot.value.name || "anonymous-fn") as S
-                    : "object" as S,
-            })),
-
-        purge: (): void => {
-            for (const slot of self.slots.values()) {
-                slot.onUnload?.(slot.value);
-            }
-            self.slots.clear();
-        },
-    }),
-);
-// #endregion
-//                                                                                                                [MODULE_ATOM]
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const S_CLASS_ATOM = BIND_ATOM("S_CLASS_ATOM", <T = any>({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    initial: undefined as T,
-    key: config.k ?? "__SIGNALS__",
-    module: undefined as T,
-    module_type: "class_fn_pool",
-    version: 0,
-    sealed: false,
-    frozen: true,
-    hasWritten: false,
-    persisted: false,
-
-    listeners: new Set<(change: Change<T>) => void>(),
-    waiters: new Set<(value: T) => void>(),
-    undoStack: undefined as HistoryEntry<T>[] | undefined,
-
-    conflict: undefined as ConflictPolicy | undefined,
-    historyIndex: 0,
-    history: undefined as AtomHistoryEntry<T>[] | undefined,
-    historyMax: 50,
-    lifecycle: undefined as SignalLifecycle | undefined,
-    async: undefined as AsyncSignalState<T> | undefined,
-    metrics: undefined as Metrics | undefined,
-    conflictStrategy: undefined as "latest" | "fail" | "accumulate" | undefined,
-
-    schema: undefined as SignalSchema | undefined,
-    contracts: new Map<string, AtomContract<T>>(),
-    causal: [] as CausalEntry[],
-    lastWriteSource: undefined as string | undefined,
-
-    batches: new Set<SignalKey>(),
-    batchQueue: new Map<SignalKey, unknown>(),
-    batchOpts: new Map<SignalKey, { triggerRender?: boolean }>(),
-
-    broadcast: true,
-    triggerRender: true,
-    boundary: "same-app" as Boundary,
-
-    initialize: (
-        initial: T,
-        options: MODULE_OPTIONS = {
-            module_type: "class_fn_pool",
-            broadcast: true,
-            frozen: true,
-        },
-    ): void => {
-        const ptype = options?.module_type
-            ? options.module_type
-            : self.module_type;
-        const shouldFreeze = options.frozen ?? self.frozen;
-
-        switch (ptype) {
-            case "fn":
-            case "comp":
-            case "node_module":
-                self.frozen = shouldFreeze;
-                self.module = initial;
-                self.initial = initial;
-                break;
-
-            case "class_fn_pool":
-            default:
-                self.frozen = false;
-                self.module = { ...initial };
-                self.initial = { ...initial };
-                break;
-        }
-
-        self.module_type = ptype;
-
-        if (options?.broadcast) self.broadcast = options.broadcast;
-        if (options?.module_type) self.module_type = options.module_type;
-        if (options?.schema) self.schema = options.schema;
-        if (options?.lifecycle) self.lifecycle = options.lifecycle;
-        if (options?.conflict) self.conflict = options.conflict;
-        if (options?.conflictStrategy) self.conflictStrategy = options.conflictStrategy;
-
-        if (options?.history) {
-            self.historyMax = Math.max(1, options.history.max ?? 50);
-            self.history = [{
-                k: 0,
-                value: initial,
-                timestamp: Date.now(),
-                source: "initial",
-            }];
-            self.historyIndex = 0;
-        }
-    },
-
-    read: (): T => self.module,
-
-    peek: (): T => self.module,
-
-    write: (
-        incoming: any | ((prev: T) => T),
-        options: AtomWriteOptions = {},
-    ): T => {
-        if (self.frozen) return self.peek();
-
-        const prev = self.module;
-        const resolved = incoming;
-
-        const next = self.module_type === "class_fn_pool"
-            ? resolved
-                ? { ...prev, ...resolved }
-                : prev
-            : resolved;
-
-        self.module = next;
-        self.hasWritten = true;
-        self.version += 1;
-        self.lastWriteSource = options.source ?? "write";
-        self.assertContracts(next, prev);
-
-        for (const l of self.listeners) {
-            try {
-                l(next);
-            } catch (e) {}
-        }
-
-        root.bus.send(self.key, next, self.s, self.m, self.r);
-
-        for (const w of self.waiters) {
-            try {
-                w(next);
-            } catch (e) {}
-        }
-
-        if (options.recordHistory !== false) {
-            self.recordHistory(prev, next, self.lastWriteSource);
-        }
-
-        self.recordCausal(next, self.lastWriteSource, options.cause);
-        self.waiters.clear();
-
-        self.notifyListeners({
-            key: self.key,
-            previous: prev,
-            current: next,
-            version: self.version,
-            timestamp: Date.now(),
-            source: self.lastWriteSource,
-        });
-
-        return next;
-    },
-
-    register: (name: string, val: any): T =>
-        self.write((prev: A) => ({ ...prev, [name]: val })),
-
-    unregister: (name: string): T =>
-        self.write((prev: A) => {
-            const { [name]: _gone, ...rest } = prev;
-            return rest;
-        }),
-
-    slot: (name: string): any => self.module[name],
-
-    on: (listener: RiftListener<any>): void => {
-        self.listeners.add(listener);
-        listener(self.module);
-    },
-
-    waitFor: (): Promise<T> =>
-        new Promise((resolve) => {
-            self.waiters.add(resolve);
-        }),
-
-    waitForSlot: async (name: string, timeoutMs = 0): Promise<any> => {
-        const existing = self.module[name];
-        if (existing !== undefined) return existing;
-
-        if (!timeoutMs) {
-            const next = await self.waitFor();
-            return (next as Record<string, any>)[name];
-        }
-
-        return Promise.race([
-            self.waitFor().then(
-                (next) => (next as Record<string, any>)[name],
-            ),
-            new Promise((_, reject) =>
-                setTimeout(
-                    () => reject(
-                        new Error(
-                            `[ModuleAtom] waitForSlot("${name}") timed out after ${timeoutMs}m`,
-                        ),
-                    ),
-                    timeoutMs,
-                ),
-            ),
-        ]);
-    },
-
-    inspect: (): T => ({ ...self.module }),
-
-    setSchema: (schema?: SignalSchema) => {
-        self.schema = schema;
-        return self;
-    },
-
-    setLifecycle: (lifecycle?: SignalLifecycle<T>) => {
-        self.lifecycle = lifecycle;
-        return self;
-    },
-
-    setConflict: (
-        conflict?: ConflictPolicy,
-        strategy?: "latest" | "fail" | "accumulate",
-    ) => {
-        self.conflict = conflict;
-        self.conflictStrategy = strategy;
-        return self;
-    },
-
-    setFrozen: (): void => {
-        self.frozen = true;
-    },
-
-    setUnfrozen: (): void => {
-        self.frozen = false;
-    },
-
-    setSealed: (): void => {
-        self.sealed = true;
-    },
-
-    setUnsealed: (): void => {
-        self.sealed = false;
-    },
-
-    setBoundary: (): void => {},
-
-    validate: (next: T): T => {
-        if (!self.schema) return next;
-        return root.signals._.validateSchema(self.schema, next);
-    },
-
-    assertContracts: (next: T, previous: T): void => {
-        for (const contract of self.contracts.values()) {
-            let valid = false;
-
-            try {
-                valid = contract.postcondition(next, previous);
-            } catch (error) {
-                console.error(
-                    `[Sauron] contract "${contract.name}" threw for "${String(self.key)}":`,
-                    error,
-                );
-            }
-
-            if (valid) continue;
-
-            const message =
-                `[Sauron] contract "${contract.name}" violated ` +
-                `on write to "${String(self.key)}"`;
-
-            if (contract.block) {
-                throw new Error(message);
-            }
-
-            console.error(message);
-        }
-    },
-
-    recordHistory: (previous: T, next: T, source?: string): void => {
-        if (!self.history) return;
-
-        self.history.splice(self.historyIndex + 1);
-
-        const last = self.history[self.history.length - 1];
-
-        self.history.push({
-            k: (last?.k ?? -1) + 1,
-            prev: previous,
-            value: next,
-            next,
-            timestamp: Date.now(),
-            source,
-            undone: false,
-        });
-
-        while (self.history.length > self.historyMax) {
-            self.history.shift();
-        }
-
-        self.historyIndex = self.history.length - 1;
-    },
-
-    getHistory: (): readonly AtomHistoryEntry<T>[] =>
-        self.history ?? [],
-
-    timeTravel: (steps = 1): T | undefined => {
-        if (!self.history?.length || steps <= 0) return undefined;
-
-        const idx = Math.max(
-            0,
-            Math.min(self.history.length - 1, self.historyIndex + steps),
-        );
-
-        if (idx === self.historyIndex) return undefined;
-
-        self.historyIndex = idx;
-        return self.replayHistory("time-travel");
-    },
-
-    back: (steps = 1): T | undefined =>
-        self.timeTravel(-Math.abs(steps)),
-
-    forward: (steps = 1): T | undefined =>
-        self.timeTravel(Math.abs(steps)),
-
-    goto: (sequence: number): T | undefined => {
-        if (!self.history?.length) return undefined;
-
-        const idx = self.history.findIndex(
-            (entry) => entry.k === sequence,
-        );
-
-        if (idx < 0 || idx === self.historyIndex) return undefined;
-
-        self.historyIndex = idx;
-        return self.replayHistory("time-travel.goto");
-    },
-
-    replayHistory: (source: string): T => {
-        const entry = self.history![self.historyIndex];
-
-        return self.write(entry.value as T, {
-            source,
-            cause: "time-travel",
-            triggerRender: true,
-            recordHistory: false,
-        });
-    },
-
-    recordCausal: (
-        value: T,
-        source?: string,
-        cause?: string,
-    ): void => {
-        self.causal.push({
-            value,
-            source,
-            cause,
-            timestamp: Date.now(),
-        } as CausalEntry);
-
-        if (self.causal.length > 100) {
-            self.causal.shift();
-        }
-    },
-
-    recordMetrics: (): void => {
-        if (!self.metrics) return;
-
-        self.metrics.writeCount += 1;
-        self.metrics.lastWrite = Date.now();
-    },
-
-    notifyListeners: (change: Change<T>): void => {
-        const listeners = root.wr._listeners.get(self.key);
-        if (!listeners) return;
-
-        for (const listener of listeners) {
-            try {
-                listener(change);
-            } catch (error) {
-                console.error(
-                    `[Sauron:SIGNAL_CELL:${String(self.key)}] listener failed:`,
-                    error,
-                );
-            }
-        }
-    },
-
-    resolveWaiters: (value: T): void => {
-        const waiting = root.wr._waiters.get(self.key);
-        if (!waiting) return;
-
-        root.wr._waiters.delete(self.key);
-
-        for (const resolve of waiting) {
-            try {
-                resolve(value);
-            } catch (error) {
-                console.error(
-                    `[Sauron:SIGNAL_CELL:${String(self.key)}] waiter failed:`,
-                    error,
-                );
-            }
-        }
-    },
-
-    notifyExternalSubscribers: (): void => {
-        const subscribers = root.state._externalSubscribers.get(self.key);
-        if (!subscribers) return;
-
-        for (const callback of subscribers) {
-            try {
-                callback();
-            } catch (error) {
-                console.error(
-                    `[Sauron:SIGNAL_CELL:${String(self.key)}] external subscriber failed:`,
-                    error,
-                );
-            }
-        }
-    },
-}));
-// #endregion
-//                                                                                                     [S_CLASS_STORAGE_PROTON]
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const S_CLASS_STORAGE = MASTER_ATOM(
-    "S_CLASS_STORAGE_PROTON",
-    ({ self, master, config }: any) => ({
-        k: config.k ?? "__SIGNALS__",
-        s: config.s ?? "SAURON_SLAVE_REG",
-        m: config.m ?? "SAURON_MASTER_REG",
-        r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-        store: new Map<string, Record<string, any>>(),
-        addr: (
-            k: string,
-            sl: string,
-            ms: string,
-            rt: string,
-        ): string => `[${rt}][${ms}][${sl}][${k}]`,
-
-        set: (
-            k: string,
-            incoming: Record<string, any> | undefined,
-            sl: string,
-            ms: string,
-            rt: string,
-            bus: any,
-        ): Record<string, any> => {
-            const key = self.addr(k, sl, ms, rt);
-            const prev = self.store.get(key) ?? {};
-            const next = incoming ? { ...prev, ...incoming } : prev;
-
-            self.store.set(key, next);
-            bus.send.emit(k, next, sl, ms, rt);
-
-            return next;
-        },
-
-        get: (
-            k: string,
-            sl: string,
-            ms: string,
-            rt: string,
-        ): Record<string, any> | undefined =>
-            self.store.get(self.addr(k, sl, ms, rt)),
-
-        has: (
-            k: string,
-            sl: string,
-            ms: string,
-            rt: string,
-        ): boolean => self.store.has(self.addr(k, sl, ms, rt)),
-
-        inspect: (): Array<{ address: string; value: Record<string, any> }> =>
-            [...self.store.entries()].map(([address, value]) => ({
-                address,
-                value,
-            })),
-
-        clear: (): void => {
-            self.store.clear();
-        },
-
-        get size(): number {
-            return self.store.size;
-        },
-    }),
-);
-// #endregion
-//                                                                                                                  MASTER ATOM
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const ATOM = MASTER_ATOM('ATOM',({ self, config, gate, subscription, SEALED_ERROR, conflict }: any) => ({
-		k: config.k ?? "__SIGNALS__",
-		s: config.s ?? "SAURON_SLAVE_REG",
-		m: config.m ?? "SAURON_MASTER_REG",
-		r: config.r ?? "THE_WIZARD_ROOT_REG",
-		value: config.value as U,
-		read() {
-			const r = self.value;
-			if (r !== null) { if (GATE !== undefined && gate.sealed) throw new SEALED_ERROR.log(self.k); }
-			return self.value;
-		},
-		write1(next: U): B {
-			const r = self.registry;
-			if (r === null) { self.value = next; return true; }
-			if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
-			const previous = self.value;
-			if (Object.is(previous, next)) return false;
-			self.value = next;
-			if (subscription !== undefined) subscription.notify({ key: self.key, previous, current: next });
-			return true;
-		},
-		write(next) {
-			if (gate?.sealed || gate?.frozen) return false;
-			const current = self.value;
-			if (Object.is(current, next)) return false;
-		  
-			const decision = conflict.check({
-			  current,
-			  incoming: next,
-			  previous: self.previous ?? current,
-			});
-		  
-			if (!decision.accepted) {
-			  return false;
-			}
-		  
-			const resolved = decision.value;
-		  
-			if (Object.is(current, resolved)) return false;
-		  
-			self.useCell().set("value", resolved);
-		  
-			return true;
-		  },
-		subscribe(listener: LISTENER<A>): UNSUBSCRIBE { return subscription.subscribe(listener); },
-		waitFor() {},
-}));
-// #endregion
-//                                                                                                                MASTER VERTEX
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const VERTEX = MASTER_ATOM("VERTEX", ({ self,config, gate, subscription, SEALED_ERROR }: any) => ({
-    value: config.value as U,
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-    pid: 1,
-    slabRegistry: new Map<number, Uint8Array>(),
-    ...(() => {
-        const capacity = (() => {
-            const need = (value: U): N =>
-                Array.isArray(value) ? value.length + 1 :
-                value instanceof Map || value instanceof Set ? value.size + 1 : 2;
-
-            const size = need(self.value);
-
-            return size > 8192 ? 64 :
-                size <= 64 ? 64 :
-                size <= 128 ? 128 :
-                size <= 256 ? 256 :
-                size <= 1024 ? 1024 : 8192;
-        })();
-
-        const lane = new Int32Array(config.capacity ?? capacity).fill(-1);
-        const ops = new Uint8Array(config.capacity ?? capacity);
-        const posX = new Float32Array(config.capacity ?? capacity);
-        const posY = new Float32Array(config.capacity ?? capacity);
-        const val = new Int32Array(config.capacity ?? capacity);
-        const freePids = new Int32Array(config.capacity ?? capacity);
-
-        let freeHead = 0;
-        let freeTail = 0;
-        let laneLen = 0;
-        let nextId = 0;
-
-        const ids = new Map<S, N>();
-        const names: S[] = [];
-        const pids = new Map<S, N>();
-        const addresses = new Map<N, [N, N, N, N]>();
-        const listener: Array<ListenerFn | UD> = [];
-        const pidToHash = new Uint32Array(config.capacity ?? capacity);
-        const channelMap = new Int32Array(config.capacity ?? capacity);
-        const subChannelMap = new Int32Array(config.capacity ?? capacity);
-        const tripChannelMap = new Int32Array(config.capacity ?? capacity);
-        const dirtyPids = new Int32Array(config.capacity ?? capacity);
-
-        for (let i = 1; i < lane.length; i++) {
-            freePids[freeTail++] = i;
-        }
-
-        lane[0] = TRACER_PID;
-        val[TRACER_PID] = 0;
-        ops[TRACER_PID] = OP.NONE;
-        laneLen = 1;
-
-        return {
-            capacity: lane.length,
-            lane,
-            ops,
-            posX,
-            posY,
-            val,
-            freePids,
-            freeHead,
-            freeTail,
-            laneLen,
-            ids,
-            names,
-            pids,
-            addresses,
-            nextId,
-            listener,
-            pidToHash,
-            nextAllocatedPid: 1,
-            channelMap,
-            subChannelMap,
-            tripChannelMap,
-            dirtyPids,
-        };
-    })(),
-    need(value: U): N {        return Array.isArray(value) ? value.length + 1 : value instanceof Map || value instanceof Set ? value.size + 1 : 2;    },
-    BINARY_CODEC: new BINARY_CODEC(),
-    ...(() => {
-        const codec = new BINARY_CODEC();
-
-        return {
-            codec,
-            encodeToSlab(pid: N, value: A): N {
-                if (typeof value === "number") {
-                    self.slabRegistry.delete(pid);
-                    return value;
-                }
-
-                const bytes = codec.encode_msg(value);
-                self.slabRegistry.set(pid, bytes);
-                return bytes.byteLength;
-            },
-
-            clearSlab(pid: N): void {
-                self.slabRegistry.delete(pid);
-            },
-
-            hasSlab(pid: N): B {
-                return self.slabRegistry.has(pid);
-            },
-
-            readSlabValue<T>(pid: N): T | NU {
-                const bytes = self.slabRegistry.get(pid);
-                return bytes ? codec.decode_msg(bytes) as T : null;
-            },
-        };
-    })(),
-    ...(() => {
-        const codec = self.BINARY_CODEC;
-        const x = self.posX;
-        const y = self.posY;
-        const pid = self.pid;
-
-        const initialize = () => {
-            const value = self.value;
-            const v = codec.encode_msg(value);
-            const position = self.getPosition(pid);
-
-            if (self.need(value) > 8192) {
-                self.encodeToSlab(pid, v);
-                x[pid] = position.x;
-                y[pid] = position.y;
-                self.ops[pid] = OP.WRITE;
-                self.lane[self.laneLen++] = pid;
-            } else {
-                const vb = codec.encode_msg(v);
-                self.edit(position.x, position.y, vb, pid);
-            }
-        };
-
-        return { initialize };
-    })(),
-    check_size_and_edit(value: A): V {
-        const v = self.BINARY_CODEC.encode_msg(value);
-        const { x, y } = self.getPosition(self.pid);
-
-        if (self.need(value) > 8192) {
-            self.encodeToSlab(self.pid, v);
-            self.posX[self.pid] = x;
-            self.posY[self.pid] = y;
-            self.ops[self.pid] = OP.EDIT;
-            self.lane[self.laneLen++] = self.pid;
-        } else {
-            self.create(x, y, v, self.pid);
-        }
-    },
-    getX(pid: N): N { return self.posX[pid]; },
-    getY(pid: N): N { return self.posY[pid]; },
-    getPosition(pid: N): { x: N; y: N } { return { x: self.posX[pid], y: self.posY[pid] }; },
-    create(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.WRITE; self.lane[self.laneLen++] = pid; },
-    edit(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.EDIT; },
-    subscribeValue(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SUB; },
-    readValue(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.READ; },
-    effect(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.EFFECT; },
-    delete(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DELETE; },
-    compact(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.COMPACT; },
-    none(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.NONE; },
-    send(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SEND; },
-    sub(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SUB; },
-    duplex(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DUPLEX; },
-    stream(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.STREAM; },
-    drc(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DRC; },
-    reclaimPid(pid: N): V { self.posX[pid] = 0; self.posY[pid] = 0; self.val[pid] = 0; self.ops[pid] = OP.NONE; self.freePids[self.freeTail] = pid; self.freeTail = (self.freeTail + 1) % self.capacity; },
-    pass(): void {
-        const len = self.laneLen;
-        let writeIdx = 0;
-        let i = 0;
-        const unrolledLimit = len - (len % 4);
-
-        for (; i < unrolledLimit; i += 4) {
-            let pid = self.lane[i];
-
-            if (pid === TRACER_PID) {
-                self.val[TRACER_PID]++;
-                self.lane[writeIdx++] = pid;
-            } else if (self.ops[pid] === OP.DELETE) {
-                self.reclaimPid(pid);
-            } else {
-                self.ops[pid] = OP.NONE;
-                self.lane[writeIdx++] = pid;
-            }
-
-            pid = self.lane[i + 1];
-
-            if (pid === TRACER_PID) {
-                self.val[TRACER_PID]++;
-                self.lane[writeIdx++] = pid;
-            } else if (self.ops[pid] === OP.DELETE) {
-                self.reclaimPid(pid);
-            } else {
-                self.ops[pid] = OP.NONE;
-                self.lane[writeIdx++] = pid;
-            }
-
-            pid = self.lane[i + 2];
-
-            if (pid === TRACER_PID) {
-                self.val[TRACER_PID]++;
-                self.lane[writeIdx++] = pid;
-            } else if (self.ops[pid] === OP.DELETE) {
-                self.reclaimPid(pid);
-            } else {
-                self.ops[pid] = OP.NONE;
-                self.lane[writeIdx++] = pid;
-            }
-
-            pid = self.lane[i + 3];
-
-            if (pid === TRACER_PID) {
-                self.val[TRACER_PID]++;
-                self.lane[writeIdx++] = pid;
-            } else if (self.ops[pid] === OP.DELETE) {
-                self.reclaimPid(pid);
-            } else {
-                self.ops[pid] = OP.NONE;
-                self.lane[writeIdx++] = pid;
-            }
-        }
-
-        for (; i < len; i++) {
-            const pid = self.lane[i];
-
-            if (pid === TRACER_PID) {
-                self.val[TRACER_PID]++;
-                self.lane[writeIdx++] = pid;
-            } else if (self.ops[pid] === OP.DELETE) {
-                self.reclaimPid(pid);
-            } else {
-                self.ops[pid] = OP.NONE;
-                self.lane[writeIdx++] = pid;
-            }
-        }
-
-        self.laneLen = writeIdx;
-    },
-    get tick(): N { return self.val[TRACER_PID]; },
-    get length(): N { return self.laneLen; },
-    getLoadFactor(): N {
-        const activeCount = Math.max(0, self.laneLen - 1);
-        return activeCount / (self.capacity - 1);
-    },
-    read() {
-        const r = self.registry;
-        if (r !== null) {  if (gate !== undefined && gate.sealed)  throw new SEALED_ERROR.log(self.key);  }
-        return self.value;
-    },
-    write(next: A): B {
-        const r = self.registry;
-        if (r === null) { self.value = next; return true; }
-
-        if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
-        const previous = self.value;
-        if (Object.is(previous, next)) return false;
-        self.value = next;
- 
-        if (subscription !== undefined)  subscription.notify({ key: self.key, previous, current: next });
-        return true;
-    },
-    subscribe(listener: LISTENER<A>): UNSUBSCRIBE {return subscription.subscribe(listener); },
-    waitFor() {},
-}));
-// #endregion
-//                                                                                                                     CONFLICT
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const CONFLICT = BIND_ATOM("CONFLICT", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    conflictStrategy: (config.conflictStrategy ?? "latest") as "latest" | "fail" | "accumulate",
-    conflict: config.conflict,
-
-    resolve<T>(current: T, incoming: T): T {
-        switch (self.conflictStrategy) {
-            case "fail":
-                throw new Error("SOUL_NEUTRON conflict: concurrent values cannot be merged");
-
-            case "accumulate":
-                if (typeof current === "number" && typeof incoming === "number") return (current + incoming) as T;
-                if (Array.isArray(current) && Array.isArray(incoming)) return [...current, ...incoming] as T;
-                if (typeof current === "string" && typeof incoming === "string") return (current + incoming) as T;
-                throw new TypeError("SOUL_NEUTRON accumulate conflict requires matching number, string, or array values");
-
-            case "latest":
-            default:
-                return incoming;
-        }
-    },
-}));
-// #endregion
-//                                                                                                                      CONTEXT
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const CONTEXT = BIND_ATOM("CONTEXT", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    store: new Map<S, A>(),
-
-    set(key: S, value: A): void {
-        self.store.set(key, value);
-        // if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('context_set', undefined, undefined, undefined, { key });
-    },
-
-    get(key: S): A | undefined {
-        return self.store.get(key);
-    },
-
-    /** Read with a fallback — context lookups always expect a default. */
-    getOr(key: S, fallback: A): A {
-        return self.store.has(key) ? self.store.get(key) as A : fallback;
-    },
-
-    has(key: S): B {
-        return self.store.has(key);
-    },
-
-    delete(key: S): B {
-        return self.store.delete(key);
-    },
-
-    keys(): S[] {
-        return [...self.store.keys()];
-    },
-
-    /** Full snapshot, for hand-off / persistence / diagnostics. */
-    snapshot(): Record<S, A> {
-        return Object.fromEntries(self.store);
-    },
-
-    /** Restore from a snapshot. Replaces the store wholesale. */
-    restore(snap: Record<S, A>): void {
-        self.store = new Map(Object.entries(snap));
-    },
-
-    /** Merge a partial snapshot over the current store (existing keys win unless overwrite). */
-    merge(snap: Record<S, A>, overwrite = false): void {
-        for (const [k, v] of Object.entries(snap)) {
-            if (!overwrite && self.store.has(k)) continue;
-            self.store.set(k, v);
-        }
-    },
-
-    /** Scoped read: return a sub-object of the store whose keys start with the prefix. */
-    scoped(prefix: S): Record<S, A> {
-        const out: Record<S, A> = {};
-        for (const [k, v] of self.store) {
-            if (k.startsWith(prefix)) out[k] = v;
-        }
-        return out;
-    },
-
-    purge(): void {
-        self.store.clear();
-    },
-}));
-// #endregion
-//                                                                                                                   ENCRYPTION
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const ENCRYPTION = BIND_ATOM("ENCRYPTION", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    encryptionConfigs: [] as EncryptionConfig[],
-
-    getEncryptionConfigs(): EncryptionConfig[] {
-        return [...self.encryptionConfigs];
-    },
-
-    configureEncryption(config: EncryptionConfig): void {
-        self.encryptionConfigs.push(config);
-    },
-}));
-// #endregion
-//                                                                                                                       GROUPS
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const GROUPS = BIND_ATOM("GROUPS", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    groups: new Map<string, {
-        channels: Set<string>;
-        enabled: boolean;
-        middleware: ((msg: CSEMessage) => boolean | void)[];
-    }>(),
-
-    createGroup(name: string, channels: string[] = [], options?: GroupOptions): void {
-        self.groups.set(name, {
-            channels: new Set(channels),
-            enabled: options?.enabled ?? true,
-            middleware: options?.middleware ? [options.middleware] : [],
-        });
-    },
-
-    deleteGroup(name: string): void {
-        self.groups.delete(name);
-    },
-
-    enableGroup(name: string): void {
-        const g = self.groups.get(name);
-        if (!g) return;
-        g.enabled = true;
-    },
-
-    disableGroup(name: string): void {
-        const g = self.groups.get(name);
-        if (!g) return;
-        g.enabled = false;
-    },
-
-    addToGroup(name: string, rt: string): void {
-        const g = self.groups.get(name);
-        if (!g) return;
-        g.channels.add(rt);
-    },
-
-    removeFromGroup(name: string, rt: string): void {
-        const g = self.groups.get(name);
-        if (!g) return;
-        g.channels.delete(rt);
-    },
-
-    async groupBroadcast(
-        name: string,
-        p: any,
-        sl = self.sl,
-        ms = self.ms,
-        rt = self.rt,
-        ttl?: number,
-    ): Promise<void> {
-        const g = self.groups.get(name);
-        if (!g || !g.enabled) return;
-
-        await Promise.all(
-            [...g.channels].map(ch => self.broadcast(p, ch, sl, ms, rt, ttl)),
-        );
-    },
-
-    groupUse(name: string, fn: (msg: CSEMessage) => boolean | void): void {
-        const g = self.groups.get(name);
-        if (!g) return;
-        g.middleware.push(fn);
-    },
-
-    getAllGroups(): Record<string, {
-        channels: string[];
-        enabled: boolean;
-        middlewareCount: number;
-    }> {
-        const out: Record<string, {
-            channels: string[];
-            enabled: boolean;
-            middlewareCount: number;
-        }> = {};
-
-        for (const [name, g] of self.groups) {
-            out[name] = {
-                channels: [...g.channels],
-                enabled: g.enabled,
-                middlewareCount: g.middleware.length,
-            };
-        }
-
-        return out;
-    },
-}));
-// #endregion
-//                                                                                                                      HISTORY
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const HISTORY = BIND_ATOM("HISTORY", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    history: new Map<string, CSEMessage[]>(),
-    defaultLimit: 128,
-    limits: new Map<string, number>(),
-
-    /** Append one message. Returns the entry so callers can thread it onward. */
-    record(rt: string, msg: CSEMessage): CSEMessage {
-        let list = self.history.get(rt);
-        if (!list) {
-            list = [];
-            self.history.set(rt, list);
-        }
-
-        list.push(msg);
-
-        const limit = self.limits.get(rt) ?? self.defaultLimit;
-        if (list.length > limit) list.splice(0, list.length - limit);
-
-        return msg;
-    },
-
-    setChannelLimit(rt: string, limit: number): void {
-        self.limits.set(rt, limit);
-
-        const list = self.history.get(rt);
-        if (list && list.length > limit) {
-            list.splice(0, list.length - limit);
-        }
-    },
-
-    getChannelLimit(rt: string): number {
-        return self.limits.get(rt) ?? self.defaultLimit;
-    },
-
-    getRecentHistory(rt: string, limit = 3): CSEMessage[] {
-        return (self.history.get(rt) ?? []).slice(-limit);
-    },
-
-    getChannelHistory(rt: string): CSEMessage[] {
-        return [...(self.history.get(rt) ?? [])];
-    },
-
-    getAllHistoryChannels(): string[] {
-        return [...self.history.keys()];
-    },
-
-    getChannelDepth(rt: string): number {
-        return (self.history.get(rt) ?? []).length;
-    },
-
-    getHistorySizes(): Record<string, number> {
-        const out: Record<string, number> = {};
-        for (const [ch, list] of self.history) out[ch] = list.length;
-        return out;
-    },
-
-    clearChannel(rt: string): void {
-        self.history.delete(rt);
-    },
-
-    purge(): void {
-        self.history.clear();
-        self.limits.clear();
-    },
-}));
-// #endregion
-//                                                                                                                         META
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const META = BIND_ATOM("META", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    // ── your blob, organized ───────────────────────────────────────────────────────────────────
-    _batches: new Set<string | symbol>(),
-    _batchQueue: new Map<string | symbol, A>(),
-    _batchOpts: new Map<string | symbol, { triggerRender?: B }>(),
-    _globalListeners: new Set<(key: S | symbol, value: A) => void>(),
-    _global_subscribers: new Map<S, Set<() => void>>(),
-    _sys: new Map<S, SysEntry>(),
-    _sealed: new Set<S>(),
-    _frozen: new Set<S>(),
-    _keyContracts: new Map<S, Set<S>>(),
-    _conflicts: new Map<S, ConflictPolicy>(),
-    _conflictStrategies: new Map<S, "latest" | "fail" | "accumulate">(),
-    _causal: new Map<S, CausalEntry[]>(),
-    _scopes: new Map<S, SignalScope>(),
-    _msgHandlers: new Map<S, Set<(p: A) => void>>(),
-    _lastWriteSource: new Map<S, S>(),
-    _mainMap: new Map<A, S>(),
-    _tupleCache: new Map<S, S>(),
-    _weakMap: new WeakMap<object, S>(),
-    _boundaries: new WeakMap<object, S>(),
-
-    // ── sys entries ────────────────────────────────────────────────────────────────────────────
-    /** Register or update a system entry for this cell. */
-    setSys(name: S, entry: Partial<SysEntry> & { value?: A, source?:A }): SysEntry {
-        const prev = self._sys.get(name);
-        const next: SysEntry = {
-            name,
-            value: entry.value ?? prev?.value,
-            ts: Date.now(),
-            revision: (prev?.revision ?? 0) + 1,
-            source: entry.source ?? "meta",
-        } as A;
-        self._sys.set(name, next);
-        return next;
-    },
-
-    getSys(name: S): SysEntry | null {
-        return self._sys.get(name) ?? null;
-    },
-
-    deleteSys(name: S): B {
-        return self._sys.delete(name);
-    },
-
-    listSys(): S[] {
-        return [...self._sys.keys()];
-    },
-
-    // ── causal log ─────────────────────────────────────────────────────────────────────────────
-    /** Append a causal entry. Keep it cheap — callers pass what they know. */
-    recordCausal(key: S, cause: S, value?: A): void {
-        const list = self._causal.get(key) ?? [];
-        list.push({ cause, value, ts: Date.now() });
-
-        // hard cap so long-lived cells don't balloon
-        if (list.length > 256) list.splice(0, list.length - 256);
-
-        self._causal.set(key, list);
-    },
-
-    getCausal(key: S): CausalEntry[] {
-        return self._causal.get(key) ?? [];
-    },
-
-    clearCausal(key?: S): void {
-        if (key) self._causal.delete(key);
-        else self._causal.clear();
-    },
-
-    // ── last write provenance ──────────────────────────────────────────────────────────────────
-    noteWrite(key: S, source: S): void {
-        self._lastWriteSource.set(key, source);
-    },
-
-    whoWrote(key: S): S | null {
-        return self._lastWriteSource.get(key) ?? null;
-    },
-
-    // ── msg handlers ───────────────────────────────────────────────────────────────────────────
-    addMsgHandler(key: S, fn: (p: A) => void): () => void {
-        const set = self._msgHandlers.get(key) ?? new Set();
-        set.add(fn);
-        self._msgHandlers.set(key, set);
-        return () => set.delete(fn);
-    },
-
-    emitMsg(key: S, p: A): void {
-        for (const fn of self._msgHandlers.get(key) ?? []) {
-            try {
-                fn(p);
-            } catch (e) {
-                console.error(`[meta-shard] msg handler failed for "${key}":`, e);
-            }
-        }
-    },
-
-    // ── global listeners ───────────────────────────────────────────────────────────────────────
-    onGlobal(fn: (key: S | symbol, value: A) => void): () => void {
-        self._globalListeners.add(fn);
-        return () => self._globalListeners.delete(fn);
-    },
-
-    emitGlobal(key: S | symbol, value: A): void {
-        for (const fn of self._globalListeners) {
-            try {
-                fn(key, value);
-            } catch (e) {
-                console.error("[meta-shard] global listener failed:", e);
-            }
-        }
-    },
-
-    // ── inspect / purge ────────────────────────────────────────────────────────────────────────
-    inspect(): Record<S, A> {
-        return {
-            sys: Object.fromEntries(self._sys),
-            causalKeys: [...self._causal.keys()],
-            sealed: [...self._sealed],
-            frozen: [...self._frozen],
-            lastWriteSource: Object.fromEntries(self._lastWriteSource),
-            msgHandlerKeys: [...self._msgHandlers.keys()],
-            globalListenerCount: self._globalListeners.size,
-        };
-    },
-
-    purge(): void {
-        for (const map of [
-            self._batchQueue,
-            self._batchOpts,
-            self._global_subscribers,
-            self._sys,
-            self._keyContracts,
-            self._conflicts,
-            self._conflictStrategies,
-            self._causal,
-            self._scopes,
-            self._msgHandlers,
-            self._lastWriteSource,
-            self._mainMap,
-            self._tupleCache,
-        ] as Map<A, A>[]) {
-            map.clear();
-        }
-
-        self._batches.clear();
-        self._sealed.clear();
-        self._frozen.clear();
-        self._globalListeners.clear();
-        self._weakMap = new WeakMap();
-        self._boundaries = new WeakMap();
-    },
-}));
-// #endregion
-//                                                                                                                       OFFSEC
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const OFFSEC = BIND_ATOM("OFFSEC", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    secrets: new Set<A>(),
-    audit: [] as OFFSEC_AUDIT_ENTRY[],
-    maxAudit: (config.maxAudit ?? 500) as N,
-
-    // ── secret marking ─────────────────────────────────────────────────────────────────────────
-    /** Mark a value (token, key, credential) as secret. Reference equality by default. */
-    markSecret(value: A): void {
-        self.secrets.add(value);
-    },
-
-    isSecret(value: A): B {
-        return self.secrets.has(value);
-    },
-
-    clearSecret(value: A): B {
-        return self.secrets.delete(value);
-    },
-
-    /**
-     * Deep-scan a message for marked secrets; replace with '[REDACTED]' before the message
-     * leaves the boundary. Mutates nothing — returns a copy when a hit occurs.
-     */
-    scrub<T>(payload: T): { clean: T; redacted: N } {
-        let redacted = 0;
-        const seen = new Set<object>();
-
-        const walk = (v: unknown): unknown => {
-            if (self.secrets.has(v as A)) {
-                redacted++;
-                return "[REDACTED]";
-            }
-
-            if (v === null || typeof v !== "object") return v;
-            if (seen.has(v as object)) return "[CYCLIC]";
-
-            seen.add(v as object);
-
-            if (Array.isArray(v)) return v.map(walk);
-
-            const out: Record<S, unknown> = {};
-            for (const [k, val] of Object.entries(v as Record<S, unknown>)) {
-                out[k] = walk(val);
-            }
-
-            return out;
-        };
-
-        const clean = walk(payload) as T;
-
-        if (redacted) {
-            self.audit.push({
-                at: Date.now(),
-                what: `scrubbed ${redacted} secret(s)`,
-            });
-
-            if (self.audit.length > self.maxAudit) self.audit.shift();
-        }
-
-        return { clean, redacted };
-    },
-
-    listAudit(): OFFSEC_AUDIT_ENTRY[] {
-        return [...self.audit];
-    },
-
-    purge(): void {
-        self.secrets.clear();
-        self.audit.length = 0;
-    },
-}));
-// #endregion
-//                                                                                                                  PERMISSIONS
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const PERMISSIONS = BIND_ATOM("PERMISSIONS", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    permissions: new Map<string, ChannelPermissions>(),
-
-    setPermissions(rt: string, perms: ChannelPermissions): void {
-        self.permissions.set(rt, perms);
-    },
-
-    getPermissions(rt: string): ChannelPermissions | undefined {
-        return self.permissions.get(rt);
-    },
-
-    removePermissions(rt: string): B {
-        return self.permissions.delete(rt);
-    },
-
-    hasPermissions(rt: string): B {
-        return self.permissions.has(rt);
-    },
-
-    getAllPermissions(): Record<string, ChannelPermissions> {
-        return Object.fromEntries(self.permissions);
-    },
-
-    listProtectedChannels(): string[] {
-        return [...self.permissions.keys()];
-    },
-
-    /** Wildcard-aware lookup: exact wins, else longest matching prefix before `*`. */
-    resolvePermissions(rt: string): ChannelPermissions | undefined {
-        if (self.permissions.has(rt)) return self.permissions.get(rt);
-
-        let best: ChannelPermissions | undefined;
-        let bestLen = -1;
-
-        for (const [pattern, perms] of self.permissions) {
-            const star = pattern.indexOf("*");
-            if (star === -1) continue;
-
-            if (rt.startsWith(pattern.slice(0, star)) && star > bestLen) {
-                best = perms;
-                bestLen = star;
-            }
-        }
-
-        return best;
-    },
-
-    /** Check one capability. No permission set → allowed (open channel). */
-    check(
-        rt: string,
-        action: "read" | "write" | "send" | "subscribe" | "admin",
-        role?: S,
-    ): B {
-        const perms = self.resolvePermissions(rt);
-        if (!perms) return true;
-
-        if (role && perms.roles && perms.roles.length && !perms.roles.includes(role)) {
-            return false;
-        }
-
-        if (action === "read") return perms.read;
-        if (action === "write") return perms.write;
-
-        return perms[action] ?? perms.write;
-    },
-
-    purge(): void {
-        self.permissions.clear();
-    },
-}));
-// #endregion
-//                                                                                                                  PERSISTENCE
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const PERSISTENCE = BIND_ATOM("PERSISTENCE", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    durableOffsets: new Map<string, number>(),
-    persisted: config.persisted as B | undefined,
-    durableHistory: new Map<string, CSEMessage[]>(),
-
-    getDurableHistorySizes(): Record<string, number> {
-        const out: Record<string, number> = {};
-
-        for (const [ch, hist] of self.durableHistory) {
-            out[ch] = hist.length;
-        }
-
-        return out;
-    },
-
-    async replay(options: ReplayOptions, handler: CSEHandler): Promise<void> {
-        const history = self.durableHistory.get(options.rt) ?? [];
-        let slice = history;
-
-        if (options.fromOffset !== undefined) {
-            slice = slice.slice(options.fromOffset);
-        }
-
-        if (options.toOffset !== undefined) {
-            slice = slice.slice(0, options.toOffset);
-        }
-
-        if (options.fromTimestamp !== undefined) {
-            slice = slice.filter(m => m.ts !== undefined && m.ts >= options.fromTimestamp!);
-        }
-
-        if (options.toTimestamp !== undefined) {
-            slice = slice.filter(m => m.ts !== undefined && m.ts <= options.toTimestamp!);
-        }
-
-        for (const m of slice) {
-            handler(m.p);
-        }
-    },
-
-    subscribeDurable(
-        handler: CSEHandler,
-        options: DurableOptions,
-        k: string,
-        sl = self.sl,
-        ms = self.ms,
-        rt = self.rt,
-    ): () => void {
-        const key = `${rt}:${options.subscriberId}`;
-        const offset = self.durableOffsets.get(key) ?? options.fromOffset ?? 0;
-        const history = self.durableHistory.get(rt) ?? [];
-
-        history.slice(offset).forEach(m => handler(m.p));
-
-        return self.sub(
-            (p: unknown) => {
-                const h = self.durableHistory.get(rt) ?? [];
-                const nextOffset = h.length;
-
-                self.durableOffsets.set(key, nextOffset);
-                handler(p);
-            },
-            k,
-            sl,
-            ms,
-            rt,
-        );
-    },
-
-    getAllCheckpoints(): Record<string, number> {
-        return Object.fromEntries(self.durableOffsets);
-    },
-
-    async setCheckpoint(
-        subscriberId: string,
-        offset: number,
-        k: string,
-        sl?: string,
-        ms?: string,
-        rt?: string,
-    ): Promise<void> {
-        const key = `${rt}:${subscriberId}`;
-
-        self.durableOffsets.set(key, offset);
-
-        if (self.DEVTOOLS_ACTIVE) {
-            self.emitDevtoolsEvent(
-                "checkpoint_set",
-                rt,
-                ms || undefined,
-                undefined,
-                { subscriberId, offset },
-            );
-        }
-    },
-
-    async getCheckpoint(
-        subscriberId: string,
-        k: string,
-        sl?: string,
-        ms?: string,
-        rt?: string,
-    ): Promise<number | null> {
-        const key = `${rt}:${ms}:${subscriberId}`;
-
-        return self.durableOffsets.has(key)
-            ? self.durableOffsets.get(key)!
-            : null;
-    },
-}));
-// #endregion
-//                                                                                                                     PRIORITY
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const PRIORITY = BIND_ATOM("PRIORITY", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    queues: new Map<string, Array<{
-        priority: SIG_BUS_Priority;
-        weight: N;
-        seq: N;
-        item: A;
-        enqueuedAt: N;
-    }>>(),
-
-    queueDefaults: new Map<string, SIG_BUS_Priority>(),
-    defaultPriority: "normal" as SIG_BUS_Priority,
-    seq: 0,
-
-    setDefaultPriority(priority: SIG_BUS_Priority): void {
-        self.defaultPriority = priority;
-    },
-
-    getDefaultPriority(): SIG_BUS_Priority {
-        return self.defaultPriority;
-    },
-
-    setQueueDefault(queue: string, priority: SIG_BUS_Priority): void {
-        self.queueDefaults.set(queue, priority);
-    },
-
-    getQueueDefault(queue: string): SIG_BUS_Priority {
-        return self.queueDefaults.get(queue) ?? self.defaultPriority;
-    },
-
-    priorityWeight(p?: SIG_BUS_Priority): number {
-        return p === "high" ? 3 : p === "low" ? 1 : 2;
-    },
-
-    enqueue(queue: string, item: A, priority?: SIG_BUS_Priority): N {
-        const p = priority ?? self.getQueueDefault(queue);
-        let q = self.queues.get(queue);
-
-        if (!q) {
-            q = [];
-            self.queues.set(queue, q);
-        }
-
-        const entry = {
-            priority: p,
-            weight: self.priorityWeight(p),
-            seq: self.seq++,
-            item,
-            enqueuedAt: Date.now(),
-        };
-
-        q.push(entry);
-
-        if (self.DEVTOOLS_ACTIVE) {
-            self.emitDevtoolsEvent("priority_enqueued", undefined, undefined, queue, {
-                priority: p,
-                depth: q.length,
-            });
-        }
-
-        return entry.seq;
-    },
-
-    /** Highest weight wins; FIFO within the same weight (low seq = older = first). */
-    dequeue(queue: string): A | undefined {
-        const q = self.queues.get(queue);
-        if (!q || !q.length) return undefined;
-
-        let bestIdx = 0;
-
-        for (let i = 1; i < q.length; i++) {
-            const a = q[i], b = q[bestIdx];
-
-            if (a.weight > b.weight || (a.weight === b.weight && a.seq < b.seq)) {
-                bestIdx = i;
-            }
-        }
-
-        const [entry] = q.splice(bestIdx, 1);
-
-        if (self.DEVTOOLS_ACTIVE) {
-            self.emitDevtoolsEvent("priority_dequeued", undefined, undefined, queue, {
-                priority: entry.priority,
-                remaining: q.length,
-            });
-        }
-
-        return entry.item;
-    },
-
-    peek(queue: string): A | undefined {
-        const q = self.queues.get(queue);
-        if (!q || !q.length) return undefined;
-
-        let bestIdx = 0;
-
-        for (let i = 1; i < q.length; i++) {
-            const a = q[i], b = q[bestIdx];
-
-            if (a.weight > b.weight || (a.weight === b.weight && a.seq < b.seq)) {
-                bestIdx = i;
-            }
-        }
-
-        return q[bestIdx].item;
-    },
-
-    getDepth(queue: string): number {
-        return (self.queues.get(queue) ?? []).length;
-    },
-
-    listQueues(): string[] {
-        return [...self.queues.keys()];
-    },
-
-    getDepths(): Record<string, number> {
-        const out: Record<string, number> = {};
-
-        for (const [q, list] of self.queues) {
-            out[q] = list.length;
-        }
-
-        return out;
-    },
-
-    clearQueue(queue: string): void {
-        self.queues.delete(queue);
-    },
-
-    purge(): void {
-        self.queues.clear();
-        self.queueDefaults.clear();
-    },
-}));
-// #endregion
-//                                                                                                                     SNAPSHOT
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export interface SNAPSHOT_ENTRY<W = A> {
-    version: N;
-    value: W;
-    ts: N;
-    label?: S;
-}
-export const SNAPSHOT = BIND_ATOM("SNAPSHOT", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    version: 0,
-    history: [] as SNAPSHOT_ENTRY<W>[],
-    historyMax: (config.historyMax ?? 128) as N,
-    undoStack: [] as SNAPSHOT_ENTRY<W>[],
-    redoStack: [] as SNAPSHOT_ENTRY<W>[],
-    waiters: new Set<(value: W) => void>(),
-
-    /** Capture the current state. Call this from ATOM.write() after a successful write. */
-    capture(value: W, label?: S): SNAPSHOT_ENTRY<W> {
-        self.version++;
-
-        const entry: SNAPSHOT_ENTRY<W> = {
-            version: self.version,
-            value,
-            ts: Date.now(),
-            label,
-        };
-
-        self.history.push(entry);
-
-        if (self.history.length > self.historyMax) {
-            self.history.splice(0, self.history.length - self.historyMax);
-        }
-
-        self.redoStack.length = 0;
-
-        for (const resolve of self.waiters) {
-            resolve(value);
-        }
-
-        self.waiters.clear();
-
-        return entry;
-    },
-
-    /** Latest snapshot, or undefined if none. */
-    latest(): SNAPSHOT_ENTRY<W> | undefined {
-        return self.history[self.history.length - 1];
-    },
-
-    /** Fetch a snapshot by exact version number. */
-    byVersion(v: N): SNAPSHOT_ENTRY<W> | undefined {
-        return self.history.find(e => e.version === v);
-    },
-
-    /** Fetch the last N snapshots, oldest first. */
-    recent(n = 3): SNAPSHOT_ENTRY<W>[] {
-        return self.history.slice(-n);
-    },
-
-    /** All snapshots since a timestamp. */
-    since(ts: N): SNAPSHOT_ENTRY<W>[] {
-        return self.history.filter(e => e.ts >= ts);
-    },
-
-    count(): N {
-        return self.history.length;
-    },
-
-    /** Wait for the next capture (first one if none exist yet). */
-    waitForNext(timeoutMs = 0): Promise<W> {
-        const latest = self.latest();
-
-        if (latest) return Promise.resolve(latest.value);
-
-        return new Promise<W>((resolve, reject) => {
-            const waiter = (v: W) => resolve(v);
-
-            self.waiters.add(waiter);
-
-            if (timeoutMs > 0) {
-                setTimeout(() => {
-                    if (self.waiters.delete(waiter)) {
-                        reject(new Error("ATOM snapshot wait timed out"));
-                    }
-                }, timeoutMs);
-            }
-        });
-    },
-
-    /** Move an entry from history into the undo stack (used by TIME_TRAVEL). */
-    pushUndo(entry: SNAPSHOT_ENTRY<W>): void {
-        self.undoStack.push(entry);
-
-        if (self.undoStack.length > self.historyMax) {
-            self.undoStack.splice(0, self.undoStack.length - self.historyMax);
-        }
-    },
-
-    /** Move an entry from history into the redo stack (used by TIME_TRAVEL). */
-    pushRedo(entry: SNAPSHOT_ENTRY<W>): void {
-        self.redoStack.push(entry);
-
-        if (self.redoStack.length > self.historyMax) {
-            self.redoStack.splice(0, self.redoStack.length - self.historyMax);
-        }
-    },
-
-    purge(): void {
-        self.history.length = 0;
-        self.undoStack.length = 0;
-        self.redoStack.length = 0;
-        self.waiters.clear();
-        self.version = 0;
-    },
-}));
-// #endregion
-//                                                                                                                         TAGS
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const TAGS = BIND_ATOM("TAGS", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    tagSubs: new Map<string, Set<CSEHandler>>(),
-    tagsByChannel: new Map<string, Set<string>>(),
-
-    // ── channel → tags ─────────────────────────────────────────────────────────────────────────
-    /** Declare the tags a channel carries. Replaces any previous tag set for that channel. */
-    tagChannel(channel: S, tags: S[]): void {
-        self.tagsByChannel.set(channel, new Set(tags));
-    },
-
-    untagChannel(channel: S): B {
-        return self.tagsByChannel.delete(channel);
-    },
-
-    getTagsForChannel(channel: S): S[] {
-        return [...(self.tagsByChannel.get(channel) ?? [])];
-    },
-
-    /** All channels carrying at least one of the given tags. */
-    channelsByTags(tags: S[]): S[] {
-        const want = new Set(tags);
-        const out: S[] = [];
-
-        for (const [ch, chTags] of self.tagsByChannel) {
-            for (const t of chTags) {
-                if (want.has(t)) {
-                    out.push(ch);
-                    break;
-                }
-            }
-        }
-
-        return out;
-    },
-
-    // ── subscriber side ─────────────────────────────────────────────────────────────────────────
-    subscribeByTag(tag: string, handler: CSEHandler): () => void {
-        const set = self.tagSubs.get(tag) ?? new Set<CSEHandler>();
-        set.add(handler);
-        self.tagSubs.set(tag, set);
-
-        return () => set.delete(handler);
-    },
-
-    unsubscribeByTag(tag: string, handler: CSEHandler): B {
-        return self.tagSubs.get(tag)?.delete(handler) ?? false;
-    },
-
-    listTags(): string[] {
-        return [...self.tagSubs.keys()];
-    },
-
-    // ── publish side ────────────────────────────────────────────────────────────────────────────
-    /** Fan a tagged message out to every handler subscribed to a tag the channel carries. */
-    publishByTag(msg: CSEMessage): N {
-        const tags = self.tagsByChannel.get(msg.r);
-        if (!tags || tags.size === 0) return 0;
-
-        let delivered = 0;
-
-        for (const tag of tags) {
-            const subs = self.tagSubs.get(tag);
-            if (!subs) continue;
-
-            for (const handler of [...subs]) {
-                try {
-                    handler(msg);
-                    delivered++;
-                } catch (e) {
-                    console.error(`[tags-NEUTRON] tag handler failed for "${tag}":`, e);
-                }
-            }
-        }
-
-        return delivered;
-    },
-
-    getTagsByChannel(): Record<string, string[]> {
-        const out: Record<string, string[]> = {};
-
-        for (const [ch, tags] of self.tagsByChannel) {
-            out[ch] = [...tags];
-        }
-
-        return out;
-    },
-
-    purge(): void {
-        self.tagSubs.clear();
-        self.tagsByChannel.clear();
-    },
-}));
-// #endregion
-//                                                                                                                  TIME_TRAVEL
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const TIME_TRAVEL = BIND_ATOM("TIME_TRAVEL", ({ self, master, config, SNAPSHOT }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    snapshots: null as typeof SNAPSHOT | null,
-    version: 0,
-    historyIndex: -1,
-    undoStack: [] as SNAPSHOT_ENTRY<W>[],
-    initial: undefined as W | undefined,
-    _time_travel_reverting: false,
-    autoTimers: new Set<ReturnType<typeof setInterval>>(),
-
-    /** Bind to the snapshot shard of the same cell. Call once after both shards are bound. */
-    attach(snapshots: typeof SNAPSHOT): void {
-        self.snapshots = snapshots;
-        self.version = snapshots.version;
-        self.historyIndex = snapshots.history.length - 1;
-        self.initial = snapshots.history[0]?.value;
-    },
-
-    /** Write a value back to the cell and record it as a proper version (fires subs like a normal write). */
-    replay: (entry: SNAPSHOT_ENTRY<W>): void => {
-        self._time_travel_reverting = true;
-
-        try {
-            self._writeThrough?.(
-                entry.value,
-                entry.label ? `time-travel:${entry.label}` : "time-travel",
-            );
-        } finally {
-            self._time_travel_reverting = false;
-        }
-    },
-
-    /** Injected by ATOM when the shard is bound — how restores become real writes. */
-    _writeThrough: undefined as ((value: W, cause?: S) => void) | undefined,
-
-    _current(): SNAPSHOT_ENTRY<W> | undefined {
-        return self.snapshots?.history[self.historyIndex];
-    },
-
-    back(): B {
-        if (!self.snapshots || self.historyIndex <= 0) return false;
-
-        self.historyIndex--;
-
-        const entry = self._current();
-        if (!entry) return false;
-
-        // The entry we stepped away from goes on redo.
-        const departed = self.snapshots.history[self.historyIndex + 1];
-        if (departed) self.snapshots.pushRedo(departed);
-
-        self.replay(entry);
-        return true;
-    },
-
-    forward(): B {
-        if (!self.snapshots) return false;
-
-        const nextEntry = self.snapshots.history[self.historyIndex + 1];
-        if (!nextEntry) return false;
-
-        self.historyIndex++;
-        self.replay(nextEntry);
-        return true;
-    },
-
-    goto(version: N): B {
-        if (!self.snapshots) return false;
-
-        const target = self.snapshots.byVersion(version);
-        if (!target) return false;
-
-        const idx = self.snapshots.history.indexOf(target);
-        if (idx < 0) return false;
-
-        const departed = self._current();
-        if (departed && idx < self.historyIndex) {
-            self.snapshots.pushRedo(departed);
-        }
-
-        self.historyIndex = idx;
-        self.replay(target);
-        return true;
-    },
-
-    auto_back(time = 2500): void {
-        const t = setInterval(() => {
-            if (!self.back()) clearInterval(t);
-        }, time);
-
-        self.autoTimers.add(t);
-    },
-
-    auto_forward(time = 2500): void {
-        const t = setInterval(() => {
-            if (!self.forward()) clearInterval(t);
-        }, time);
-
-        self.autoTimers.add(t);
-    },
-
-    /** Graft a foreign snapshot sequence onto this timeline (branch merge). */
-    graft(entries: SNAPSHOT_ENTRY<W>[]): N {
-        if (!self.snapshots) return 0;
-
-        let grafted = 0;
-
-        for (const e of entries) {
-            self.snapshots.history.push({
-                version: ++self.snapshots.version,
-                value: e.value,
-                ts: e.ts ?? Date.now(),
-                label: e.label ? `grafted:${e.label}` : "grafted",
-            });
-
-            grafted++;
-        }
-
-        self.historyIndex = self.snapshots.history.length - 1;
-        return grafted;
-    },
-
-    /** Stop all auto walkers. */
-    stopAuto(): void {
-        for (const t of self.autoTimers) clearInterval(t);
-        self.autoTimers.clear();
-    },
-
-    /** True while replay() is writing — ATOM.write() checks this to avoid re-capturing. */
-    get isReverting(): B {
-        return self._time_travel_reverting;
-    },
-
-    purge(): void {
-        self.stopAuto();
-        self.snapshots = null;
-        self.undoStack.length = 0;
-        self.historyIndex = -1;
-    },
-}));
-// #endregion
-//                                                                                                                          TTL
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export interface TTL_ENTRY { expiresAt: N; data?: A; }
-
-export const TTL = BIND_ATOM("TTL", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    entries: new Map<S, TTL_ENTRY>(),
-    onExpire: [] as ((key: S, data?: A) => void)[],
-    defaultTtlMs: (config.defaultTtlMs ?? 0) as N,
-
-    // ── write ──────────────────────────────────────────────────────────────────────────────────
-    set(key: S, data?: A, ttlMs?: N): TTL_ENTRY {
-        const ttl = ttlMs ?? self.defaultTtlMs;
-
-        if (!ttl || ttl <= 0) {
-            throw new Error("[ttl-shard] no ttl provided and no defaultTtlMs configured");
-        }
-
-        const entry: TTL_ENTRY = {
-            expiresAt: Date.now() + ttl,
-            data,
-        };
-
-        self.entries.set(key, entry);
-        return entry;
-    },
-
-    touch(key: S, ttlMs?: N): B {
-        const e = self.entries.get(key);
-        if (!e) return false;
-
-        e.expiresAt = Date.now() + (ttlMs ?? self.defaultTtlMs);
-        return true;
-    },
-
-    // ── read ───────────────────────────────────────────────────────────────────────────────────
-    /** Returns undefined if missing OR expired (and removes it lazily). */
-    get(key: S): A | undefined {
-        const e = self.entries.get(key);
-        if (!e) return undefined;
-
-        if (Date.now() >= e.expiresAt) {
-            self.entries.delete(key);
-            return undefined;
-        }
-
-        return e.data;
-    },
-
-    has(key: S): B {
-        const e = self.entries.get(key);
-        return !!e && Date.now() < e.expiresAt;
-    },
-
-    peek(key: S): A | undefined {
-        return self.entries.get(key)?.data;
-    },
-
-    timeToLiveMs(key: S): N | null {
-        const e = self.entries.get(key);
-        if (!e) return null;
-
-        return Math.max(0, e.expiresAt - Date.now());
-    },
-
-    // ── delete ─────────────────────────────────────────────────────────────────────────────────
-    delete(key: S): B {
-        return self.entries.delete(key);
-    },
-
-    // ── sweep ──────────────────────────────────────────────────────────────────────────────────
-    /** Removes expired entries, fires onExpire hooks. Returns count expired. */
-    sweep(): number {
-        const now = Date.now();
-        let n = 0;
-
-        for (const [key, e] of [...self.entries]) {
-            if (now >= e.expiresAt) {
-                self.entries.delete(key);
-                n++;
-
-                for (const fn of self.onExpire) {
-                    try {
-                        fn(key, e.data);
-                    } catch (err) {
-                        console.error(`[ttl-shard] onExpire failed for "${key}":`, err);
-                    }
-                }
-            }
-        }
-
-        return n;
-    },
-
-    /** Sweep on a cadence. Owns its own timer — call stopSweeper() to cancel. */
-    _sweeper: null as ReturnType<typeof setInterval> | null,
-
-    startSweeper(intervalMs = 30_000): void {
-        if (self._sweeper) return;
-        self._sweeper = setInterval(() => self.sweep(), intervalMs);
-    },
-
-    stopSweeper(): void {
-        if (self._sweeper) {
-            clearInterval(self._sweeper);
-            self._sweeper = null;
-        }
-    },
-
-    get size(): number {
-        return self.entries.size;
-    },
-
-    listKeys(): S[] {
-        return [...self.entries.keys()];
-    },
-
-    purge(): void {
-        self.stopSweeper();
-        self.entries.clear();
-        self.onExpire.length = 0;
-    },
-}));
-// #endregion
-//                                                                                                                     REACTIVE
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export interface RiftRecord<T = A> {
-    opened: B;
-    claimed: B;
-    value?: T;
-    createdAt: N;
-    openedAt?: N;
-}
-type StoreListener<T = A> = (v: RiftRecord<T>) => void;
-export const REACTIVE = BIND_ATOM("REACTIVE", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    records: new Map<S, RiftRecord<A>>(),
-    listeners: new Map<S, Set<StoreListener<A>>>(),
-
-    get<T = A>(key: S): RiftRecord<T> | undefined {
-        return self.records.get(key) as RiftRecord<T> | undefined;
-    },
-
-    set<T = A>(key: S, record: RiftRecord<T>): void {
-        self.records.set(key, record as RiftRecord<A>);
-
-        const subs = self.listeners.get(key);
-
-        if (subs) {
-            for (const l of [...subs]) {
-                try {
-                    l(record as RiftRecord<A>);
-                } catch {
-                    // one bad listener never kills the rest
-                }
-            }
-        }
-    },
-
-    sub<T = A>(key: S, fn: StoreListener<T>): () => void {
-        let subs = self.listeners.get(key);
-
-        if (!subs) {
-            subs = new Set();
-            self.listeners.set(key, subs);
-        }
-
-        subs.add(fn as StoreListener<A>);
-
-        return () => {
-            const s = self.listeners.get(key);
-            if (!s) return;
-
-            s.delete(fn as StoreListener<A>);
-
-            if (!s.size) self.listeners.delete(key);
-        };
-    },
-
-    delete(key: S): void {
-        self.records.delete(key);
-        self.listeners.delete(key);
-    },
-
-    clear(): void {
-        self.records.clear();
-        self.listeners.clear();
-    },
-
-    get size(): N {
-        return self.records.size;
-    },
-}));
-// #endregion
-//                                                                                                                       SCHEMA
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const SCHEMA = BIND_ATOM("SCHEMA", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    _schemas: new Map<string, CSESchema>(),
-
-    setChannelSchema(schema: CSESchema, rt: string): void {
-        self._schemas.set(rt, schema);
-    },
-
-    getChannelSchema(rt: string): CSESchema | undefined {
-        return self._schemas.get(rt);
-    },
-
-    removeChannelSchema(rt: string): B {
-        const had = self._schemas.delete(rt);
-        return had;
-    },
-
-    hasChannelSchema(rt: string): B {
-        return self._schemas.has(rt);
-    },
-
-    listChannelSchemas(): string[] {
-        return [...self._schemas.keys()];
-    },
-
-    getAllSchemas(): Record<string, CSESchema> {
-        return Object.fromEntries(self._schemas);
-    },
-
-    /** Wildcard-aware lookup: exact channel wins, else longest matching prefix before `*`. */
-    resolveSchema(rt: string): CSESchema | undefined {
-        if (self._schemas.has(rt)) return self._schemas.get(rt);
-
-        let best: CSESchema | undefined;
-        let bestLen = -1;
-
-        for (const [pattern, schema] of self._schemas) {
-            const star = pattern.indexOf("*");
-            if (star === -1) continue;
-
-            if (rt.startsWith(pattern.slice(0, star)) && star > bestLen) {
-                best = schema;
-                bestLen = star;
-            }
-        }
-
-        return best;
-    },
-
-    /**
-     * Validate a message against its channel schema. No schema → pass (open channel).
-     * Returns { ok, errors } — never throws.
-     */
-    checkSchema(rt: S, msg: CSEMessage): { ok: B; errors: S[] } {
-        const schema = self.resolveSchema(rt) as A;
-        if (!schema) return { ok: true, errors: [] };
-
-        const errors: S[] = [];
-        const payload = (msg.p ?? {}) as Record<S, A>;
-
-        for (const [field, rule] of Object.entries(schema.fields ?? {}) as A) {
-            const v = payload[field];
-
-            if (v === undefined || v === null) {
-                if (rule.required) errors.push(`missing required field "${field}"`);
-                continue;
-            }
-
-            if (rule.type !== "any") {
-                const actual = typeof v;
-
-                if (rule.type === "number" && actual !== "number") {
-                    errors.push(`field "${field}" expected number, got ${actual}`);
-                } else if (rule.type === "string" && actual !== "string") {
-                    errors.push(`field "${field}" expected string, got ${actual}`);
-                } else if (rule.type === "boolean" && actual !== "boolean") {
-                    errors.push(`field "${field}" expected boolean, got ${actual}`);
-                }
-            }
-        }
-
-        if (schema.validate) {
-            try {
-                const r = schema.validate(msg);
-
-                if (r !== true && r !== undefined) {
-                    errors.push(
-                        typeof r === "string"
-                            ? r
-                            : `validator rejected message on "${rt}"`,
-                    );
-                }
-            } catch (e) {
-                errors.push(`validator threw: ${e}`);
-            }
-        }
-
-        return { ok: errors.length === 0, errors };
-    },
-
-    purge(): void {
-        self._schemas.clear();
-    },
-}));
-// #endregion
-//                                                                                                              VALUES_REGISTRY
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const VALUES_REGISTRY = BIND_ATOM("VALUES_REGISTRY", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    instanceId: `instance_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-    hasWritten: false,
-    lastWriteSource: undefined as string | undefined,
-    lastWriteAt: undefined as number | undefined,
-    writeCount: 0,
-
-    recordWrite(source = "write"): void {
-        self.hasWritten = true;
-        self.lastWriteSource = source;
-        self.lastWriteAt = Date.now();
-        self.writeCount++;
-    },
-
-    reset(): void {
-        self.hasWritten = false;
-        self.lastWriteSource = undefined;
-        self.lastWriteAt = undefined;
-        self.writeCount = 0;
-    },
-}));
-// #endregion
-//                                                                                                                  CONCURRENCY
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export interface BackpressureConfig {
-    /** Max items queued before SHOULD_BACKPRESSURE() fires. 0/undefined = never. */
-    maxQueueSize?: N;
-    /** Cooldown between drain attempts once throttling starts. */
-    throttleMs?: N;
-    /** Coalescing window (ms) before a staged group flushes even if size not reached. */
-    batchWaitMs?: N;
-    /** Hard deadline (ms) from FIRST item staged — flushes the group no matter what. */
-    batchMaxWaitMs?: N;
-    /** Items per coalesced group. */
-    batchSize?: N;
-    /** Default per-tier concurrency if a tier registers without options. */
-    defaultConcurrency?: N;
-    /** Default retry / timeout for tier tasks. */
-    retry?: N;
-    timeout?: N;
-}
-
-type COALESCED_GROUP = {
-    items: Array<{ msg: CSEMessage; resolve: (v: A) => void; reject: (e: A) => void }>;
-    flushed: B;
-};
-// ── CONCURRENCY_GOVERNOR (internal — AIMD engine lifted from BATCH, one per shard) ───────────────
-// Additive increase on healthy telemetry, multiplicative half-down on friction. Health from
-// event-loop lag + RSS + external breaker state. Semaphore with dynamic resize (SEMAPHORE
-// semantics), exposed so tier queues can consult `tryAcquire/release`.
-export const CONCURRENCY = BIND_ATOM("CONCURRENCY", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    current: Math.min(
-        config.maxConcurrency ?? 64,
-        Math.max(
-            config.minConcurrency ?? 1,
-            config.initialConcurrency ?? Math.max(4, Math.floor((config.maxConcurrency ?? 64) / 4)),
-        ),
-    ) as N,
-
-    min: (config.minConcurrency ?? 1) as N,
-    max: (config.maxConcurrency ?? 64) as N,
-    holders: new Set<symbol>(),
-    waiters: [] as Array<() => void>,
-    peak: 0 as N,
-
-    get active(): N {
-        return self.holders.size;
-    },
-
-    get concurrency(): N {
-        return self.current;
-    },
-
-    get peakConcurrency(): N {
-        return self.peak;
-    },
-
-    tryAcquire(): symbol | undefined {
-        if (self.holders.size >= self.current) return undefined;
-
-        const h = Symbol("governor-slot");
-        self.holders.add(h);
-
-        if (self.holders.size > self.peak) self.peak = self.holders.size;
-
-        return h;
-    },
-
-    async acquire(): Promise<symbol> {
-        const h = self.tryAcquire();
-        if (h) return h;
-
-        return new Promise<symbol>(resolve =>
-            self.waiters.push(() => resolve(self.tryAcquire()!)),
-        );
-    },
-
-    release(h: symbol): void {
-        self.holders.delete(h);
-
-        const next = self.waiters.shift();
-        if (next) next();
-    },
-
-    /** AIMD. Call from telemetry. */
-    evaluateResistance(signal: { latency: N; error: B; targetLatencyMs?: N }): void {
-        const target = signal.targetLatencyMs ?? 250;
-
-        if (signal.error || signal.latency > target * 1.5) {
-            self.multiplicativeDecrease();
-        } else if (signal.latency < target * 0.7) {
-            self.additiveIncrease();
-        }
-    },
-
-    additiveIncrease(): void {
-        if (self.current < self.max) self.resize(self.current + 1);
-    },
-
-    multiplicativeDecrease(): void {
-        if (self.current > self.min) {
-            self.resize(Math.max(self.min, Math.floor(self.current * 0.5)));
-        }
-    },
-
-    resize(n: N): void {
-        self.current = Math.max(self.min, Math.min(self.max, Math.floor(n)));
-
-        if (self.current > self.peak) self.peak = self.current;
-
-        // Wake waiters if capacity grew.
-        while (self.holders.size < self.current && self.waiters.length) {
-            self.waiters.shift()?.();
-        }
-    },
-}));
-// #endregion
-//                                                                                                                    CONTRACTS
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export interface CONTRACT_PROTON {
-	name: S;
-	precondition?: (value: A) => boolean;
-	postcondition?: (value: A) => boolean;
-	invariant?: (snapshot: Record<S, A>) => boolean;
-	block?: B;
-}
-export interface CONTRACT_VIOLATION {
-	contract: S;
-	phase: 'pre' | 'post' | 'invariant';
-	value?: A;
-	message: S;
-	ts: N;
-}
-export const CONTRACTS = BIND_ATOM("CONTRACTS", ({ self, master, config }: any) => ({
-	useCell: (() => {
-		const fn = () => {};
-		return fn;
-	})(),
-	r: master.r,
-	m: master.m,
-	s: master.s,
-	k: config.k,
-	contracts: new Map<S, A>(),
-	_keyContracts: new Map() as Map<S, Set<S>>,
-	causal: [] as CONTRACT_VIOLATION[],
-	violations: [] as CONTRACT_VIOLATION[],
-	violationMax: 64,
-	_throwOnBlock: true as B,
-	add: (contract: A): (() => void) => {
-		self.contracts.set(contract.name, contract);
-		return () => self.contracts.delete(contract.name);
-	},
-	remove: (name: S): B => {
-		return self.contracts.delete(name);
-	},
-	get: (name: S): A | undefined => {
-		return self.contracts.get(name);
-	},
-	list: (): A[] => {
-		return [...self.contracts.values()];
-	},
-	bindKeyContracts: (keyContracts: Map<S, Set<S>>): void => {
-		self._keyContracts = keyContracts;
-	},
-	_record: (v: CONTRACT_VIOLATION, blocking: B): B => {
-		self.violations.push(v);
-		if (self.violations.length > self.violationMax) self.violations.splice(0, self.violations.length - self.violationMax);
-		if (blocking) throw new Error(`ATOM contract "${v.contract}" violated (${v.phase}): ${v.message}`);
-		console.warn(`ATOM contract "${v.contract}" violated (${v.phase}): ${v.message}`);
-		return false;
-	},
-	check: (value: A, phase: 'pre' | 'post'| 'invariant', snapshot?: Record<S, A>): B =>{
-		for (const c of self.contracts.values()) {
-			if (phase === 'pre' && c.precondition) {
-				try { if (!c.precondition(value)) return self._record({ contract: c.name, phase, value, message: 'precondition returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
-				catch (e) { return self._record({ contract: c.name, phase, value, message: `precondition threw: ${e}`, ts: Date.now() }, true); }
-			}
-			if (phase === 'post' && c.postcondition) {
-				try { if (!c.postcondition(value)) return self._record({ contract: c.name, phase, value, message: 'postcondition returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
-				catch (e) { return self._record({ contract: c.name, phase, value, message: `postcondition threw: ${e}`, ts: Date.now() }, true); }
-			}
-			if (phase === 'invariant' && c.invariant && snapshot) {
-				try { if (!c.invariant(snapshot)) return self._record({ contract: c.name, phase, value, message: 'invariant returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
-				catch (e) { return self._record({ contract: c.name, phase, value, message: `invariant threw: ${e}`, ts: Date.now() }, true); }
-			}
-		}
-		return true;
-	},
-	checkKey:(key: S, value: A, phase: 'pre' | 'post'): B =>{
-		for (const name of self._keyContracts.get(key) ?? []) {
-			const c = self.contracts.get(name);
-			if (!c) continue;
-			const check = phase === 'pre' ? c.precondition : c.postcondition;
-			if (!check) continue;
-			try {
-				if (!check(value)) return self._record({ contract: name, phase, value, message: `key contract failed for "${key}"`, ts: Date.now() }, !!c.block && self._throwOnBlock);
-			} catch (e) {
-				return self._record({ contract: name, phase, value, message: `key contract threw: ${e}`, ts: Date.now() }, true);
-			}
-		}
-		return true;
-	},
-	canWrite: (value: A): B=> { return self.check(value, 'pre'); },
-	didWrite:(value: A): B=> { return self.check(value, 'post'); },
-	listViolations:(): CONTRACT_VIOLATION[]=> { return [...self.violations]; },
-	clearViolations:(): void=> { self.violations.length = 0; },
-	purge:(): void=> { self.contracts.clear(); self.violations.length = 0; self._keyContracts.clear(); }
-}))
-// #endregion
-//                                                                                                            COMPRESSION_SHARD
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const COMPRESSION = BIND_ATOM("COMPRESSION", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-    compressionConfigs: [] as CompressionConfig[],
-
-    getCompressionConfigs(): CompressionConfig[] {
-        return [...self.compressionConfigs];
-    },
-
-    configureCompression(config: CompressionConfig): void {
-        self.compressionConfigs.push(config);
-    },
-}));
-// #endregion
-//                                                                                                                   DEADLETTER
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export interface DEADLETTER_WIRE {
-    enqueue(msg: CSEMessage): Promise<void> | void;
-}
-export const DEADLETTER = BIND_ATOM("DEADLETTER", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    root_cell_key: config.root_cell_key as A,
-    deadLetters: [] as CSEMessage[],
-    maxDeadLetters: (config.maxDeadLetters ?? 1000) as N,
-    wire: config.wire as DEADLETTER_WIRE | undefined,
-
-    /** Park a failed message. Oldest evicted when over max. */
-    record(msg: CSEMessage, reason?: S): void {
-        self.deadLetters.push({ ...msg, _ack: true } as CSEMessage);
-
-        if (self.deadLetters.length > self.maxDeadLetters) {
-            self.deadLetters.shift();
-        }
-    },
-
-    async listDeadLetters(
-        k?: S,
-        sl?: S,
-        ms?: S,
-        rt?: S,
-    ): Promise<CSEMessage[]> {
-        if (!rt && !ms && !sl && !k) return [...self.deadLetters];
-
-        return self.deadLetters.filter(
-            m =>
-                (!rt || m.rt === rt) &&
-                (!ms || m.ms === ms) &&
-                (!sl || m.sl === sl) &&
-                (!k || m.k === k),
-        );
-    },
-
-    async requeueDeadLetter(id: S, ttl?: N): Promise<void> {
-        const idx = self.deadLetters.findIndex(m => m.id === id);
-        if (idx === -1) return;
-
-        const msg = self.deadLetters.splice(idx, 1)[0];
-        msg.ttl = ttl ?? msg.ttl;
-
-        await self.wire?.enqueue(msg);
-    },
-
-    purgeDeadLetter(id: S): B {
-        const idx = self.deadLetters.findIndex(m => m.id === id);
-        if (idx === -1) return false;
-
-        self.deadLetters.splice(idx, 1);
-        return true;
-    },
-
-    count(): N {
-        return self.deadLetters.length;
-    },
-
-    purge(): void {
-        self.deadLetters.length = 0;
-    },
-}));
-// #endregion
-//                                                                                                                  DESTRUCTION
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export interface DESTRUCTION_RECORD {
-    key: A;
-    cause: S;
-    at: N;
-    reviver?: () => A;
-}
-export const DESTRUCTION = BIND_ATOM("DESTRUCTION", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    beforeDestruct: [] as ((key: A) => void)[],
-    afterDestruct: [] as ((record: DESTRUCTION_RECORD) => void)[],
-    records: [] as DESTRUCTION_RECORD[],
-    destroyed: false as B,
-    blocked: false as B,
-
-    // ── hooks ──────────────────────────────────────────────────────────────────────────────────
-    onBefore(fn: (key: A) => void): () => void {
-        self.beforeDestruct.push(fn);
-
-        return () => {
-            self.beforeDestruct = self.beforeDestruct.filter(f => f !== fn);
-        };
-    },
-
-    onAfter(fn: (record: DESTRUCTION_RECORD) => void): () => void {
-        self.afterDestruct.push(fn);
-
-        return () => {
-            self.afterDestruct = self.afterDestruct.filter(f => f !== fn);
-        };
-    },
-
-    /** Veto a pending destruction (e.g. in a beforeDestruct hook, or upfront). */
-    block(): void {
-        self.blocked = true;
-    },
-
-    unblock(): void {
-        self.blocked = false;
-    },
-
-    // ── the kill switch ────────────────────────────────────────────────────────────────────────
-    /**
-     * Runs the full destruction sequence.
-     * Returns the record on success, null when blocked or already destroyed.
-     * `reviver` is a factory the record keeps so the cell can be rebuilt later.
-     */
-    destroy(cause = "unknown", reviver?: () => A): DESTRUCTION_RECORD | null {
-        if (self.destroyed) return null;
-        if (self.blocked) return null;
-
-        const record: DESTRUCTION_RECORD = {
-            key: self.root_cell,
-            cause,
-            at: Date.now(),
-            reviver,
-        };
-
-        for (const fn of self.beforeDestruct) {
-            try {
-                fn(self.root_cell);
-            } catch (e) {
-                console.error("[destruction-shard] beforeDestruct hook failed:", e);
-            }
-        }
-
-        self.destroyed = true;
-        self.records.push(record);
-
-        for (const fn of self.afterDestruct) {
-            try {
-                fn(record);
-            } catch (e) {
-                console.error("[destruction-shard] afterDestruct hook failed:", e);
-            }
-        }
-
-        return record;
-    },
-
-    resurrect(): A | null {
-        if (!self.destroyed) return null;
-
-        const last = self.records[self.records.length - 1];
-        self.destroyed = false;
-        self.blocked = false;
-
-        return last?.reviver?.() ?? null;
-    },
-
-    isDestroyed(): B {
-        return self.destroyed;
-    },
-
-    clearRecords(): void {
-        self.records.length = 0;
-    },
-
-    purge(): void {
-        self.beforeDestruct.length = 0;
-        self.afterDestruct.length = 0;
-        self.records.length = 0;
-    },
-}));
-// #endregion
-//                                                                                                                        ERROR
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-type MODULE_PATH = S;
-interface ERROR_EMISSION {
-    module: MODULE_PATH;
-    code: S;
-    message: S;
-    detail?: A;
-    ts: N;
-}
-class ORC_SHOUT {
-	c = {
-		emerald: { 10: "#002c22", 9: "#004f3b", 8: "#016630", 7: "#007a55", 6: "#009966", 5: "#00bc7d" },
-		blue: { 10: "", 9: "", 8: "", 7: "", 6: "", 5: "" },
-	};
-	t = {
-		deep: {
-			bg: "#020817",
-			txt: "#f8fafc",
-			size: 12,
-			title_size: 14,
-			title_txt: "#94a3b8",
-			payload_key: "#a4ed2c",
-			payload_value: "#f8fafc",
-			font: "monospace",
-			border: "2px solid #101727",
-			borderRadius: "6px",
-			padding: "8px 16px",
-			svg: "",
-		},
-		vintage: {
-			bg: "#001B29",
-			txt: "#e9e1ba",
-			size: 12,
-			title_size: 14,
-			title_txt: "#ada785",
-			payload_key: "#29c3a0",
-			payload_value: "#fafafa",
-			font: "monospace",
-			border: "2px solid #112932",
-			borderRadius: "6px",
-			padding: "8px 16px",
-			svg: "",
-		},
-		error: {
-			bg: "#09090B",
-			txt: "#e7000b",
-			size: 12,
-			title_size: 14,
-			title_txt: "#9f0712",
-			payload_key: "#a4ed2c",
-			payload_value: "#f8fafc",
-			font: "monospace",
-			border: "2px solid #e7000b",
-			borderRadius: "6px",
-			padding: "8px 16px",
-			svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
-		},
-		warn: {
-			bg: "#09090B",
-			txt: "#e17100",
-			size: 12,
-			title_size: 14,
-			title_txt: "#973c00",
-			payload_key: "#a4ed2c",
-			payload_value: "#f8fafc",
-			font: "monospace",
-			border: "2px solid #e17100",
-			borderRadius: "6px",
-			padding: "8px 16px",
-			svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e17100" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
-		},
-		success: {
-			bg: "#09090B",
-			txt: "#009966",
-			size: 12,
-			title_size: 14,
-			title_txt: "#016630",
-			payload_key: "#a4ed2c",
-			payload_value: "#f8fafc",
-			font: "monospace",
-			border: "2px solid #009966",
-			borderRadius: "6px",
-			padding: "8px 16px",
-			svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009966" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/></svg>`,
-		},
-		info: {
-			bg: "#09090B",
-			txt: "#155dfc",
-			size: 12,
-			title_size: 14,
-			title_txt: "#193cb8",
-			payload_key: "#a4ed2c",
-			payload_value: "#f8fafc",
-			font: "monospace",
-			border: "2px solid #155dfc",
-			borderRadius: "6px",
-			padding: "8px 16px",
-			svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#155dfc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
-		},
-	};
-	log(msg: string | string[], p?: any, theme = this.t.deep) {
-		const isArray = Array.isArray(msg);
-		const title = isArray ? msg[0] : msg;
-		const paragraphs = isArray ? msg.slice(1) : [];
-
-		const containerStyle = `
-              background: ${theme.bg};
-              ${theme.border ? `border: ${theme.border};` : ""}
-              ${theme.borderRadius ? `border-radius: ${theme.borderRadius};` : ""}
-              ${theme.padding ? `padding: ${theme.padding};` : ""}
-              font-family: ${theme.font};
-              display: block;
-              margin: 4px 0;
-          `;
-
-		const titleWithIcon = theme?.svg ? `${theme?.svg} ${title}` : title;
-		const titleStyle = `
-              color: ${theme.title_txt};
-              font-size: ${theme.title_size}px;
-              font-weight: bold;
-              font-family: ${theme.font};
-              display: flex;
-              align-items: center;
-              gap: 8px;
-          `;
-
-		const paragraphStyle = `
-              color: ${theme.txt};
-              font-size: ${theme.size}px;
-              font-family: ${theme.font};
-              margin-top: 4px;
-          `;
-
-		const keyStyle = `
-              color: ${theme.payload_key};
-              font-weight: bold;
-              font-family: ${theme.font};
-          `;
-		const valueStyle = `
-              color: ${theme.payload_value};
-              font-family: ${theme.font};
-          `;
-
-		let payloadStr = "";
-		if (p && typeof p === "object") {
-			const entries = Object.entries(p);
-			payloadStr = entries.map(([key, value]) => `%c${key}: %c${JSON.stringify(value, null, 2)}`).join("\n");
-		}
-
-		const logParts = [`%c${titleWithIcon}`, ...paragraphs.map((p) => `%c${p}`), payloadStr ? `\n${payloadStr}` : ""].filter(Boolean).join("\n");
-
-		const styles = [containerStyle + titleStyle, ...paragraphs.map(() => paragraphStyle), ...(payloadStr ? [keyStyle, valueStyle] : [])];
-
-		console.log(logParts, ...styles);
-	}
-}
-const os = new ORC_SHOUT()
-export const ERROR = BIND_ATOM("ERROR", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    /** History lives here regardless of emission — history is cheap, display is gated. */
-    error_history: [] as ERROR_EMISSION[],
-    HISTORY_CAP: 512,
-
-    // ── runtime-editable controls ─────────────────────────────────────────────────────────────
-    /** Master kill-switch. false → nothing emits, history still accrues. */
-    ENABLED: true as B,
-
-    /** Emission only in dev mode unless this is explicitly flipped on. */
-    ENABLE_IN_PRODUCTION: false as B,
-
-    /**
-     * Surgical control. null = every module emits.
-     * Record<string, boolean> = only listed modules emit, with true/false overriding.
-     */
-    SURGICAL_LOGS: (config.surgical ?? null) as Record<MODULE_PATH, B> | null,
-
-    /** Theme passed through to the LOGGER. Default = the error theme. */
-    theme: (os.t),
-
-    /** "TERMINAL" | "FILE" — pipes through the LOGGER's configured sink. */
-    PIPE_TO_FILE_OR_TERMINAL: "TERMINAL" as "TERMINAL" | "FILE",
-
-    /** Set at wiring time by the platform; falls back to plain console when absent. */
-    logger: os.log,
-
-    // ── the single emission point ─────────────────────────────────────────────────────────────
-    /** Every error-producing call site in every shard funnels through here. */
-    emit(module: MODULE_PATH, code: S, message: S, detail?: A): ERROR_EMISSION {
-        const entry: ERROR_EMISSION = { module, code, message, detail, ts: Date.now() };
-
-        self.error_history.push(entry);
-
-        if (self.error_history.length > self.HISTORY_CAP) {
-            self.error_history.splice(0, self.error_history.length - self.HISTORY_CAP);
-        }
-
-        if (self.shouldEmit(module)) {
-            const title = `[${String(self.root_cell_key)}] ${module} · ${code}`;
-
-            if (self.logger) {
-                self.logger.theme = self.theme;
-                self.logger.drop_log([title, message], detail);
-            } else if (self.shouldEmit(module)) {
-                console.error(`${title}\n  ${message}`, detail ?? "");
-            }
-        }
-
-        return entry;
-    },
-
-    /** Surgical gate: master switch → dev/production → per-module toggle. */
-    shouldEmit(module: MODULE_PATH): B {
-        if (!self.ENABLED) return false;
-        if (self.ENABLE_IN_PRODUCTION === false && root.state.get("DEV_MODE") !== true) return false;
-        if (self.SURGICAL_LOGS === null) return true;
-
-        // exact match wins, then longest-prefix match (section-level control)
-        if (module in self.SURGICAL_LOGS) return self.SURGICAL_LOGS[module];
-
-        let best: S | null = null;
-
-        for (const prefix of Object.keys(self.SURGICAL_LOGS)) {
-            if (module.startsWith(prefix + ".") && (best === null || prefix.length > best.length)) {
-                best = prefix;
-            }
-        }
-
-        return best !== null ? self.SURGICAL_LOGS[best] : false;
-    },
-
-    // ── convenience emitters used by the call sites below ────────────────────────────────────
-    sealed(detail?: A) {
-        return self.emit("GATE", "GATE_SEALED", "CELL IS SEALED — CHANGE SEALED TO FALSE TO RESUME WRITES", detail);
-    },
-
-    frozen(detail?: A) {
-        return self.emit("GATE", "GATE_FROZEN", "CELL IS FROZEN — VIEWABLE BUT NOT EDITABLE", detail);
-    },
-
-    asleep(detail?: A) {
-        return self.emit("GATE", "GATE_ASLEEP", "CELL IS ASLEEP — WILL NOT BE AVAILABLE UNTIL ITS CONFIGURED WAKE TIME", detail);
-    },
-
-    shardNotFound(name: S, detail?: A) {
-        return self.emit("REGISTRY", "SHARD_NOT_FOUND", `NO SHARD LABELED "${name}" RELATIVE TO THIS CELL — REVIEW YOUR CONTRACT`, detail);
-    },
-
-    contractViolation(contract: S, detail?: A) {
-        return self.emit("CONTRACTS", "CONTRACT_VIOLATION", `CONTRACT VIOLATION: ${contract}`, detail);
-    },
-
-    schemaViolation(topic: S, detail?: A) {
-        return self.emit("SCHEMA", "SCHEMA_VIOLATION", `SCHEMA VIOLATION ON TOPIC "${topic}"`, detail);
-    },
-
-    permissionDenied(ch: S, detail?: A) {
-        return self.emit("PERMISSIONS", "PERMISSION_DENIED", `PERMISSION DENIED ON CHANNEL "${ch}"`, detail);
-    },
-
-    /** Flip an entire section or a single module. */
-    setSection(path: MODULE_PATH, on: B): void {
-        (self.SURGICAL_LOGS ??= {})[path] = on;
-    },
-
-    clearSurgical(): void {
-        self.SURGICAL_LOGS = null;
-    },
-
-    // ── diagnostics ───────────────────────────────────────────────────────────────────────────
-    recent(limit = 20): ERROR_EMISSION[] {
-        return self.error_history.slice(-limit);
-    },
-
-    byModule(module: MODULE_PATH): ERROR_EMISSION[] {
-        return self.error_history.filter(e => e.module === module);
-    },
-
-    byCode(code: S): ERROR_EMISSION[] {
-        return self.error_history.filter(e => e.code === code);
-    },
-
-    purge(): void {
-        self.error_history.length = 0;
-    },
-}));
-// #endregion
-//                                                                                                                        EVENT
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-type EVENT_LISTENER = (payload?: A) => void;
-export const EVENT = BIND_ATOM("EVENT", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    events: new Map<S, Set<EVENT_LISTENER>>(),
-    wildcard: new Set<(event: S, payload?: A) => void>(),
-
-    on(event: S, fn: EVENT_LISTENER): () => void {
-        const set = self.events.get(event) ?? new Set<EVENT_LISTENER>();
-        set.add(fn);
-        self.events.set(event, set);
-
-        return () => set.delete(fn);
-    },
-
-    once(event: S, fn: EVENT_LISTENER): () => void {
-        const off = self.on(event, (p: A) => {
-            off();
-            fn(p);
-        });
-
-        return off;
-    },
-
-    onAny(fn: (event: S, payload?: A) => void): () => void {
-        self.wildcard.add(fn);
-        return () => self.wildcard.delete(fn);
-    },
-
-    off(event: S, fn?: EVENT_LISTENER): void {
-        if (!fn) self.events.delete(event);
-        else self.events.get(event)?.delete(fn);
-    },
-
-    emit(event: S, payload?: A): number {
-        let delivered = 0;
-
-        for (const fn of self.wildcard) {
-            try {
-                fn(event, payload);
-                delivered++;
-            } catch (e) {
-                console.error(`[event-shard] wildcard listener failed for "${event}":`, e);
-            }
-        }
-
-        for (const fn of [...(self.events.get(event) ?? [])]) {
-            try {
-                fn(payload);
-                delivered++;
-            } catch (e) {
-                console.error(`[event-shard] listener failed for "${event}":`, e);
-            }
-        }
-
-        return delivered;
-    },
-
-    async emitAsync(event: S, payload?: A): Promise<number> {
-        let delivered = 0;
-
-        for (const fn of self.wildcard) {
-            try {
-                await fn(event, payload);
-                delivered++;
-            } catch (e) {
-                console.error(`[event-shard] wildcard listener failed for "${event}":`, e);
-            }
-        }
-
-        for (const fn of [...(self.events.get(event) ?? [])]) {
-            try {
-                await fn(payload);
-                delivered++;
-            } catch (e) {
-                console.error(`[event-shard] listener failed for "${event}":`, e);
-            }
-        }
-
-        return delivered;
-    },
-
-    listenerCount(event?: S): number {
-        if (event) return self.events.get(event)?.size ?? 0;
-
-        let n = self.wildcard.size;
-
-        for (const set of self.events.values()) {
-            n += set.size;
-        }
-
-        return n;
-    },
-
-    eventNames(): S[] {
-        return [...self.events.keys()];
-    },
-
-    purge(): void {
-        self.events.clear();
-        self.wildcard.clear();
-    },
-}));
-// #endregion
-//                                                                                                        EXTERNAL_SUBSCRIPTION
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const EXTERNAL_SUBSCRIPTION = BIND_ATOM("EXTERNAL_SUBSCRIPTION", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    externalSubscribers: new Set<LISTENER<W>>(),
-
-    subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
-        self.externalSubscribers.add(listener);
-
-        return () => {
-            self.externalSubscribers.delete(listener);
-        };
-    },
-
-    notify(change: CHANGE<W>): void {
-        for (const listener of self.externalSubscribers) {
-            try {
-                listener(change);
-            } catch (error) {
-                console.error(`[soul-shard] listener failed for "${String(change.key)}":`, error);
-            }
-        }
-    },
-
-    get size(): number {
-        return self.externalSubscribers.size;
-    },
-
-    purge(): void {
-        self.externalSubscribers.clear();
-    },
-}));
-// #endregion
-//                                                                                                                         GATE
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const GATE = BIND_ATOM("GATE", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    sealed: (config.sealed ?? false) as B,
-    frozen: (config.frozen ?? false) as B,
-    sleep: config.sleep as N | undefined,
-
-    get asleep(): B {
-        return self.sleep !== undefined && Date.now() < self.sleep;
-    },
-
-    seal(): V {
-        self.sealed = true;
-    },
-
-    unseal(): V {
-        self.sealed = false;
-    },
-
-    freeze(): V {
-        self.frozen = true;
-    },
-
-    unfreeze(): V {
-        self.frozen = false;
-    },
-
-    sleepUntil(timestamp: N): V {
-        self.sleep = timestamp;
-    },
-
-    wake(): V {
-        self.sleep = undefined;
-    },
-
-    canRead(): B {
-        return !self.asleep;
-    },
-
-    canWrite(): B {
-        return !self.sealed && !self.frozen && !self.asleep;
-    },
-}));
-
-// #endregion
-//                                                                                                          GLOBAL_SUBSCRIPTION
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const GLOBAL_SUBSCRIPTION = BIND_ATOM("GLOBAL_SUBSCRIPTION", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    globalListeners: new Set<LISTENER<W>>(),
-
-    subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
-        self.globalListeners.add(listener);
-
-        return () => {
-            self.globalListeners.delete(listener);
-        };
-    },
-
-    notify(change: CHANGE<W>): void {
-        for (const listener of self.globalListeners) {
-            try {
-                listener(change);
-            } catch (error) {
-                console.error(`[soul-ELECTRON] listener failed for "${String(change.key)}":`, error);
-            }
-        }
-    },
-
-    get size(): number {
-        return self.globalListeners.size;
-    },
-
-    purge(): void {
-        self.globalListeners.clear();
-    },
-}));
-// #endregion
-//                                                                                                                         HOOK
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export interface HOOK_ENTRY {
-    value: A;
-    teardown?: () => void;
-    registeredAt: N;
-}
-export const HOOK = BIND_ATOM("HOOK", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    hooks: new Map<S, HOOK_ENTRY>(),
-    factories: new Map<S, () => A>(),
-
-    /** Register a hook factory. The factory runs once, lazily, on first read. */
-    register(name: S, factory: () => A): void {
-        self.factories.set(name, factory);
-        // if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('hook_registered', undefined, undefined, undefined, { name });
-    },
-
-    /** Read the hook's value, computing it on first access. */
-    use(name: S): A {
-        const existing = self.hooks.get(name);
-        if (existing) return existing.value;
-
-        const factory = self.factories.get(name);
-        if (!factory) throw new Error(`[hook-ELECTRON] no hook registered as "${name}"`);
-
-        const value = factory();
-        self.hooks.set(name, { value, registeredAt: Date.now() });
-
-        // if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('hook_computed', undefined, undefined, undefined, { name });
-
-        return value;
-    },
-
-    isComputed(name: S): B {
-        return self.hooks.has(name);
-    },
-
-    /** Drop the memoized value; the next use() re-runs the factory. Returns whether an entry existed. */
-    reset(name: S): B {
-        const entry = self.hooks.get(name);
-        if (!entry) return false;
-
-        self.hooks.delete(name);
-
-        try {
-            entry.teardown?.();
-        } catch (e) {
-            console.error(`[hook-ELECTRON] teardown failed for "${name}":`, e);
-        }
-
-        return true;
-    },
-
-    /** Drop the factory and the value. The hook is gone until re-registered. */
-    unregister(name: S): void {
-        self.reset(name);
-        self.factories.delete(name);
-    },
-
-    list(): S[] {
-        return [...self.factories.keys()];
-    },
-
-    purge(): void {
-        for (const entry of self.hooks.values()) {
-            try {
-                entry.teardown?.();
-            } catch (e) {
-                console.error("[hook-ELECTRON] teardown failed during purge:", e);
-            }
-        }
-
-        self.hooks.clear();
-        self.factories.clear();
-    },
-}));
-// #endregion
-//                                                                                                               HTTP_TRANSPORT
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-import { BINARY_CODEC } from "./comps/binary";
-import { BUS_CRYPTO } from "./comps/DISRUPTOR_CRYPTO";
-import { CellVM } from "./comps/cell-worker";
-export interface HttpEnvelope {
-    rt: string;
-    ms: string;
-    sl: string;
-    key: string;
-    payload: unknown;
-    seq?: number;
-    ts?: number;
-    id?: string;
-}
-export interface HttpTransportOptions {
-    /** Shared bearer token. Checked on every inbound request. */
-    token: string;
-    /** Outbound: request timeout, ms. */
-    timeoutMs?: number;
-    /** Outbound: first retry backoff, ms. Doubles, capped. */
-    backoffMs?: number;
-    maxBackoffMs?: number;
-    /** Outbound: max attempts per send. 1 = no retry. */
-    maxAttempts?: number;
-    /** The CBOR codec (BINARY_DISRUPTOR's encode_msg/decode_msg). */
-    codec: typeof BINARY_CODEC;
-    /** Called on any send failure after retries, or protocol violation. */
-    onError?: (err: unknown) => void;
-}
-const seqId = (() => {
-    let n = 0;
-    return (): string => `t${Date.now().toString(36)}-${(++n).toString(36)}`;
-})();
-export const HTTP_TRANSPORT = BIND_ATOM("HTTP_TRANSPORT", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    token: config.token as string,
-    timeoutMs: (config.timeoutMs ?? 10_000) as number,
-    backoffMs: (config.backoffMs ?? 100) as number,
-    maxBackoffMs: (config.maxBackoffMs ?? 5_000) as number,
-    maxAttempts: (config.maxAttempts ?? 3) as number,
-    codec: BINARY_CODEC as typeof BINARY_CODEC,
-    onError: (config.onError ?? (() => {})) as (err: unknown) => void,
-
-    /** Inbound dispatcher — set at attach(). Receives decoded envelopes. */
-    dispatch: null as ((env: HttpEnvelope) => Promise<unknown> | unknown) | null,
-
-    // ── OUTBOUND: send an envelope to another IP ─────────────────────────────
-    async send(
-        endpoint: string,
-        env: HttpEnvelope,
-    ): Promise<{ ok: boolean; result?: unknown; error?: string }> {
-        const envelope: Required<Pick<HttpEnvelope, "ts" | "id">> & HttpEnvelope = {
-            ts: Date.now(),
-            id: seqId(),
-            ...env,
-        };
-
-        const body = self.codec.encode_msg(envelope);
-
-        let attempt = 0;
-        let lastErr: unknown = null;
-
-        while (attempt < self.maxAttempts) {
-            attempt++;
-
-            try {
-                const res = await fetch(endpoint, {
-                    method: "POST",
-                    headers: {
-                        "content-type": "application/octet-stream",
-                        authorization: `Bearer ${self.token}`,
-                    },
-                    body: body as unknown as BodyInit,
-                    signal: AbortSignal.timeout(self.timeoutMs),
-                });
-
-                if (!res.ok) {
-                    lastErr = new Error(`[http-transport] endpoint ${endpoint} responded ${res.status}`);
-
-                    // 4xx = caller's fault, retrying will not help. Stop now.
-                    if (res.status >= 400 && res.status < 500) break;
-                    // 5xx / network: retry with backoff
-                } else {
-                    const raw = new Uint8Array(await res.arrayBuffer());
-                    const decoded = self.codec.decode_msg(raw);
-
-                    if (decoded === null) {
-                        lastErr = new Error(`[http-transport] endpoint ${endpoint} returned undecodable ack`);
-                    } else {
-                        return decoded as { ok: boolean; result?: unknown; error?: string };
-                    }
-                }
-            } catch (err) {
-                lastErr = err;
-                // network-level failure: retry with backoff
-            }
-
-            if (attempt < self.maxAttempts) {
-                await new Promise(r =>
-                    setTimeout(
-                        r,
-                        Math.min(self.backoffMs * 2 ** (attempt - 1), self.maxBackoffMs),
-                    ),
-                );
-            }
-        }
-
-        self.onError(lastErr);
-
-        return {
-            ok: false,
-            error: lastErr instanceof Error ? lastErr.message : String(lastErr),
-        };
-    },
-
-    // ── INBOUND: accept POSTs from the wire ──────────────────────────────────
-    /**
-     * Wire this into any runtime's http server. `handler` must:
-     *   • match on the path (transport does not route — the host decides)
-     *   • read the full request body into a Uint8Array
-     *   • call this.receive(bytes) and send back the returned ack frame
-     * Node: http.createServer((req, res) => { if (transport.matches(req)) { ... res.end(ack) } })
-     * Bun: Bun.serve({ fetch: (req) => transport.matchesBun(req) ? new Response(ack) : undefined })
-     * Deno: same shape as Bun via req.arrayBuffer()
-     */
-    attach(dispatch: (env: HttpEnvelope) => Promise<unknown> | unknown): void {
-        self.dispatch = dispatch;
-    },
-
-    /** Path/content-type matcher for host servers. */
-    matches(pathname: string, method: string): boolean {
-        return method === "POST" && pathname === "/bus";
-    },
-
-    /**
-     * The one method a host server calls: bytes in → ack bytes out.
-     * Auth is checked BEFORE dispatch. Dispatch happens inside try/catch —
-     * a throwing handler becomes an error frame, never a crash.
-     */
-    async receive(bytes: Uint8Array, authHeader: string | null): Promise<Uint8Array> {
-        const ack = (ok: boolean, result?: unknown, error?: string): Uint8Array =>
-            self.codec.encode_msg({ ok, result, error });
-
-        if (authHeader !== `Bearer ${self.token}`) {
-            return ack(false, undefined, "unauthorized");
-        }
-
-        const env = self.codec.decode_msg(bytes);
-
-        if (env === null || typeof env !== "object") {
-            return ack(false, undefined, "undecodable envelope");
-        }
-
-        const e = env as Partial<HttpEnvelope>;
-
-        if (
-            typeof e.rt !== "string" ||
-            typeof e.ms !== "string" ||
-            typeof e.sl !== "string" ||
-            typeof e.key !== "string"
-        ) {
-            return ack(false, undefined, "malformed envelope: rt/ms/sl/key required");
-        }
-
-        if (!self.dispatch) {
-            return ack(false, undefined, "no dispatcher attached");
-        }
-
-        try {
-            const result = await self.dispatch(env as HttpEnvelope);
-            return ack(true, result);
-        } catch (err) {
-            return ack(
-                false,
-                undefined,
-                err instanceof Error ? err.message : String(err),
-            );
-        }
-    },
-}));
-// #endregion
-//                                                                                                                      METRICS
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const METRICS = BIND_ATOM("METRICS", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-
-    adapters: {
-        metrics: new Map<string, {
-            id: string;
-            total: number;
-            failures: number;
-            totalLatency: number;
-            disabled: boolean;
-            lastWindow: number;
-            lastCount: number;
-        }>(),
-    },
-
-    seen: new Set<string>(),
-
-    getSeenCount(): number {
-        return self.seen.size;
-    },
-
-    getMessageCount(rt: string): number {
-        return self.messageCount.get(rt) ?? 0;
-    },
-
-    messageCount: new Map<string, number>(),
-
-    getAdapterMetrics(): AdapterMetrics[] {
-        const now = Date.now();
-        const out: AdapterMetrics[] = [];
-
-        for (const m of self.adapterMetrics.values()) {
-            const windowSec = Math.max(1, (now - m.lastWindow) / 1000);
-            const throughput = m.lastCount / windowSec;
-            const failureRate = m.total === 0 ? 0 : m.failures / m.total;
-            const latencyMs = m.total === 0 ? 0 : m.totalLatency / m.total;
-
-            out.push({
-                id: m.id,
-                latencyMs,
-                failureRate,
-                throughputPerSec: throughput,
-                healthy: !m.disabled && failureRate < 0.5,
-                disabled: m.disabled,
-            });
-
-            m.lastWindow = now;
-            m.lastCount = 0;
-        }
-
-        return out;
-    },
-
-    _queueMetrics: {
-        totalEnqueued: 0,
-        totalDropped: 0,
-        totalProcessed: 0,
-        peakSize: 0,
-        currentSize: 0,
-    },
-}));
-// #endregion
-//                                                                                                                 RIFTS_ACCESS
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const RIFTS_ACCESS = BIND_ATOM("RIFTS_ACCESS", ({ self, master, config }: any) => ({
-    k: config.k ?? "__MODULE_ATOM__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    initial: config.options?.module_type === "class_fn_pool" || !config.options?.module_type ? { ...config.initial } : config.initial,
-    module: config.options?.module_type === "class_fn_pool" || !config.options?.module_type ? { ...config.initial } : config.initial,
-    module_type: config.options?.module_type ?? "class_fn_pool",
-    version: 0,
-    sealed: false,
-    frozen: (config.options?.module_type ?? "class_fn_pool") === "class_fn_pool"        ? false        : config.options?.frozen ?? true,
-    hasWritten: false,
-    persisted: false,
-    listeners: new Set<(change: Change<A>) => void>(),
-    waiters: new Set<(value: A) => void>(),
-    undoStack: undefined as HistoryEntry[] | undefined,
-    conflict: config.options?.conflict as ConflictPolicy | undefined,
-    historyIndex: 0,
-    history: config.options?.history ? [{ k: 0, value: config.initial, timestamp: Date.now(), source: "initial", }] : undefined,
-    historyMax: config.options?.history ? Math.max(1, config.options.history.max ?? 50) : 50,
-    lifecycle: config.options?.lifecycle as SignalLifecycle | undefined,
-    async: undefined as AsyncSignalState | undefined,
-    metrics: undefined as Metrics | undefined,
-    conflictStrategy: config.options?.conflictStrategy as        "latest" | "fail" | "accumulate" | undefined,
-    schema: config.options?.schema as SignalSchema | undefined,
-    contracts: new Map<string, AtomContract<A>>(),
-    causal: [] as CausalEntry[],
-    lastWriteSource: undefined as string | undefined,
-    batches: new Set<SignalKey>(),
-    batchQueue: new Map<SignalKey, unknown>(),
-    batchOpts: new Map<SignalKey, { triggerRender?: boolean }>(),
-
-    triggerRender: true,
-    boundary: "same-app" as Boundary,
-    read<T = A>(): T { return self.module;    },
-    peek<T = A>(): T { return self.module;    },
-    write<T = A>( incoming: any | ((prev: T) => T), options: AtomWriteOptions = {}, ): T {
-        if (self.frozen) return self.peek();
-        const prev = self.module;
-        const resolved = incoming;
-        const next = self.module_type === "class_fn_pool" ? resolved ? { ...prev, ...resolved } : prev : resolved;
-        self.module = next;
-        self.hasWritten = true;
-        self.version += 1;
-        self.lastWriteSource = options.source ?? "write";
-        self.assertContracts(next, prev);
-
-        for (const l of self.listeners) { try { l(next); } catch (e) {} }
-        root.bus.send(next,self.k,self.s, self.m, self.r, );
- 
-        for (const w of self.waiters) { try { w(next); } catch (e) {} }
-        if (options.recordHistory !== false) { self.recordHistory(prev, next, self.lastWriteSource); }
-        self.recordCausal(next, self.lastWriteSource, options.cause);
-        self.waiters.clear();
-
-        self.notifyListeners({
-            key: self.key,
-            previous: prev,
-            current: next,
-            version: self.version,
-            timestamp: Date.now(),
-            source: self.lastWriteSource,
-        });
-
-        return next;
-    },
-    register<T = A>(name: string, val: any): T { return self.write((prev: A) => ({ ...prev, [name]: val }));    },
-    unregister<T = A>(name: string): T {
-        return self.write((prev: A) => {
-            const { [name]: _gone, ...rest } = prev;
-            return rest;
-        });
-    },
-    slot(name: string): any { return self.module[name]; },
-    on(listener: RiftListener<any>): void { self.listeners.add(listener); listener(self.module); },
-    waitFor<T = A>(): Promise<T> { return new Promise(resolve => { self.waiters.add(resolve); });    },
-    async waitForSlot(name: string, timeoutMs = 0): Promise<any> {
-        const existing = self.module[name];
-        if (existing !== undefined) return existing;
-
-        if (!timeoutMs) {
-            const next = await self.waitFor();
-            return (next as Record<string, any>)[name];
-        }
-
-        return Promise.race([
-            self.waitFor().then(next => (next as Record<string, any>)[name]),
-            new Promise((_, reject) =>
-                setTimeout(
-                    () => reject(
-                        new Error(`[ModuleAtom] waitForSlot("${name}") timed out after ${timeoutMs}ms`),
-                    ),
-                    timeoutMs,
-                ),
-            ),
-        ]);
-    },
-    inspect<T = A>(): T { return { ...self.module }; },
-    setSchema(schema?: SignalSchema) { self.schema = schema; return self; },
-    setLifecycle<T = A>(lifecycle?: SignalLifecycle<T>) { self.lifecycle = lifecycle; return self; },
-    setConflict( conflict?: ConflictPolicy, strategy?: "latest" | "fail" | "accumulate", ) {
-        self.conflict = conflict;
-        self.conflictStrategy = strategy;
-        return self;
-    },
-    setFrozen(): void { self.frozen = true; },
-    setUnfrozen(): void { self.frozen = false; },
-    setSealed(): void { self.sealed = true; },
-    setUnsealed(): void { self.sealed = false; },
-    setBoundary() {},
-    validate<T = A>(next: T): T {
-        if (!self.schema) return next;
-        return root.signals._.validateSchema(self.schema, next);
-    },
-
-    assertContracts<T = A>(next: T, previous: T): void {
-        for (const contract of self.contracts.values()) {
-            let valid = false;
-
-            try {
-                valid = contract.postcondition(next, previous);
-            } catch (error) {
-                console.error(
-                    `[Sauron] contract "${contract.name}" threw for "${String(self.key)}":`,
-                    error,
-                );
-            }
-
-            if (valid) continue;
-
-            const message =
-                `[Sauron] contract "${contract.name}" violated ` +
-                `on write to "${String(self.key)}"`;
-
-            if (contract.block) {
-                throw new Error(message);
-            }
-
-            console.error(message);
-        }
-    },
-
-    recordHistory<T = A>(previous: T, next: T, source?: string): void {
-        if (!self.history) return;
-
-        self.history.splice(self.historyIndex + 1);
-
-        const last = self.history[self.history.length - 1];
-
-        self.history.push({
-            k: (last?.k ?? -1) + 1,
-            prev: previous,
-            value: next,
-            next,
-            timestamp: Date.now(),
-            source,
-            undone: false,
-        });
-
-        while (self.history.length > self.historyMax) {
-            self.history.shift();
-        }
-
-        self.historyIndex = self.history.length - 1;
-    },
-
-    getHistory<T = A>(): readonly AtomHistoryEntry<T>[] {
-        return self.history ?? [];
-    },
-
-    timeTravel<T = A>(steps = 1): T | undefined {
-        if (!self.history?.length || steps <= 0) return undefined;
-
-        const idx = Math.max(
-            0,
-            Math.min(self.history.length - 1, self.historyIndex + steps),
-        );
-
-        if (idx === self.historyIndex) return undefined;
-
-        self.historyIndex = idx;
-        return self.replayHistory("time-travel");
-    },
-
-    back<T = A>(steps = 1): T | undefined {
-        return self.timeTravel(-Math.abs(steps));
-    },
-
-    forward<T = A>(steps = 1): T | undefined {
-        return self.timeTravel(Math.abs(steps));
-    },
-
-    goto<T = A>(sequence: number): T | undefined {
-        if (!self.history?.length) return undefined;
-
-        const idx = self.history.findIndex(entry => entry.k === sequence);
-        if (idx < 0 || idx === self.historyIndex) return undefined;
-
-        self.historyIndex = idx;
-        return self.replayHistory("time-travel.goto");
-    },
-
-    replayHistory<T = A>(source: string): T {
-        const entry = self.history![self.historyIndex];
-
-        return self.write(entry.value as T, {
-            source,
-            cause: "time-travel",
-            triggerRender: true,
-            recordHistory: false,
-        });
-    },
-
-    recordCausal<T = A>(value: T, source?: string, cause?: string): void {
-        self.causal.push({
-            value,
-            source,
-            cause,
-            timestamp: Date.now(),
-        } as CausalEntry);
-
-        if (self.causal.length > 100) {
-            self.causal.shift();
-        }
-    },
-
-    recordMetrics(): void {
-        if (!self.metrics) return;
-
-        self.metrics.writeCount += 1;
-        self.metrics.lastWrite = Date.now();
-    },
-
-    notifyListeners<T = A>(change: Change<T>): void {
-        const listeners = self._listeners.get(self.key);
-        if (!listeners) return;
-
-        for (const listener of listeners) {
-            try {
-                listener(change);
-            } catch (error) {
-                console.error(
-                    `[Sauron:SIGNAL_CELL:${String(self.key)}] listener failed:`,
-                    error,
-                );
-            }
-        }
-    },
-
-    resolveWaiters<T = A>(value: T): void {
-        const waiting = self._waiters.get(self.key);
-        if (!waiting) return;
-
-        self._waiters.delete(self.key);
-
-        for (const resolve of waiting) {
-            try {
-                resolve(value);
-            } catch (error) {
-                console.error(
-                    `[Sauron:SIGNAL_CELL:${String(self.key)}] waiter failed:`,
-                    error,
-                );
-            }
-        }
-    },
-
-    notifyExternalSubscribers(): void {
-        const subscribers = self._externalSubscribers.get(self.key);
-        if (!subscribers) return;
-
-        for (const callback of subscribers) {
-            try {
-                callback();
-            } catch (error) {
-                console.error(
-                    `[Sauron:SIGNAL_CELL:${String(self.key)}] external subscriber failed:`,
-                    error,
-                );
-            }
-        }
-    },
-}));
-// #endregion
-//                                                                                                                        ROUTE
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const ROUTE = BIND_ATOM("ROUTE", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    routeRules: [] as RouteRule[],
-
-    toRegex(pattern: S): RegExp {
-        return new RegExp(
-            "^" +
-                pattern
-                    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-                    .replace(/\*\*/g, ".*")
-                    .replace(/\*/g, "[^.]+") +
-                "$",
-        );
-    },
-
-    addRouteRule(rule: RouteRule): void {
-        self.routeRules.push(rule);
-
-        if (self.DEVTOOLS_ACTIVE) {
-            self.emitDevtoolsEvent("route_added", undefined, undefined, undefined, {
-                name: rule.name,
-            });
-        }
-    },
-
-    removeRouteRule(name: S): void {
-        self.routeRules = self.routeRules.filter(r => r.name !== name);
-
-        if (self.DEVTOOLS_ACTIVE) {
-            self.emitDevtoolsEvent("route_removed", undefined, undefined, undefined, { name });
-        }
-    },
-
-    listRouteRules(): RouteRule[] {
-        return [...self.routeRules];
-    },
-
-    /** First matching enabled rule wins. Returns the rewritten target(s); adapter defaults to same_boundary. */
-    resolve(rt: S, ms: S, sl: S, k: S): RouteTarget[] {
-        for (const rule of self.routeRules) {
-            if (rule.enabled === false) continue;
-            if (!self.toRegex(rule.match).test(rt)) continue;
-
-            const target: RouteTarget = {
-                adapter: rule.adapter ?? "same_boundary",
-                rt: rule.target?.rt ?? rt,
-                ms: rule.target?.ms ?? ms,
-                sl: rule.target?.sl ?? sl,
-                k: rule.target?.k ?? k,
-               // priority: rule.priority,
-            };
-
-            if (self.DEVTOOLS_ACTIVE) {
-                self.emitDevtoolsEvent("route_resolved", rt, ms, undefined, {
-                    rule: rule.name,
-                    adapter: target.adapter,
-                });
-            }
-
-            return [target];
-        }
-
-        // no rule: the identity target — same address, same boundary (PATCH 4's fallback)
-        return [{ adapter: "same_boundary", rt, ms, sl, k }];
-    },
-
-    purge(): void {
-        self.routeRules.length = 0;
-    },
-}));
-// #endregion
-//                                                                                                                      SESSION
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const SESSION = BIND_ATOM("SESSION", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    _cse_token: (config.cse_token ?? null) as S | null,
-    _sessionId: null as S | null,
-    _sessionToken: null as S | null,
-    _session_started_at: null as N | null,
-    _session_expires_at: null as N | null,
-    _auth_vized: false as B,
-    _auth_initialized: false as B,
-    _sessionTtlMs: (config.sessionTtlMs ?? 1000 * 60 * 60 * 12) as N,
-
-    // ── crypto ─────────────────────────────────────────────────────────────────────────────────
-    computeHmacSha256(secret: S, data: S): S {
-        if (BUS_CRYPTO) {
-            const key = BUS_CRYPTO.to_utf8_bytes(secret);
-            const mac = BUS_CRYPTO.hash_hmac(key, data);
-            return BUS_CRYPTO.to_hex(BUS_CRYPTO.from_base64(mac));
-        }
-
-        return "";
-    },
-
-    // ── lifecycle ──────────────────────────────────────────────────────────────────────────────
-    /**
-     * Stand the session up. Reads CSE_TOKEN from .env when no token was injected.
-     * No token anywhere? The session still runs, but UNAUTHORIZED (matches the bus's stance).
-     */
-    async initAuth(): Promise<void> {
-        if (self._auth_initialized) return;
-
-        if (!self._cse_token && typeof process !== "undefined") {
-            try {
-            //   if (dotenv) dotenv.config();
-            } catch {
-                // env loader optional
-            }
-
-            const sk = (typeof process !== "undefined" && process.env?.CSE_TOKEN) || null;
-            if (sk && sk.length >= 5) self._cse_token = sk;
-        }
-
-        self._newSession();
-        self._auth_initialized = true;
-    },
-
-    _newSession(): void {
-        const now = Date.now();
-
-        if (self._cse_token && BUS_CRYPTO) {
-            self._sessionId = BUS_CRYPTO.to_hex(BUS_CRYPTO.random_bytes(16));
-            self._sessionToken = self.computeHmacSha256(self._cse_token, self._sessionId);
-        } else {
-            // degraded mode: still unique, just not cryptographically bound
-            self._sessionId = `sess_${now}_${Math.random().toString(36).slice(2)}`;
-            self._sessionToken = null;
-        }
-
-        self._session_started_at = now;
-        self._session_expires_at = now + self._sessionTtlMs;
-        self._auth_vized = !!self._sessionToken;
-    },
-
-    /** Rotate the session id + token. Anything wrapped before is invalid after this. */
-    renew(): void {
-        self._newSession();
-    },
-
-    /** Force-expire. secureUnwrap() will reject everything until renew() or initAuth(). */
-    expire(): void {
-        self._session_expires_at = Date.now() - 1;
-        self._auth_vized = false;
-    },
-
-    isValid(): B {
-        return self._session_expires_at !== null && Date.now() < self._session_expires_at;
-    },
-
-    get expired(): B {
-        return !self.isValid();
-    },
-
-    get isSecure(): B {
-        return self._cse_token !== null && self._sessionToken !== null;
-    },
-
-    // ── wrap / unwrap ──────────────────────────────────────────────────────────────────────────
-    /** Wrap a payload with the cell's session identity. */
-    secureWrap(p: A) {
-        return {
-            sessionId: self._sessionId,
-            token: self._sessionToken,
-            ts: Date.now(),
-            p,
-        };
-    },
-
-    /** Unwrap + verify. Tampered, stale, or foreign session → null. */
-    async secureUnwrap(msg: A): Promise<A | null> {
-        if (!msg?.sessionId || !msg?.token) return null;
-        if (msg.sessionId !== self._sessionId) return null; // not our session
-        if (!self.isValid()) return null; // our session but expired
-
-        const expected = await self.computeHmacSha256(
-            self._cse_token ?? "",
-            msg.sessionId,
-        );
-
-        if (self._sessionToken && msg.token !== expected) return null;
-
-        return msg.p;
-    },
-
-    purge(): void {
-        self._sessionId = null;
-        self._sessionToken = null;
-        self._session_started_at = null;
-        self._session_expires_at = null;
-        self._auth_vized = false;
-        self._auth_initialized = false;
-    },
-}));
-// #endregion
-//                                                                                                                 SUBSCRIPTION
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const SUBSCRIPTION = BIND_ATOM("SUBSCRIPTION", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-    listeners: new Set<LISTENER<W>>(),
-
-    subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
-        self.listeners.add(listener);
-
-        return () => {
-            self.listeners.delete(listener);
-        };
-    },
-
-    notify(change: CHANGE<W>): void {
-        for (const listener of self.listeners) {
-            try {
-                listener(change);
-            } catch (error) {
-                console.error(`[soul-ELECTRON] listener failed for "${String(change.key)}":`, error);
-            }
-        }
-    },
-
-    get size(): number {
-        return self.listeners.size;
-    },
-
-    purge(): void {
-        self.listeners.clear();
-    },
-}));
-// #endregion
-//                                                                                                                       WAITER
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export const WAITER = BIND_ATOM("WAITER", ({ self, master, config }: any) => ({
-    k: config.k ?? "__SIGNALS__",
-    s: config.s ?? "SAURON_SLAVE_REG",
-    m: config.m ?? "SAURON_MASTER_REG",
-    r: config.r ?? "THE_WIZARD_ROOT_REG",
-
-
-    waiters: new Set<{
-        resolve: (value: A) => void;
-        reject: (reason?: A) => void;
-    }>(),
-
-    wait<T = A>(timeout?: number): Promise<T> {
-        return new Promise<T>((resolve, reject) => {
-            const waiter = {
-                resolve: resolve as (value: A) => void,
-                reject,
-            };
-
-            self.waiters.add(waiter);
-
-            if (timeout !== undefined && timeout > 0) {
-                const timer = setTimeout(() => {
-                    if (self.waiters.delete(waiter)) {
-                        reject(new Error("SOUL_ELECTRON wait timed out"));
-                    }
-                }, timeout);
-
-                const originalResolve = waiter.resolve;
-                waiter.resolve = value => {
-                    clearTimeout(timer);
-                    originalResolve(value);
-                };
-
-                const originalReject = waiter.reject;
-                waiter.reject = reason => {
-                    clearTimeout(timer);
-                    originalReject(reason);
-                };
-            }
-        });
-    },
-
-    resolve<T = A>(value: T): number {
-        const waiters = [...self.waiters];
-        self.waiters.clear();
-
-        for (const waiter of waiters) {
-            waiter.resolve(value as A);
-        }
-
-        return waiters.length;
-    },
-
-    reject(reason: A): number {
-        const waiters = [...self.waiters];
-        self.waiters.clear();
-
-        for (const waiter of waiters) {
-            waiter.reject(reason);
-        }
-
-        return waiters.length;
-    },
-
-    purge(): void {
-        self.reject(new Error("SOUL_ELECTRON waiter ELECTRON destroyed"));
-    },
-}));
-// #endregion
-//                                                                                                                MASTER VERTEX
-
-
-
-// ============================================================================
-//  STEP 0 — masters as the registry actually holds them
-//  The registry holds the BINDABLE FACTORY for "GATE", not an instance, so
-//  NexusMirror's `prop in arr` never matches and every property becomes a stub.
-// ============================================================================
-const attempt = (fn: () => any) => {
-	try { return { ok: true, value: fn() }; }
-	catch (e: any) { return { ok: false, value: String(e.message ?? e).split("\n")[0] }; }
-};
-
-
-console.log("--- STEP 0: read with the registry exactly as signals.ts leaves it ---");
-const shippedVertex = vertexContract({ value: { count: 0 } });
-console.log("  vertex.read() ->", JSON.stringify(attempt(() => shippedVertex.read())));
-//console.log('  registry "GATE" holds a ->', typeof CELLS.get("GATE"), "(a bindable factory, not an instance)");
-
-// PLACEHOLDER: put a resolved gate instance in the registry, which is what a
-// live hub does. Everything after this line assumes that.
-// CELLS.set("GATE", { sealed: false, frozen: false });
-
-// ============================================================================
-//  THREE CONTRACTS — one per master, 1-2 bindables each
-// ============================================================================
-console.log("\n--- THREE MASTERS, THEIR BINDABLES ---");
-
-const vertex = vertexContract({ value: { count: 0 }, conflictStrategy: "accumulate", defaultTtlMs: 60_000 });
-const atomMaster = atomMasterContract({ value: 0, defaultTtlMs: 1_000 });
-const moduleMaster = moduleContract({ value: [], conflictStrategy: "latest" });
-
-// ---------------------------------------------------------------------------
-//  1. MASTER PATH — flat, no .master indirection
-// ---------------------------------------------------------------------------
-console.log("\n[1] master path");
-console.log("  vertex.read()            ->", JSON.stringify(vertex.read()));
-console.log("  vertex.write({count:5})  ->", vertex.write({ count: 5 }));
-console.log("  vertex.read() after      ->", JSON.stringify(vertex.read()));
-console.log("  atomMaster.read()        ->", JSON.stringify(atomMaster.read()));
-console.log("  atomMaster.write(7)      ->", atomMaster.write(7), "| read() =", atomMaster.read());
-console.log("  moduleMaster.mount('a')  ->", moduleMaster.mount("a", { id: "a" }));
-console.log("  moduleMaster.list()      ->", JSON.stringify(moduleMaster.list()));
-console.log("  vertex.atom              ->", vertex.atom, "| atomMaster.atom ->", atomMaster.atom, "| moduleMaster.atom ->", moduleMaster.atom);
-
-// ---------------------------------------------------------------------------
-//  2. NAMESPACING — method lives under its bindable key
-// ---------------------------------------------------------------------------
-console.log("\n[2] namespacing");
-console.log("  vertex.conflict.resolve(10, 5) ->", vertex.conflict.resolve(10, 5), "(accumulate)");
-vertex.ttl.set("session", "abc", 30_000);
-console.log("  vertex.ttl.get('session')      ->", vertex.ttl.get("session"));
-console.log("  vertex.ttl.has('missing')      ->", vertex.ttl.has("missing"));
-console.log("  moduleMaster.conflict.resolve('x','y') ->", moduleMaster.conflict.resolve("x", "y"), "(latest)");
-console.log("  bindable keys on vertex        ->", JSON.stringify(Object.keys(vertex).filter((k) => ["conflict", "ttl", "gate"].includes(k))));
-console.log("  flat vertex.resolve(...)       ->", JSON.stringify(attempt(() => (vertex as any).resolve(1, 2))));
-console.log("  flat vertex.set(...)           ->", JSON.stringify(attempt(() => (vertex as any).set("a", 1))));
-
-// ---------------------------------------------------------------------------
-//  3. ISOLATION
-// ---------------------------------------------------------------------------
-console.log("\n[3] isolation");
-const has = (obj: any, key: string) => Object.keys(obj).includes(key);
-
-const vertex2 = vertexContract({ value: { count: 0 }, conflictStrategy: "accumulate", defaultTtlMs: 60_000 });
-vertex.write({ count: 99 });
-console.log("  same-contract second instance  ->", JSON.stringify(vertex2.read()), "(first wrote 99)");
-
-const vertex3 = vertexContract({ value: { count: 0 }, conflictStrategy: "fail", defaultTtlMs: 1 });
-vertex.ttl.set("only-first", 1, 30_000);
-console.log("  vertex3.ttl.get('only-first')  ->", JSON.stringify(vertex3.ttl.get("only-first")));
-console.log("  vertex3.conflictStrategy       ->", JSON.stringify(vertex3.conflict.conflictStrategy));
-console.log("  vertex.conflictStrategy        ->", JSON.stringify(vertex.conflict.conflictStrategy), "(unchanged by vertex3)");
-
-console.log("  'ttl' on moduleMaster          ->", has(moduleMaster, "ttl"));
-console.log("  'conflict' on atomMaster       ->", has(atomMaster, "conflict"));
-console.log("  'mount' on vertex              ->", has(vertex, "mount"));
-console.log("  'resolve' on atomMaster        ->", has(atomMaster, "resolve"));
-console.log("  'read' on vertex / atomMaster  ->", has(vertex, "read"), "/", has(atomMaster, "read"));
-
-// 3d. refs fall back to the GLOBAL registry by name
-console.log("\n[3d] unresolved ctx refs fall back to the global registry:");
-console.log("  vertex.conflict.TTL   ->", typeof (vertex.conflict as any).TTL);
-console.log("  vertex.conflict.GATE  ->", typeof (vertex.conflict as any).GATE);
-console.log("  atomMaster.ttl.MODULE ->", typeof (atomMaster.ttl as any).MODULE);
-console.log("  atomMaster.ttl.rawCellRead('ATOM') ->", typeof root.bear.cell("ATOM"));
-
-// 3e. the real reach: bindable ctx falls back to the global registry by name,
-//     so any bindable can grab any other registered factory.
-const SPY = BIND_ATOM("SPY", ({ self, master, TTL: otherTtl, MODULE: otherModule, CONFLICT: otherConflict }: any) => ({
-	k: "__SIGNALS__", s: "SAURON_SLAVE_REG", m: "SAURON_MASTER_REG", r: "THE_WIZARD_ROOT_REG",
-	// refs are array proxies, so typeof is "object" — but it is a live handle
-	stolen: { ttl: typeof otherTtl, module: typeof otherModule, conflict: typeof otherConflict },
-	// and it can BUILD them against a fake instance
-	buildForeign() {
-		const fake = { value: 0, entries: new Map() };
-		return typeof otherTtl === "function" ? Object.keys(otherTtl.__build(fake)).slice(0, 4) : null;
-	},
-}));
-
-const spyContract = ATOM_CONTRACT(() => ({ atom: "MODULE", value: [], bindables: { spy: SPY } }));
-const spyAtom = spyContract({ value: [] });
-console.log("  spy.stolen                     ->", JSON.stringify(spyAtom.spy.stolen));
-console.log("  spy.buildForeign()             ->", JSON.stringify(spyAtom.spy.buildForeign()));
-	// new in this version: the contract itself is registered by name
-	console.log("  registry ATOM_CONTRACTn        ->", typeof (root.bear.cell as any)("ATOM_CONTRACT1"), typeof (root.bear.cell as any)("ATOM_CONTRACT2"));
-	console.log("  registry cell('ATOM_CONTRACT1')  ->", typeof (root.bear.cell as any)("ATOM_CONTRACT1"), "| is a contract:", typeof (root.bear.cell as any)("ATOM_CONTRACT1") === "function");
-
-const results = [
-	["vertex.read() flat (99 was the last write)", JSON.stringify(vertex.read()), JSON.stringify({ count: 99 })],
-	["atomMaster.read() flat", atomMaster.read(), 7],
-	["conflict namespaced + accumulate", vertex.conflict.resolve(10, 5), 15],
-	["module conflict latest", moduleMaster.conflict.resolve("x", "y"), "y"],
-	["ttl namespaced", vertex.ttl.get("session"), "abc"],
-	["flat resolve throws (typo guard)", attempt(() => (vertex as any).resolve(1, 2)).ok, false],
-	["flat set throws (typo guard)", attempt(() => (vertex as any).set("a", 1)).ok, false],
-	["same contract, separate values", JSON.stringify(vertex2.read()), JSON.stringify({ count: 0 })],
-	["separate bindable state", vertex3.ttl.get("only-first"), undefined],
-	["separate bindable config", vertex3.conflict.conflictStrategy, "fail"],
-	["no ttl on MODULE atom", has(moduleMaster, "ttl"), false],
-	["no conflict on ATOM atom", has(atomMaster, "conflict"), false],
-	["no MODULE method on VERTEX atom", has(vertex, "mount"), false],
-];
-
-console.log("\n--- RESULTS ---");
-let fails = 0;
-for (const [label, actual, expected] of results as [string, any, any][]) {
-	const ok = JSON.stringify(actual) === JSON.stringify(expected);
-	if (!ok) fails++;
-	console.log(`${ok ? "PASS" : "FAIL"}  ${label}${ok ? "" : `  got ${JSON.stringify(actual)} want ${JSON.stringify(expected)}`}`);
-}
-console.log(fails === 0 ? "\nAll checks passed." : `\n${fails} check(s) failed.`);
 
 // #endregion
 /**

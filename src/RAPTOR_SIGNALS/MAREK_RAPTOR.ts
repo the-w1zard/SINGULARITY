@@ -65,7 +65,7 @@ type PendingReply = {
 type N = number;
 type V = void;
 
-export class ReactiveMemory {
+export class MAREK_RAPTOR {
   public readonly capacity: N;
 
   private readonly state: Uint8Array;

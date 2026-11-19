@@ -42,13 +42,14 @@ interface BUS_CHANNEL {
 	handler?: BUS_HANDLER<any, any>;
 	push?: Set<(msg: SIG_BUS_Message1) => void>;
 }
-export class FELKOR2<Z extends string = string, S extends string = string> {
+export class G_BUS<Z extends string = string, S extends string = string> {
 	/**
 	Several peak runs followed by usage paths
 	Peak:                                       1_228.50 M ops/sec
 	Peak:                                       3_103.41 M ops/sec
 	Peak:                                       2_370.05 M ops/sec
 	Peak:                                       2_325.32 M ops/sec
+	Peak:                                       3_399.44 M ops/sec
 	
 	These runs were all
 
@@ -211,7 +212,7 @@ export class FELKOR2<Z extends string = string, S extends string = string> {
 }
 // ---------------------------------------------------------------- child: one mode
 function child(mode) {
-  const bus = new FELKOR2();
+  const bus = new G_BUS();
   const acc = new Int32Array(4);
   const keep = new Array(1024).fill(null); let kn = 0;
   let write;

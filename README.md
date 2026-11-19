@@ -442,25 +442,2341 @@ if (process.argv.length >= 3) child(process.argv[2]); else parent();
 >
 > It is planned that the mesh stored will be called and created in root itself... which is the first module to load, so it should be available across the platform.
 
+> [!NOTE] BUILDERS LOG #7
+>
+> As I said before the chase to push the ceiling has gone demented... Got some new fucking numbers though... not what I was expecting...
+>
+> I don't know exactly how close... these 2 things are, because of the fact that with every machine that they have ran on... they have hit the silicons ceiling for that machine, mines 1230.92 and the machine I just ran it on finally, we did not actually hit a ceiling.
+>
+> It turns out, somehow I fucking lucked out with coding it lol... where g_bus send... is literally, the same cost as a direct import. 
+>
+> That information is interesting because it opens up doors, where I didn't think it would be worth attempting to open and jumping down its rabbit hole... but nowwwww, it is actually worth it.
+>
+> This grants freedom, we just didn't have before. We use direct imports because they are the fastest, plain and simple. BUT, if we had a message q or bus that had the same operational speeds/costs as a direct import, that seriously changes the landscape of how a codebase can look. 
+>
+> My platform primitives are a look into that future, and that specific platform primtive...  now needs updating to rip out its internals so that g bus can go in, as... think of it this way, it is as if a class, a fn... and a msg q... had a baby. Where streams, sends, and subs were pre wired into it in the underlying code. Well, and duplexes too actually.
+>
+> But what does that mean exactly? Very clear, cut seperation of semantics and allowing us to very cleanly place code... where it actually makes sense since... literally everything is available no matter where u are placing whatever it is that you are placing it.
+>
+> While the bench is less conventional, for a reason, it is very consistent and more importantly, lets us not have to consider it when we look at the results since the bench doesn't limit the functions you push through it at all. And since it can run anything you put into it, which makes the bench itself no longer one of the things that effect the numbers whenever you go from test to test.
+>
+> Now... even though, I already have a entire solution working and put up... I found some more raptors that I built specifically as a signals solution and forgot about them. So, I'll have to test them all again with this bench this time, as I still do not have a ops / sec number on them...
+
+```txt
+Fighter	Peak (M ops/s)	Avg (M ops/s)
+BASELINE	3,399.46	2,274.37
+BASELINE_FLAT	1,700.11	1,325.06
+DIRECT_REF	1,700.16	1,343.38
+G_BUS	3,399.44	2,277.54
+BUS_CHANNEL	3,399.58	2,352.22
+BUS_CHANNEL_REUSE	1,133.42	903.85
+BUS_FIELD	28.56	25.67
+BUS_FIELD2 (default)	29.06	26.52
+BUS_FIELD_REUSE	1,699.78	1,501.28
+```
+
+> [!NOTE] BUILDERS LOG #8
+>
+> hmmm... 
+>
+> Maybe... disruptors arent the way forward...
+>
+> Bruh, this is gonna suck if the next tests go... currently... if they go exactly the way I do not want them to go, but then yet again, a part of me wants them to succeed...
+>
+> But it goes to show... raptors, are basically... the devs karen, just a bitchy fucking cunt that you simply just... don't know what way it is gonna go.
+>
+> When you look at the numbers below you need to remember, alien and preacts numbers for reads and writes, in this bench they aren't being stored anywhere... that is just how they are distributed right? Without a storage solution, where as the disruptors, they are their own storage solution soooo... they are basically operating at direct import levels at that point, because it creates the signal right before the bench, assigns it to a value and thats it. Where as the disruptors are actually pulling them out of storage.
+>
+> If they are operating at these types of numbers... its mainly due to all the machinery... but what if... we simply removed the machinery... signals solutions are literally... the barbies of the dev world, lol. Think about it... its just fucking, messages moving around and editing... that is it. There is literally, nothing special about it other than the fact devs talk it way up more than they probably should be. Maybe its because, I've now built... 17 of them, and its literally the same thing every single time... just different internals.
+>
+> Using the two things... I think that will be super useful... 
+>
+> Using gbus as the means of communications and value transport, so an actual bus... which in effect will open the doors for when it is actually plugged into a platform...
+>
+> I don't whether to take aliens stance on this, or go for storage using objs. Arrays in this case are just useless for real world applications. Maps are too fucking slow... way too slow...
+>
+> If... and that is if we can get away with it, but we can't though... you fucking need to store them somewhere. Like aliens signals, you can't even set and identifier on them in order to tell them apart. Which now that I think of it, may have been done on purpose because, 'look how fast I am bruhhh' ya but your missing, one of the most important parts of it... lol. If that were the case, performance wouldn't be a thing people strive for, haha. Because we would already have it.
+>
+> Atleast I now know for sure, the solution I am using is the fastest for sure because I hadn't seen the numbers from these others yet. Mehhhh... Obviously, if I didn't already have a solution already working plugged in, I would be picking one and working on it.
+>
+> But that is not the case... and we now have one more solution to go... where the architecture goes wildly in a different direction than every other solution we built.
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[ALIEN]</span> </strong></summary>
+
+```txt
+------------ ALIEN.signal.read ---------------
+Peak (Best Batch):                      1131.22 M ops/sec
+Average:                                437.88 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.signal.write ---------------
+Peak (Best Batch):                      91.27 M ops/sec
+Average:                                79.22 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.signal.write.notify ---------------
+Peak (Best Batch):                      22.43 M ops/sec
+Average:                                20.58 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.signal.fanout.16 ---------------
+Peak (Best Batch):                      2.11 M ops/sec
+Average:                                2.00 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.signal.fanin.16 ---------------
+Peak (Best Batch):                      3.01 M ops/sec
+Average:                                2.87 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.computed.read.clean ---------------
+Peak (Best Batch):                      124.69 M ops/sec
+Average:                                118.72 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.computed.recompute ---------------
+Peak (Best Batch):                      15.77 M ops/sec
+Average:                                13.65 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.computed.chain.8 ---------------
+Peak (Best Batch):                      2.23 M ops/sec
+Average:                                2.10 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.batch.two-writes ---------------
+Peak (Best Batch):                      4.15 M ops/sec
+Average:                                3.44 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.effect.create.dispose ---------------
+Peak (Best Batch):                      6.67 M ops/sec
+Average:                                5.99 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.effect.cleanup.rerun ---------------
+Peak (Best Batch):                      5.96 M ops/sec
+Average:                                5.40 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[PREACT]</span> </strong></summary>
+
+```txt
+------------ PREACT_SIGNALS.signal.read ---------------
+Peak (Best Batch):                      1131.22 M ops/sec
+Average:                                389.27 M ops/sec
+--------------------------------------------------------
+------------ PREACT_SIGNALS.signal.write ---------------
+Peak (Best Batch):                      43.18 M ops/sec
+Average:                                35.03 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.write.notify ---------
+Peak (Best Batch):                      8.43 M ops/sec
+Average:                                7.28 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanout.16 ------------
+Peak (Best Batch):                      1.08 M ops/sec
+Average:                                1.00 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanin.16 -------------
+Peak (Best Batch):                      2.75 M ops/sec
+Average:                                2.54 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.read.clean ---------
+Peak (Best Batch):                      69.79 M ops/sec
+Average:                                56.70 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.recompute ----------
+Peak (Best Batch):                      19.76 M ops/sec
+Average:                                17.90 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.chain.8 ------------
+Peak (Best Batch):                      2.54 M ops/sec
+Average:                                2.40 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.batch.two-writes ------------
+Peak (Best Batch):                      4.76 M ops/sec
+Average:                                4.33 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.create.dispose -------
+Peak (Best Batch):                      5.07 M ops/sec
+Average:                                4.50 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.cleanup.rerun --------
+Peak (Best Batch):                      7.01 M ops/sec
+Average:                                6.37 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[BINARY_REACTOR]</span> </strong></summary>
+
+```txt
+------------ BINARY_REACTOR.atom.lookup ---------------
+Peak (Best Batch):                      5.73 M ops/sec
+Average:                                4.98 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR.atom.get ---------------
+Peak (Best Batch):                      37.26 M ops/sec
+Average:                                33.45 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR.atom.peek ---------------
+Peak (Best Batch):                      30.87 M ops/sec
+Average:                                27.34 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR.atom.set ---------------
+Peak (Best Batch):                      10.37 M ops/sec
+Average:                                9.98 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR.atom.update ---------------
+Peak (Best Batch):                      7.34 M ops/sec
+Average:                                6.66 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR.atom.notify ---------------
+Peak (Best Batch):                      19.75 M ops/sec
+Average:                                18.69 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR.atom.subscribe.dispose ------
+Peak (Best Batch):                      10.66 M ops/sec
+Average:                                9.54 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR.effect.rerun ---------------
+Peak (Best Batch):                      5.22 M ops/sec
+Average:                                5.03 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR.computed.recompute ---------------
+Peak (Best Batch):                      3.54 M ops/sec
+Average:                                3.40 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR.batch.two-writes ---------------
+Peak (Best Batch):                      6.85 M ops/sec
+Average:                                6.52 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR.effect.create.dispose ---------------
+Peak (Best Batch):                      4.63 M ops/sec
+Average:                                4.34 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[BINARY_REACTOR2]</span> </strong></summary>
+
+```txt
+------------ BINARY_REACTOR2.atom.peek ---------------
+Peak (Best Batch):                      146.16 M ops/sec
+Average:                                93.51 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.atom.get ---------------
+Peak (Best Batch):                      126.23 M ops/sec
+Average:                                60.48 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.atom.version ---------------
+Peak (Best Batch):                      127.18 M ops/sec
+Average:                                110.69 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.atom.set.unchanged ---------------
+Peak (Best Batch):                      58.35 M ops/sec
+Average:                                35.65 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.atom.update.unchanged ---------------
+Peak (Best Batch):                      85.68 M ops/sec
+Average:                                69.83 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.atom.lookup ---------------
+Peak (Best Batch):                      1.14 M ops/sec
+Average:                                1.06 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.atom.subscribe-dispose ---------------
+Peak (Best Batch):                      13.34 M ops/sec
+Average:                                11.79 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.computed.get.cached ---------------
+Peak (Best Batch):                      81.16 M ops/sec
+Average:                                68.88 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.computed.peek.cached ---------------
+Peak (Best Batch):                      77.80 M ops/sec
+Average:                                75.05 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.effect.create-dispose ---------------
+Peak (Best Batch):                      16.18 M ops/sec
+Average:                                13.64 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.effect.track-dispose ---------------
+Peak (Best Batch):                      15.25 M ops/sec
+Average:                                12.38 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.batch.empty ---------------
+Peak (Best Batch):                      107.68 M ops/sec
+Average:                                73.61 M ops/sec
+---------------------------------------------------------
+------------ BINARY_REACTOR2.batch.unchanged-write ---------------
+Peak (Best Batch):                      49.01 M ops/sec
+Average:                                42.08 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[WARLOCK_RAPTOR]</span> </strong></summary>
+
+```txt
+need to change to a more dynamic cap strategy
+```
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[WARLOCK_NGIN]</span> </strong></summary>
+
+```txt
+------------ WARLOCK_NGIN.signal.read ---------------
+Peak (Best Batch):                      5.42 M ops/sec
+Average:                                4.23 M ops/sec
+---------------------------------------------------------
+------------ WARLOCK_NGIN.signal.write ---------------
+Peak (Best Batch):                      7.01 M ops/sec
+Average:                                3.29 M ops/sec
+---------------------------------------------------------
+------------ WARLOCK_NGIN.OP.admit-pass ---------------
+Peak (Best Batch):                      6.23 M ops/sec
+Average:                                5.84 M ops/sec
+---------------------------------------------------------
+------------ WARLOCK_NGIN.PASS.empty ---------------
+Peak (Best Batch):                      17.10 M ops/sec
+Average:                                16.22 M ops/sec
+---------------------------------------------------------
+------------ WARLOCK_NGIN.link-unlink ---------------
+Peak (Best Batch):                      2.91 M ops/sec
+Average:                                2.81 M ops/sec
+---------------------------------------------------------
+------------ WARLOCK_NGIN.channel.lookup ---------------
+Peak (Best Batch):                      12.48 M ops/sec
+Average:                                12.13 M ops/sec
+---------------------------------------------------------
+------------ WARLOCK_NGIN.sub1 ---------------
+Peak (Best Batch):                      4.42 M ops/sec
+Average:                                3.82 M ops/sec
+---------------------------------------------------------
+------------ WARLOCK_NGIN.computed ---------------
+Peak (Best Batch):                      5.58 M ops/sec
+Average:                                5.16 M ops/sec
+---------------------------------------------------------
+------------ WARLOCK_NGIN.effect ---------------
+Peak (Best Batch):                      6.68 M ops/sec
+Average:                                5.71 M ops/sec
+---------------------------------------------------------
+------------ WARLOCK_NGIN.batch ---------------
+Peak (Best Batch):                      4.65 M ops/sec
+Average:                                4.32 M ops/sec
+---------------------------------------------------------
+------------ WARLOCK_NGIN.codec.encode ---------------
+Peak (Best Batch):                      0.34 M ops/sec
+Average:                                0.29 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[SIGNALS_RAPTOR]</span> </strong></summary>
+
+```txt
+------------ SIGNALS_RAPTOR.SIGNAL_READ ---------------
+Peak (Best Batch):                      1131.22 M ops/sec
+Average:                                317.67 M ops/sec
+---------------------------------------------------------
+------------ SIGNALS_RAPTOR.SIGNAL_WRITE ---------------
+Peak (Best Batch):                      18.27 M ops/sec
+Average:                                13.87 M ops/sec
+---------------------------------------------------------
+------------ SIGNALS_RAPTOR.WRITE_UPDATE ---------------
+Peak (Best Batch):                      14.65 M ops/sec
+Average:                                13.17 M ops/sec
+---------------------------------------------------------
+------------ SIGNALS_RAPTOR.FANOUT_10 ---------------
+Peak (Best Batch):                      1.34 M ops/sec
+Average:                                1.20 M ops/sec
+---------------------------------------------------------
+------------ SIGNALS_RAPTOR.FANIN_32 ---------------
+Peak (Best Batch):                      1.15 M ops/sec
+Average:                                1.06 M ops/sec
+---------------------------------------------------------
+------------ SIGNALS_RAPTOR.DEPENDENCY_CHAIN_64 ---------------
+Peak (Best Batch):                      12.07 M ops/sec
+Average:                                11.35 M ops/sec
+---------------------------------------------------------
+------------ SIGNALS_RAPTOR.DEPENDENCY_GRAPH_16 ---------------
+Peak (Best Batch):                      0.54 M ops/sec
+Average:                                0.50 M ops/sec
+---------------------------------------------------------
+------------ SIGNALS_RAPTOR.BATCH_32 ---------------
+Peak (Best Batch):                      0.32 M ops/sec
+Average:                                0.30 M ops/sec
+---------------------------------------------------------
+------------ SIGNALS_RAPTOR.EFFECT_CHURN ---------------
+Peak (Best Batch):                      2.55 M ops/sec
+Average:                                2.26 M ops/sec
+---------------------------------------------------------
+------------ SIGNALS_RAPTOR.EFFECT_CLEANUP ---------------
+Peak (Best Batch):                      6.87 M ops/sec
+Average:                                6.53 M ops/sec
+---------------------------------------------------------
+------------ SIGNALS_RAPTOR.TRIGGER ---------------
+Peak (Best Batch):                      2.52 M ops/sec
+Average:                                2.22 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[SIGNALS_DISRUPTOR]</span> </strong></summary>
+
+```txt
+NA
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[PALPATINE]</span> </strong></summary>
+
+```txt
+------------ PALPATINE.SIGNAL_READ ---------------
+Peak (Best Batch):                      1131.22 M ops/sec
+Average:                                278.09 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE.SIGNAL_WRITE ---------------
+Peak (Best Batch):                      19.17 M ops/sec
+Average:                                14.38 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE.WRITE_NOTIFY ---------------
+Peak (Best Batch):                      7.88 M ops/sec
+Average:                                6.47 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE.FANOUT_10 ---------------
+Peak (Best Batch):                      1.35 M ops/sec
+Average:                                1.27 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE.FAN_IN_32 ---------------
+Peak (Best Batch):                      1.11 M ops/sec
+Average:                                1.06 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE.DEPENDENCY_CHAIN_64 ---------------
+Peak (Best Batch):                      10.55 M ops/sec
+Average:                                9.91 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE.DEPENDENCY_GRAPH_16 ---------------
+Peak (Best Batch):                      0.51 M ops/sec
+Average:                                0.44 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE.BATCH_32 ---------------
+Peak (Best Batch):                      0.32 M ops/sec
+Average:                                0.30 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE.EFFECT_CHURN ---------------
+Peak (Best Batch):                      2.47 M ops/sec
+Average:                                2.20 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE.EFFECT_CLEANUP ---------------
+Peak (Best Batch):                      7.20 M ops/sec
+Average:                                6.49 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[MAREK_RAPTOR]</span> </strong></summary>
+
+```txt
+Byte offset is not aligned
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[MAGE_RAPTOR]</span> </strong></summary>
+
+```txt
+------------ MAGE_RAPTOR.signal.read ---------------
+Peak (Best Batch):                      1131.22 M ops/sec
+Average:                                326.99 M ops/sec
+---------------------------------------------------------
+------------ MAGE_RAPTOR.signal.write ---------------
+Peak (Best Batch):                      23.54 M ops/sec
+Average:                                17.84 M ops/sec
+---------------------------------------------------------
+------------ MAGE_RAPTOR.write.notify ---------------
+Peak (Best Batch):                      6.52 M ops/sec
+Average:                                6.02 M ops/sec
+---------------------------------------------------------
+------------ MAGE_RAPTOR.fanout.10 ---------------
+Peak (Best Batch):                      0.95 M ops/sec
+Average:                                0.82 M ops/sec
+---------------------------------------------------------
+------------ MAGE_RAPTOR.fanout.100 ---------------
+Peak (Best Batch):                      0.10 M ops/sec
+Average:                                0.09 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[MAUL]</span> </strong></summary>
+
+```txt
+------------ MAUL.signal.read ---------------
+Peak (Best Batch):                      7.15 M ops/sec
+Average:                                4.76 M ops/sec
+---------------------------------------------------------
+------------ MAUL.signal.write ---------------
+Peak (Best Batch):                      8.75 M ops/sec
+Average:                                6.60 M ops/sec
+---------------------------------------------------------
+------------ MAUL.signal.write-notify ---------------
+Peak (Best Batch):                      7.50 M ops/sec
+Average:                                5.70 M ops/sec
+---------------------------------------------------------
+------------ MAUL.fan-out.10 ---------------
+Peak (Best Batch):                      7.47 M ops/sec
+Average:                                5.69 M ops/sec
+---------------------------------------------------------
+------------ MAUL.fan-out.100 ---------------
+Peak (Best Batch):                      7.29 M ops/sec
+Average:                                5.91 M ops/sec
+---------------------------------------------------------
+------------ MAUL.fan-out.1000 ---------------
+Peak (Best Batch):                      7.32 M ops/sec
+Average:                                5.65 M ops/sec
+---------------------------------------------------------
+------------ MAUL.fan-out.10000 ---------------
+Peak (Best Batch):                      7.31 M ops/sec
+Average:                                5.98 M ops/sec
+---------------------------------------------------------
+------------ MAUL.fan-in.100 ---------------
+Peak (Best Batch):                      8.73 M ops/sec
+Average:                                6.46 M ops/sec
+---------------------------------------------------------
+------------ MAUL.dependency-chain.128 ---------------
+Peak (Best Batch):                      8.81 M ops/sec
+Average:                                6.96 M ops/sec
+---------------------------------------------------------
+------------ MAUL.dependency-graph.64x16 ---------------
+Peak (Best Batch):                      8.63 M ops/sec
+Average:                                7.23 M ops/sec
+---------------------------------------------------------
+72 | 
+73 |     let next = this.bytes.length;
+74 | 
+75 |     while (next < this.length + extra) next *= 2;
+76 | 
+77 |     const grown = new Uint8Array(next);
+                       ^
+RangeError: length too large: 8589934592
+      at ensure (F:\signals\src\RAPTOR_SIGNALS\DARTH_MAUL_ENGINE.ts:77:19)
+      at writeF64 (F:\signals\src\RAPTOR_SIGNALS\DARTH_MAUL_ENGINE.ts:95:10)
+      at encodeValue (F:\signals\src\RAPTOR_SIGNALS\DARTH_MAUL_ENGINE.ts:350:18)
+      at encodePayload (F:\signals\src\RAPTOR_SIGNALS\DARTH_MAUL_ENGINE.ts:324:10)
+      at signalOper (F:\signals\src\RAPTOR_SIGNALS\DARTH_MAUL_ENGINE.ts:1004:28)
+      at <anonymous> (F:\signals\src\RAPTOR_SIGNALS\NO_RAPTOR_FOR_YOU.ts:1011:17)
+      at BARE_METAL_CPU (F:\signals\src\RAPTOR_SIGNALS\NO_RAPTOR_FOR_YOU.ts:79:42)
+      at F:\signals\src\RAPTOR_SIGNALS\NO_RAPTOR_FOR_YOU.ts:1006:7
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[DARTH_JAR_JAR_BINKS_RAPTOR]</span> </strong></summary>
+
+```txt
+------------ RAPTOR.signal.read ---------------
+Peak (Best Batch):                      1131.22 M ops/sec
+Average:                                405.58 M ops/sec
+---------------------------------------------------------
+------------ RAPTOR.signal.write ---------------
+Peak (Best Batch):                      27.06 M ops/sec
+Average:                                21.87 M ops/sec
+---------------------------------------------------------
+------------ RAPTOR.signal.write-notify ---------------
+Peak (Best Batch):                      6.89 M ops/sec
+Average:                                6.43 M ops/sec
+---------------------------------------------------------
+------------ RAPTOR.fan-out.10 ---------------
+Peak (Best Batch):                      1.02 M ops/sec
+Average:                                0.94 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[DARTH_BINKS_RAPTOR]</span> </strong></summary>
+
+```txt
+------------ SIGNAL_READ ---------------
+Peak (Best Batch):                      1131.22 M ops/sec
+Average:                                347.75 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_WRITE ---------------
+Peak (Best Batch):                      27.83 M ops/sec
+Average:                                22.95 M ops/sec
+---------------------------------------------------------
+------------ WRITE_NOTIFY ---------------
+Peak (Best Batch):                      6.22 M ops/sec
+Average:                                5.85 M ops/sec
+---------------------------------------------------------
+------------ FAN_OUT_10 ---------------
+Peak (Best Batch):                      1.03 M ops/sec
+Average:                                0.97 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+
+
+## NON RAPTOR SIGNALS
+
+> [!NOTE] BUILDERS LOG #9
+>
+> I beleive this is going to be the end of benching everything...
+>
+> New, more in depth tests this time around... alien and preact also getting the same treatment.
+>
+> Just before anyone starts to complain about... anything really, I did not write these tests. I do not want to influence them in any way, because I am more interested in the result than you are, so I need them to be up to par. As much as I hate dealing with ai with this sort of thing, due to the ai continously moving the goal posts after every result. But that does give the result the best chance when it comes to choosing one, if any make it out to the other side. 
+>
+> Same as last time around, you need to keep a note that... for preact and alien, they have no storage solution. Basically making it so that, no matter what number is produced... it will be lower, a lot lower, when a storage solution is finally added. So just keep that in mind...
+>
+> The tests may be too in depth this time around... fan out 256... numbers are fucking LOW, so if you beleive the test started to hang... it did not, its just running at 0.08 mill ops sec.
+>
+> BUT this really opens up the implemenations by giving us a proper read out on them. You will NOT find a test like this provided by any solution. As it reveals... everything.
+>
+> Removing all the 256 and 64 tests, as they are all below the mill mark.
+>
+> Its kind of funny, how vader ends up being the fastest one of the bunch, again...  that was not done intentionally...
+>
+> And to make it more fair, there are 3 more tests being added for preact and alien. Preact using what typically devs reach for when using preact, and then alien using 2 solutions... since aliens whole gimmick is 'the fastest solution ever' moto. 
+>
+> Right off the hop, I can tell you these are not the fastest tests so far... this is actually taking a fucking while...
+>
+> So it goes to show not all things are as they seem... because preact and aliens, are basically the same. As each pulls ahead of one another in one area or another. Meanwhile... faster solutions DO infact exist out there, as these tests show. 
+>
+> Now what you do is entirely up to you, but I know what I'm going to be doing... taking the fastest test from here, which I beleive was vader and placing it more seriously up against...  I think it was darth maul... I can't remember, doesn't matter. By creating one last test... to see which one actually truly wins. But I will go dig through these results, see which engine was fastest in each of the areas, if it were faster than vader... take it and replace vaders implementation to further push it ahead.
+>
+> Finally on the last test... but its going so slow... cmon, you can do it!... my god... fuck sakes... Why is this one so fucking slow? Holy shit, the avg dev is getting bent over, in terms of performance in a real world setting. Like this... is truly fucking slow. If this were my solution, let me tell you... lol, it would not see the light of day.
+>
+> Just waiting for the final data obj of aggregated results, I was being serious... I would delete and restart if my solution were going that slow, because obviously there is room for improvement. Before those are done... just gonna say this here, preact and alien will not be included in them as it is simply just not a fair comparison, since they do not have storage solutions attached to them. With saying that, alien2, alien3 and preact 2 will be included.
+>
+> I had 2 different ais sift through the results, the second one was a lot more thorough but obviously, a lot more data to look at because of that.
+>
+> [UPDATE] Well... this round of testing has been by far the most annoying... But something that shocks me is... just how many ppl lean towards a performant based signals solution, but then when it comes to actually storing said signals... I don't think they could have found a slower solution. Mind boggling... Why even bother reaching for alien, if thats where the buck stops?... Because EVERYTHING that you gained by using alien over another solution, is gone... you might as well, pick another.
+>
+> You performance ceiling... doesn't move up... if something in that stack is higher than the others, it just means that more performant solution, is now bogged down to what the ceiling actually is. Which is the entire reason why I have spent so much time testing and benching... even js objs, maps, arrays and everything else. That's also why I've been testing raptors as much as I have. Yes they are both ends of the spectrum... but one is going to slow down the other. Which is why as soon as I created and tested some things, it makes me literally go back through my code and change parts of it so that... hopefully, the end results comes up to a higher ceiling. That is the most important number, nothing else really is that significant, espeicially not individual test scores and I don't know why ppl get obsessed over them the way that they do, because what you use in the end... is an accumulitive result that is the sum total of the solutiuon in its entirety... not any one single thing within its stack.
+>
+> For example, siths numbers you see below is done so with maps which is... when you get to the bottom of it, is whats used in the avg solution... One small change, tripled the results across the board. 
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[RESULTS]</span> </strong></summary>
+
+
+</details>
+
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[RESULTS 2]</span> </strong></summary>
+
+
+
+</details>
+
+
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[yoda]</span> </strong></summary>
+
+```txt
+------------ YODA.send.hot ---------------
+Peak (Best Batch):                      376.22 M ops/sec
+Average:                                297.66 M ops/sec
+---------------------------------------------------------
+------------ YODA.send.cold ---------------
+Peak (Best Batch):                      40.97 M ops/sec
+Average:                                38.49 M ops/sec
+---------------------------------------------------------
+------------ YODA.sub.hot ---------------
+Peak (Best Batch):                      55.98 M ops/sec
+Average:                                34.67 M ops/sec
+---------------------------------------------------------
+------------ YODA.sub.cold ---------------
+Peak (Best Batch):                      40.74 M ops/sec
+Average:                                28.15 M ops/sec
+---------------------------------------------------------
+------------ YODA.stream.hot ---------------
+Peak (Best Batch):                      10.89 M ops/sec
+Average:                                9.61 M ops/sec
+---------------------------------------------------------
+------------ YODA.stream.dispatch.1 ---------------
+Peak (Best Batch):                      20.48 M ops/sec
+Average:                                17.91 M ops/sec
+---------------------------------------------------------
+------------ YODA.duplex.create ---------------
+Peak (Best Batch):                      188.54 M ops/sec
+Average:                                185.58 M ops/sec
+---------------------------------------------------------
+------------ YODA.duplex.hot.send ---------------
+Peak (Best Batch):                      86.87 M ops/sec
+Average:                                85.26 M ops/sec
+---------------------------------------------------------
+------------ YODA.duplex.hot.sub ---------------
+Peak (Best Batch):                      48.68 M ops/sec
+Average:                                34.27 M ops/sec
+---------------------------------------------------------
+------------ YODA.signal.hot.read ---------------
+Peak (Best Batch):                      188.54 M ops/sec
+Average:                                178.30 M ops/sec
+---------------------------------------------------------
+------------ YODA.signal.hot.write ---------------
+Peak (Best Batch):                      0.67 M ops/sec
+Average:                                0.62 M ops/sec
+---------------------------------------------------------
+------------ YODA.signal.hot.read.write ---------------
+Peak (Best Batch):                      0.67 M ops/sec
+Average:                                0.63 M ops/sec
+---------------------------------------------------------
+------------ YODA.atom.read ---------------
+Peak (Best Batch):                      169.66 M ops/sec
+Average:                                149.70 M ops/sec
+---------------------------------------------------------
+------------ YODA.atom.write ---------------
+Peak (Best Batch):                      0.68 M ops/sec
+Average:                                0.64 M ops/sec
+---------------------------------------------------------
+------------ YODA.get.hot ---------------
+Peak (Best Batch):                      199.60 M ops/sec
+Average:                                180.07 M ops/sec
+---------------------------------------------------------
+------------ YODA.get.cold ---------------
+Peak (Best Batch):                      58.70 M ops/sec
+Average:                                52.12 M ops/sec
+---------------------------------------------------------
+------------ YODA.has.hot ---------------
+Peak (Best Batch):                      172.24 M ops/sec
+Average:                                166.14 M ops/sec
+---------------------------------------------------------
+------------ YODA.peek.hot ---------------
+Peak (Best Batch):                      131.22 M ops/sec
+Average:                                125.63 M ops/sec
+---------------------------------------------------------
+------------ YODA.create.existing ---------------
+Peak (Best Batch):                      132.54 M ops/sec
+Average:                                117.78 M ops/sec
+---------------------------------------------------------
+------------ YODA.getMany.16 ---------------
+Peak (Best Batch):                      3.26 M ops/sec
+Average:                                3.02 M ops/sec
+---------------------------------------------------------
+------------ YODA.entries ---------------
+Peak (Best Batch):                      0.83 M ops/sec
+Average:                                0.76 M ops/sec
+---------------------------------------------------------
+------------ YODA.set.hot ---------------
+Peak (Best Batch):                      0.64 M ops/sec
+Average:                                0.47 M ops/sec
+---------------------------------------------------------
+------------ YODA.set.cold ---------------
+Peak (Best Batch):                      0.62 M ops/sec
+Average:                                0.47 M ops/sec
+---------------------------------------------------------
+
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[vader]</span> </strong></summary>
+
+```txt
+------------ vader.signal.read ---------------
+Peak (Best Batch):                      1231.53 M ops/sec
+Average:                                444.88 M ops/sec
+---------------------------------------------------------
+------------ vader.signal.peek ---------------
+Peak (Best Batch):                      239.18 M ops/sec
+Average:                                170.05 M ops/sec
+---------------------------------------------------------
+------------ vader.signal.write ---------------
+Peak (Best Batch):                      103.34 M ops/sec
+Average:                                92.57 M ops/sec
+---------------------------------------------------------
+------------ vader.signal.write.unchanged ---------------
+Peak (Best Batch):                      103.77 M ops/sec
+Average:                                95.30 M ops/sec
+---------------------------------------------------------
+------------ vader.signal.read.write ---------------
+Peak (Best Batch):                      68.80 M ops/sec
+Average:                                66.16 M ops/sec
+---------------------------------------------------------
+------------ vader.signal.notify.1 ---------------
+Peak (Best Batch):                      14.71 M ops/sec
+Average:                                13.30 M ops/sec
+---------------------------------------------------------
+------------ vader.signal.notify.16 ---------------
+Peak (Best Batch):                      75.41 M ops/sec
+Average:                                67.59 M ops/sec
+---------------------------------------------------------
+------------ vader.computed.read.cached ---------------
+Peak (Best Batch):                      138.91 M ops/sec
+Average:                                119.40 M ops/sec
+---------------------------------------------------------
+------------ vader.computed.read.first ---------------
+Peak (Best Batch):                      102.70 M ops/sec
+Average:                                95.80 M ops/sec
+---------------------------------------------------------
+------------ vader.computed.invalidate ---------------
+Peak (Best Batch):                      53.77 M ops/sec
+Average:                                51.40 M ops/sec
+---------------------------------------------------------
+------------ vader.computed.recompute ---------------
+Peak (Best Batch):                      12.52 M ops/sec
+Average:                                11.40 M ops/sec
+---------------------------------------------------------
+------------ vader.computed.chain.8 ---------------
+Peak (Best Batch):                      2.40 M ops/sec
+Average:                                2.24 M ops/sec
+---------------------------------------------------------
+------------ vader.computed.chain.32 ---------------
+Peak (Best Batch):                      0.71 M ops/sec
+Average:                                0.69 M ops/sec
+---------------------------------------------------------
+------------ vader.effect.create.dispose ---------------
+Peak (Best Batch):                      19.44 M ops/sec
+Average:                                15.76 M ops/sec
+---------------------------------------------------------
+------------ vader.effect.rerun ---------------
+Peak (Best Batch):                      19.17 M ops/sec
+Average:                                15.48 M ops/sec
+---------------------------------------------------------
+------------ vader.effect.cleanup.rerun ---------------
+Peak (Best Batch):                      13.21 M ops/sec
+Average:                                11.90 M ops/sec
+---------------------------------------------------------
+------------ vader.dependencies.fan-in.16 ---------------
+Peak (Best Batch):                      3.15 M ops/sec
+Average:                                3.03 M ops/sec
+---------------------------------------------------------
+------------ vader.dependencies.conditional.switch ---------------
+Peak (Best Batch):                      7.91 M ops/sec
+Average:                                6.78 M ops/sec
+---------------------------------------------------------
+------------ vader.batch.2 ---------------
+Peak (Best Batch):                      8.55 M ops/sec
+Average:                                7.92 M ops/sec
+---------------------------------------------------------
+------------ vader.batch.16 ---------------
+Peak (Best Batch):                      1.65 M ops/sec
+Average:                                1.58 M ops/sec
+---------------------------------------------------------
+------------ vader.graph.diamond ---------------
+Peak (Best Batch):                      3.51 M ops/sec
+Average:                                3.32 M ops/sec
+---------------------------------------------------------
+------------ vader.graph.branch.16 ---------------
+Peak (Best Batch):                      0.97 M ops/sec
+Average:                                0.94 M ops/sec
+---------------------------------------------------------
+------------ vader.effect.dispose ---------------
+Peak (Best Batch):                      16.31 M ops/sec
+Average:                                12.60 M ops/sec
+---------------------------------------------------------
+------------ vader.bus.send ---------------
+Peak (Best Batch):                      71.37 M ops/sec
+Average:                                65.30 M ops/sec
+---------------------------------------------------------
+------------ vader.bus.hotSend ---------------
+Peak (Best Batch):                      196.39 M ops/sec
+Average:                                176.95 M ops/sec
+---------------------------------------------------------
+------------ vader.bus.stream.publish.1 ---------------
+Peak (Best Batch):                      193.84 M ops/sec
+Average:                                173.91 M ops/sec
+---------------------------------------------------------
+------------ vader.bus.stream.publish.16 ---------------
+Peak (Best Batch):                      194.36 M ops/sec
+Average:                                174.73 M ops/sec
+---------------------------------------------------------
+------------ vader.bus.stream.register.dispose ---------------
+Peak (Best Batch):                      29.34 M ops/sec
+Average:                                22.48 M ops/sec
+---------------------------------------------------------
+------------ vader.bus.sub.register.dispose ---------------
+Peak (Best Batch):                      24.90 M ops/sec
+Average:                                19.06 M ops/sec
+---------------------------------------------------------
+------------ vader.bus.duplex.send ---------------
+Peak (Best Batch):                      178.60 M ops/sec
+Average:                                165.01 M ops/sec
+---------------------------------------------------------
+------------ vader.bus.duplex.sub.register.dispose ---------------
+Peak (Best Batch):                      27.10 M ops/sec
+Average:                                20.88 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[the_force]</span> </strong></summary>
+
+```txt
+------------ the_force.signal.read ---------------
+Peak (Best Batch):                      459.35 M ops/sec
+Average:                                277.51 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.peek ---------------
+Peak (Best Batch):                      502.77 M ops/sec
+Average:                                217.04 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.write ---------------
+Peak (Best Batch):                      68.64 M ops/sec
+Average:                                62.14 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.write.unchanged ---------------
+Peak (Best Batch):                      95.20 M ops/sec
+Average:                                60.64 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.read.write ---------------
+Peak (Best Batch):                      53.42 M ops/sec
+Average:                                48.77 M ops/sec
+---------------------------------------------------------
+------------ the_force.computed.read.cached ---------------
+Peak (Best Batch):                      78.06 M ops/sec
+Average:                                70.28 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.read.first ---------------
+Peak (Best Batch):                      79.46 M ops/sec
+Average:                                76.86 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.invalidate ---------------
+Peak (Best Batch):                      61.58 M ops/sec
+Average:                                60.14 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.recompute ---------------
+Peak (Best Batch):                      70.80 M ops/sec
+Average:                                65.52 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.chain.8 ---------------
+Peak (Best Batch):                      66.15 M ops/sec
+Average:                                57.22 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.chain.32 ---------------
+Peak (Best Batch):                      65.10 M ops/sec
+Average:                                57.46 M ops/sec
+---------------------------------------------------------
+------------ the_force.effect.create ---------------
+Peak (Best Batch):                      17.35 M ops/sec
+Average:                                14.07 M ops/sec
+---------------------------------------------------------
+------------ the_force.effect.dispose ---------------
+Peak (Best Batch):                      20.60 M ops/sec
+Average:                                16.50 M ops/sec
+---------------------------------------------------------
+------------ the_force.effect.create.dependency ---------------
+Peak (Best Batch):                      21.80 M ops/sec
+Average:                                17.37 M ops/sec
+---------------------------------------------------------
+------------ the_force.effect.cleanup ---------------
+Peak (Best Batch):                      56.96 M ops/sec
+Average:                                48.72 M ops/sec
+---------------------------------------------------------
+------------ the_force.effect.rerun ---------------
+Peak (Best Batch):                      64.43 M ops/sec
+Average:                                56.44 M ops/sec
+---------------------------------------------------------
+------------ the_force.dependencies.fan-in.16 ---------------
+Peak (Best Batch):                      61.24 M ops/sec
+Average:                                51.05 M ops/sec
+---------------------------------------------------------
+------------ the_force.dependencies.fan-out.16 ---------------
+Peak (Best Batch):                      61.78 M ops/sec
+Average:                                51.31 M ops/sec
+---------------------------------------------------------
+------------ the_force.dependencies.conditional.switch ---------------
+Peak (Best Batch):                      67.20 M ops/sec
+Average:                                57.30 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_batch.2 ---------------
+Peak (Best Batch):                      56.80 M ops/sec
+Average:                                50.56 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_batch.16 ---------------
+Peak (Best Batch):                      6.42 M ops/sec
+Average:                                5.89 M ops/sec
+---------------------------------------------------------
+------------ the_force.graph.diamond ---------------
+Peak (Best Batch):                      67.36 M ops/sec
+Average:                                57.35 M ops/sec
+---------------------------------------------------------
+------------ the_force.graph.branch.16 ---------------
+Peak (Best Batch):                      66.67 M ops/sec
+Average:                                56.98 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.send ---------------
+Peak (Best Batch):                      13.27 M ops/sec
+Average:                                12.45 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.hotSend ---------------
+Peak (Best Batch):                      172.12 M ops/sec
+Average:                                162.81 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.stream.publish.1 ---------------
+Peak (Best Batch):                      161.60 M ops/sec
+Average:                                148.82 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.stream.publish.16 ---------------
+Peak (Best Batch):                      175.84 M ops/sec
+Average:                                158.47 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.sub.register.dispose ---------------
+Peak (Best Batch):                      26.29 M ops/sec
+Average:                                20.88 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.stream.register.dispose ---------------
+Peak (Best Batch):                      20.77 M ops/sec
+Average:                                17.96 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.duplex.send ---------------
+Peak (Best Batch):                      181.79 M ops/sec
+Average:                                171.72 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.duplex.sub.register.dispose ---------------
+Peak (Best Batch):                      26.25 M ops/sec
+Average:                                19.12 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.duplex.stream.register.dispose ---------------
+Peak (Best Batch):                      38.34 M ops/sec
+Average:                                28.75 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[SKYWALKER]</span> </strong></summary>
+
+```txt
+------------ SKYWALKER.store.hotGet ---------------
+Peak (Best Batch):                      1231.53 M ops/sec
+Average:                                567.59 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.get ---------------
+Peak (Best Batch):                      460.83 M ops/sec
+Average:                                228.48 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.peek ---------------
+Peak (Best Batch):                      135.91 M ops/sec
+Average:                                124.67 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.read ---------------
+Peak (Best Batch):                      131.35 M ops/sec
+Average:                                107.53 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.has ---------------
+Peak (Best Batch):                      98.39 M ops/sec
+Average:                                88.43 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.hotSet ---------------
+Peak (Best Batch):                      26.40 M ops/sec
+Average:                                18.41 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.set ---------------
+Peak (Best Batch):                      29.90 M ops/sec
+Average:                                17.96 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.write ---------------
+Peak (Best Batch):                      27.82 M ops/sec
+Average:                                18.85 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.edit ---------------
+Peak (Best Batch):                      27.50 M ops/sec
+Average:                                19.34 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.hotSet.unchanged ---------------
+Peak (Best Batch):                      104.19 M ops/sec
+Average:                                97.02 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.swap ---------------
+Peak (Best Batch):                      29.88 M ops/sec
+Average:                                21.10 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.create.existing ---------------
+Peak (Best Batch):                      122.50 M ops/sec
+Average:                                116.85 M ops/sec
+---------------------------------------------------------
+------------ SKYWALKER.store.create.new ---------------
+Peak (Best Batch):                      1.07 M ops/sec
+Average:                                0.63 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[SITH]</span> </strong></summary>
+
+```txt
+------------ SLOT_STORE.get ---------------
+Peak (Best Batch):                      1582.28 M ops/sec
+Average:                                191.49 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.peek ---------------
+Peak (Best Batch):                      47.65 M ops/sec
+Average:                                40.28 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.read ---------------
+Peak (Best Batch):                      35.94 M ops/sec
+Average:                                34.97 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.hot.read ---------------
+Peak (Best Batch):                      35.64 M ops/sec
+Average:                                32.95 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.getOr ---------------
+Peak (Best Batch):                      33.60 M ops/sec
+Average:                                32.40 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.has ---------------
+Peak (Best Batch):                      33.11 M ops/sec
+Average:                                22.45 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Sig.get ---------------
+Peak (Best Batch):                      95.48 M ops/sec
+Average:                                88.40 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Sig.peek ---------------
+Peak (Best Batch):                      369.96 M ops/sec
+Average:                                147.56 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Sig.value ---------------
+Peak (Best Batch):                      133.94 M ops/sec
+Average:                                125.32 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.get ---------------
+Peak (Best Batch):                      133.69 M ops/sec
+Average:                                131.13 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.peek ---------------
+Peak (Best Batch):                      144.84 M ops/sec
+Average:                                129.37 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.value ---------------
+Peak (Best Batch):                      142.78 M ops/sec
+Average:                                110.69 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.current ---------------
+Peak (Best Batch):                      133.73 M ops/sec
+Average:                                120.09 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.crt ---------------
+Peak (Best Batch):                      133.87 M ops/sec
+Average:                                131.03 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.set.read ---------------
+Peak (Best Batch):                      133.83 M ops/sec
+Average:                                130.63 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.set ---------------
+Peak (Best Batch):                      19.51 M ops/sec
+Average:                                19.08 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.write ---------------
+Peak (Best Batch):                      36.06 M ops/sec
+Average:                                35.10 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.hot.write ---------------
+Peak (Best Batch):                      35.69 M ops/sec
+Average:                                32.34 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.setLocal ---------------
+Peak (Best Batch):                      36.37 M ops/sec
+Average:                                32.20 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Sig.set ---------------
+Peak (Best Batch):                      77.48 M ops/sec
+Average:                                73.59 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Sig.value.write ---------------
+Peak (Best Batch):                      81.14 M ops/sec
+Average:                                70.73 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Sig.update ---------------
+Peak (Best Batch):                      71.70 M ops/sec
+Average:                                56.19 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.value.write ---------------
+Peak (Best Batch):                      78.60 M ops/sec
+Average:                                74.90 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.current.write ---------------
+Peak (Best Batch):                      76.10 M ops/sec
+Average:                                68.78 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.crt.write ---------------
+Peak (Best Batch):                      76.05 M ops/sec
+Average:                                73.79 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.set.write ---------------
+Peak (Best Batch):                      99.54 M ops/sec
+Average:                                89.69 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.update ---------------
+Peak (Best Batch):                      83.62 M ops/sec
+Average:                                68.17 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Sig.has ---------------
+Peak (Best Batch):                      176.99 M ops/sec
+Average:                                164.65 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Atom.has ---------------
+Peak (Best Batch):                      135.67 M ops/sec
+Average:                                131.06 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.set.same ---------------
+Peak (Best Batch):                      136.43 M ops/sec
+Average:                                133.32 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.Sig.set.same ---------------
+Peak (Best Batch):                      167.87 M ops/sec
+Average:                                151.81 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.set.NaN ---------------
+Peak (Best Batch):                      41.43 M ops/sec
+Average:                                38.01 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.notify.1 ---------------
+Peak (Best Batch):                      27.10 M ops/sec
+Average:                                20.88 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.notify.16 ---------------
+Peak (Best Batch):                      14.31 M ops/sec
+Average:                                13.54 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.global.1 ---------------
+Peak (Best Batch):                      29.80 M ops/sec
+Average:                                27.88 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.global.17 ---------------
+Peak (Best Batch):                      12.66 M ops/sec
+Average:                                12.19 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.prefix.match ---------------
+Peak (Best Batch):                      7.21 M ops/sec
+Average:                                6.75 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.prefix.nonmatch ---------------
+Peak (Best Batch):                      7.67 M ops/sec
+Average:                                7.39 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.prefix.17 ---------------
+Peak (Best Batch):                      1.65 M ops/sec
+Average:                                1.53 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.batch.same.2 ---------------
+Peak (Best Batch):                      1.27 M ops/sec
+Average:                                1.20 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.batch.same.8 ---------------
+Peak (Best Batch):                      1.18 M ops/sec
+Average:                                1.11 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.batch.same.16 ---------------
+Peak (Best Batch):                      1.06 M ops/sec
+Average:                                1.01 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.batch.distinct.16 ---------------
+Peak (Best Batch):                      0.09 M ops/sec
+Average:                                0.08 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.batch.distinct.16.same ---------------
+Peak (Best Batch):                      2.31 M ops/sec
+Average:                                2.24 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.getMany.16 ---------------
+Peak (Best Batch):                      7.32 M ops/sec
+Average:                                6.71 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.pick.16 ---------------
+Peak (Best Batch):                      3.24 M ops/sec
+Average:                                2.88 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.setMany.object.16 ---------------
+Peak (Best Batch):                      0.09 M ops/sec
+Average:                                0.09 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.setMany.map.16 ---------------
+Peak (Best Batch):                      0.08 M ops/sec
+Average:                                0.07 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.entries ---------------
+Peak (Best Batch):                      0.80 M ops/sec
+Average:                                0.73 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.keys ---------------
+Peak (Best Batch):                      1.17 M ops/sec
+Average:                                1.10 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.values ---------------
+Peak (Best Batch):                      1.17 M ops/sec
+Average:                                1.15 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.getAll ---------------
+Peak (Best Batch):                      0.68 M ops/sec
+Average:                                0.64 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.getByPrefix ---------------
+Peak (Best Batch):                      0.43 M ops/sec
+Average:                                0.41 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.keysByPrefix ---------------
+Peak (Best Batch):                      0.41 M ops/sec
+Average:                                0.40 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.create.existing ---------------
+Peak (Best Batch):                      57.50 M ops/sec
+Average:                                51.94 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.create.existing.factory ---------------
+Peak (Best Batch):                      58.09 M ops/sec
+Average:                                53.57 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.update ---------------
+Peak (Best Batch):                      1.86 M ops/sec
+Average:                                1.81 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.swap ---------------
+Peak (Best Batch):                      1.95 M ops/sec
+Average:                                1.87 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.edit ---------------
+Peak (Best Batch):                      73.07 M ops/sec
+Average:                                69.19 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.edit.object ---------------
+Peak (Best Batch):                      1.77 M ops/sec
+Average:                                1.70 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.touch ---------------
+Peak (Best Batch):                      1.80 M ops/sec
+Average:                                1.73 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.derive.source.write ---------------
+Peak (Best Batch):                      0.73 M ops/sec
+Average:                                0.69 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.derive.output.read ---------------
+Peak (Best Batch):                      57.34 M ops/sec
+Average:                                54.95 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.waitFor.resolved ---------------
+Peak (Best Batch):                      27.96 M ops/sec
+Average:                                24.52 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.waitFor.resolved.predicate ---------------
+Peak (Best Batch):                      25.37 M ops/sec
+Average:                                22.77 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.delete.missing ---------------
+Peak (Best Batch):                      211.82 M ops/sec
+Average:                                177.65 M ops/sec
+---------------------------------------------------------
+------------ SLOT_STORE.delete.recreate ---------------
+Peak (Best Batch):                      0.56 M ops/sec
+Average:                                0.52 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[PALPATINE]</span> </strong></summary>
+
+```txt
+------------ PALPATINE · get · existing cell ---------------
+Peak (Best Batch):                      923.36 M ops/sec
+Average:                                231.52 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · peek · existing cell ---------------
+Peak (Best Batch):                      282.81 M ops/sec
+Average:                                90.48 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · has · existing cell ---------------
+Peak (Best Batch):                      98.13 M ops/sec
+Average:                                92.61 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · has · missing cell ---------------
+Peak (Best Batch):                      93.91 M ops/sec
+Average:                                87.25 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · has · undefined value ---------------
+Peak (Best Batch):                      74.26 M ops/sec
+Average:                                67.60 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · getMany · 16 keys + result allocation ---------------Peak (Best Batch):                      3.71 M ops/sec
+Average:                                3.48 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · set · changed value ---------------
+Peak (Best Batch):                      50.64 M ops/sec
+Average:                                41.33 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · set · same value ---------------
+Peak (Best Batch):                      139.47 M ops/sec
+Average:                                133.62 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · write · changed value ---------------
+Peak (Best Batch):                      101.21 M ops/sec
+Average:                                96.39 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · swap · changed value ---------------
+Peak (Best Batch):                      40.53 M ops/sec
+Average:                                36.39 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · edit · changed value ---------------
+Peak (Best Batch):                      40.96 M ops/sec
+Average:                                35.29 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · setMany · 8 individual writes ---------------
+Peak (Best Batch):                      8.00 M ops/sec
+Average:                                7.34 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · signal.value · read ---------------
+Peak (Best Batch):                      178.60 M ops/sec
+Average:                                159.58 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · signal.current · read ---------------
+Peak (Best Batch):                      56.95 M ops/sec
+Average:                                42.91 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · signal.peek · read ---------------
+Peak (Best Batch):                      88.58 M ops/sec
+Average:                                84.30 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · signal.set · changed value ---------------
+Peak (Best Batch):                      46.56 M ops/sec
+Average:                                45.04 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · signal.update · changed value ---------------
+Peak (Best Batch):                      36.97 M ops/sec
+Average:                                33.65 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · atom.value · read ---------------
+Peak (Best Batch):                      62.74 M ops/sec
+Average:                                55.77 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · set · zero subscribers ---------------
+Peak (Best Batch):                      115.07 M ops/sec
+Average:                                110.90 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · set · 1 subscriber ---------------
+Peak (Best Batch):                      36.07 M ops/sec
+Average:                                33.92 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · set · 16 subscribers ---------------
+Peak (Best Batch):                      13.95 M ops/sec
+Average:                                13.31 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · setMany · 8 subMany listeners ---------------
+Peak (Best Batch):                      4.49 M ops/sec
+Average:                                4.41 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · set · subAll snapshot · 16 keys ---------------
+Peak (Best Batch):                      31.40 M ops/sec
+Average:                                30.65 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · sub · register + dispose ---------------
+Peak (Best Batch):                      19.67 M ops/sec
+Average:                                7.16 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · effect · create + initial run + dispose · no deps ---------------
+Peak (Best Batch):                      9.66 M ops/sec
+Average:                                6.48 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · effect · create + initial tracked read + dispose ---------------
+Peak (Best Batch):                      8.83 M ops/sec
+Average:                                7.72 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · effect · 1 dependency · write + rerun ---------------Peak (Best Batch):                      41.25 M ops/sec
+Average:                                39.96 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · effect · 8 dependencies · write + rerun ---------------
+Peak (Best Batch):                      57.11 M ops/sec
+Average:                                50.26 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · create · new cell ---------------
+Peak (Best Batch):                      1.10 M ops/sec
+Average:                                0.59 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · delete · existing cell ---------------
+Peak (Best Batch):                      2.29 M ops/sec
+Average:                                2.15 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · clear · 16 cells + recreate setup ---------------
+Peak (Best Batch):                      0.18 M ops/sec
+Average:                                0.17 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · entries · iterate 16 cells ---------------
+Peak (Best Batch):                      2.87 M ops/sec
+Average:                                2.32 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · get · default four-tier address ---------------
+Peak (Best Batch):                      94.53 M ops/sec
+Average:                                89.89 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · get · explicit four-tier address ---------------
+Peak (Best Batch):                      142.65 M ops/sec
+Average:                                130.36 M ops/sec
+---------------------------------------------------------
+------------ PALPATINE · get · varying four-tier addresses ---------------
+Peak (Best Batch):                      53.08 M ops/sec
+Average:                                47.77 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[SIDIUS]</span> </strong></summary>
+
+```txt
+------------ SIDIUS · get · existing cell ---------------
+Peak (Best Batch):                      923.36 M ops/sec
+Average:                                227.10 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · peek · existing cell ---------------
+Peak (Best Batch):                      282.73 M ops/sec
+Average:                                91.02 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · has · existing cell ---------------
+Peak (Best Batch):                      97.47 M ops/sec
+Average:                                92.95 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · has · missing cell ---------------
+Peak (Best Batch):                      96.26 M ops/sec
+Average:                                61.90 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · has · undefined value ---------------
+Peak (Best Batch):                      73.96 M ops/sec
+Average:                                68.63 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · getMany · 16 keys + result allocation ---------------
+Peak (Best Batch):                      3.71 M ops/sec
+Average:                                3.46 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · set · changed value ---------------
+Peak (Best Batch):                      50.66 M ops/sec
+Average:                                43.72 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · set · same value ---------------
+Peak (Best Batch):                      148.85 M ops/sec
+Average:                                131.90 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · write · changed value ---------------
+Peak (Best Batch):                      100.41 M ops/sec
+Average:                                97.04 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · swap · changed value ---------------
+Peak (Best Batch):                      42.84 M ops/sec
+Average:                                36.94 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · edit · changed value ---------------
+Peak (Best Batch):                      38.65 M ops/sec
+Average:                                35.20 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · setMany · 8 individual writes ---------------
+Peak (Best Batch):                      8.03 M ops/sec
+Average:                                7.45 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · signal.value · read ---------------
+Peak (Best Batch):                      174.03 M ops/sec
+Average:                                156.95 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · signal.current · read ---------------
+Peak (Best Batch):                      61.39 M ops/sec
+Average:                                54.51 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · signal.peek · read ---------------
+Peak (Best Batch):                      86.57 M ops/sec
+Average:                                83.78 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · signal.set · changed value ---------------
+Peak (Best Batch):                      46.17 M ops/sec
+Average:                                43.35 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · signal.update · changed value ---------------
+Peak (Best Batch):                      37.35 M ops/sec
+Average:                                34.07 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · atom.value · read ---------------
+Peak (Best Batch):                      66.41 M ops/sec
+Average:                                58.16 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · set · zero subscribers ---------------
+Peak (Best Batch):                      123.09 M ops/sec
+Average:                                111.24 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · set · 1 subscriber ---------------
+Peak (Best Batch):                      38.94 M ops/sec
+Average:                                29.07 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · set · 16 subscribers ---------------
+Peak (Best Batch):                      13.38 M ops/sec
+Average:                                13.10 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · setMany · 8 subMany listeners ---------------
+Peak (Best Batch):                      4.50 M ops/sec
+Average:                                4.36 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · set · subAll snapshot · 16 keys ---------------
+Peak (Best Batch):                      31.96 M ops/sec
+Average:                                30.99 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · sub · register + dispose ---------------
+Peak (Best Batch):                      19.39 M ops/sec
+Average:                                6.67 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · effect · create + initial run + dispose · no deps ---------------
+Peak (Best Batch):                      9.25 M ops/sec
+Average:                                6.30 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · effect · create + initial tracked read + dispose ---------------
+Peak (Best Batch):                      8.48 M ops/sec
+Average:                                7.58 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · effect · 1 dependency · write + rerun ---------------
+Peak (Best Batch):                      40.38 M ops/sec
+Average:                                37.16 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · effect · 8 dependencies · write + rerun ---------------
+Peak (Best Batch):                      55.88 M ops/sec
+Average:                                50.98 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · effect · repeated reruns · inactive subscription accumulation ---------------
+Peak (Best Batch):                      83.89 M ops/sec
+Average:                                78.55 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · create · new cell ---------------
+Peak (Best Batch):                      1.10 M ops/sec
+Average:                                0.58 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · delete + recreate · same key ---------------
+Peak (Best Batch):                      3.78 M ops/sec
+Average:                                2.67 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · clear · 16 cells + recreate setup ---------------
+Peak (Best Batch):                      0.18 M ops/sec
+Average:                                0.17 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · entries · iterate 16 cells ---------------
+Peak (Best Batch):                      2.87 M ops/sec
+Average:                                2.53 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · get · default four-tier address ---------------
+Peak (Best Batch):                      90.55 M ops/sec
+Average:                                85.53 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · get · explicit four-tier address ---------------
+Peak (Best Batch):                      139.26 M ops/sec
+Average:                                117.49 M ops/sec
+---------------------------------------------------------
+------------ SIDIUS · get · varying four-tier addresses ---------------
+Peak (Best Batch):                      52.38 M ops/sec
+Average:                                45.69 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[JEDI]</span> </strong></summary>
+
+```txt
+------------ JEDI.get ---------------
+Peak (Best Batch):                      1231.53 M ops/sec
+Average:                                343.46 M ops/sec
+---------------------------------------------------------
+------------ JEDI.get.hot ---------------
+Peak (Best Batch):                      126.15 M ops/sec
+Average:                                93.47 M ops/sec
+---------------------------------------------------------
+------------ JEDI.read ---------------
+Peak (Best Batch):                      72.45 M ops/sec
+Average:                                63.64 M ops/sec
+---------------------------------------------------------
+------------ JEDI.peek ---------------
+Peak (Best Batch):                      67.14 M ops/sec
+Average:                                65.25 M ops/sec
+---------------------------------------------------------
+------------ JEDI.has ---------------
+Peak (Best Batch):                      80.33 M ops/sec
+Average:                                78.12 M ops/sec
+---------------------------------------------------------
+------------ JEDI.get.missing ---------------
+Peak (Best Batch):                      79.52 M ops/sec
+Average:                                74.67 M ops/sec
+---------------------------------------------------------
+------------ JEDI.getMany.8 ---------------
+Peak (Best Batch):                      4.76 M ops/sec
+Average:                                4.47 M ops/sec
+---------------------------------------------------------
+------------ JEDI.set ---------------
+Peak (Best Batch):                      2.78 M ops/sec
+Average:                                2.45 M ops/sec
+---------------------------------------------------------
+------------ JEDI.set.same ---------------
+Peak (Best Batch):                      29.28 M ops/sec
+Average:                                26.29 M ops/sec
+---------------------------------------------------------
+------------ JEDI.write ---------------
+Peak (Best Batch):                      3.06 M ops/sec
+Average:                                2.79 M ops/sec
+---------------------------------------------------------
+------------ JEDI.swap ---------------
+Peak (Best Batch):                      2.91 M ops/sec
+Average:                                2.74 M ops/sec
+---------------------------------------------------------
+------------ JEDI.edit ---------------
+Peak (Best Batch):                      2.87 M ops/sec
+Average:                                2.21 M ops/sec
+---------------------------------------------------------
+------------ JEDI.set.functional ---------------
+Peak (Best Batch):                      2.36 M ops/sec
+Average:                                1.62 M ops/sec
+---------------------------------------------------------
+------------ JEDI.setMany.8 ---------------
+Peak (Best Batch):                      0.31 M ops/sec
+Average:                                0.27 M ops/sec
+---------------------------------------------------------
+------------ JEDI.create.existing ---------------
+Peak (Best Batch):                      84.67 M ops/sec
+Average:                                73.05 M ops/sec
+---------------------------------------------------------
+------------ JEDI.set.sub.1 ---------------
+Peak (Best Batch):                      2.12 M ops/sec
+Average:                                1.29 M ops/sec
+---------------------------------------------------------
+------------ JEDI.set.subMany.8 ---------------
+Peak (Best Batch):                      0.25 M ops/sec
+Average:                                0.23 M ops/sec
+---------------------------------------------------------
+------------ JEDI.sub.register-dispose ---------------
+Peak (Best Batch):                      1.74 M ops/sec
+Average:                                1.65 M ops/sec
+---------------------------------------------------------
+------------ JEDI.signal.get ---------------
+Peak (Best Batch):                      130.51 M ops/sec
+Average:                                125.31 M ops/sec
+---------------------------------------------------------
+------------ JEDI.signal.peek ---------------
+Peak (Best Batch):                      118.11 M ops/sec
+Average:                                92.00 M ops/sec
+---------------------------------------------------------
+------------ JEDI.signal.set ---------------
+Peak (Best Batch):                      2.56 M ops/sec
+Average:                                2.40 M ops/sec
+---------------------------------------------------------
+------------ JEDI.signal.set.same ---------------
+Peak (Best Batch):                      69.18 M ops/sec
+Average:                                63.09 M ops/sec
+---------------------------------------------------------
+------------ JEDI.signal.update ---------------
+Peak (Best Batch):                      2.47 M ops/sec
+Average:                                2.16 M ops/sec
+---------------------------------------------------------
+------------ JEDI.atom.get ---------------
+Peak (Best Batch):                      37.49 M ops/sec
+Average:                                33.99 M ops/sec
+---------------------------------------------------------
+------------ JEDI.atom.peek ---------------
+Peak (Best Batch):                      31.37 M ops/sec
+Average:                                23.35 M ops/sec
+---------------------------------------------------------
+------------ JEDI.atom.value ---------------
+Peak (Best Batch):                      35.41 M ops/sec
+Average:                                30.82 M ops/sec
+---------------------------------------------------------
+------------ JEDI.atom.value.set ---------------
+Peak (Best Batch):                      2.43 M ops/sec
+Average:                                2.17 M ops/sec
+---------------------------------------------------------
+------------ JEDI.atom.update ---------------
+Peak (Best Batch):                      1.60 M ops/sec
+Average:                                1.43 M ops/sec
+---------------------------------------------------------
+------------ JEDI.setMany.8 ---------------
+Peak (Best Batch):                      0.29 M ops/sec
+Average:                                0.24 M ops/sec
+---------------------------------------------------------
+------------ JEDI.getAll ---------------
+Peak (Best Batch):                      0.07 M ops/sec
+Average:                                0.07 M ops/sec
+---------------------------------------------------------
+------------ JEDI.getByPrefix ---------------
+Peak (Best Batch):                      0.11 M ops/sec
+Average:                                0.11 M ops/sec
+---------------------------------------------------------
+------------ JEDI.entries ---------------
+Peak (Best Batch):                      0.04 M ops/sec
+Average:                                0.04 M ops/sec
+---------------------------------------------------------
+------------ JEDI.address.default ---------------
+Peak (Best Batch):                      2.57 M ops/sec
+Average:                                2.20 M ops/sec
+---------------------------------------------------------
+------------ JEDI.address.explicit ---------------
+Peak (Best Batch):                      2.57 M ops/sec
+Average:                                2.28 M ops/sec
+---------------------------------------------------------
+------------ JEDI.clear.16 ---------------
+Peak (Best Batch):                      0.04 M ops/sec
+Average:                                0.03 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[ALIEN2 W/ STORAGE]</span> </strong></summary>
+
+```txt
+------------ ALIEN.store.get.hot ---------------
+Peak (Best Batch):                      1054.85 M ops/sec
+Average:                                187.40 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.get.missing ---------------
+Peak (Best Batch):                      96.27 M ops/sec
+Average:                                59.47 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.has.existing ---------------
+Peak (Best Batch):                      130.53 M ops/sec
+Average:                                124.45 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.has.missing ---------------
+Peak (Best Batch):                      123.23 M ops/sec
+Average:                                120.18 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.set.changed ---------------
+Peak (Best Batch):                      35.67 M ops/sec
+Average:                                29.25 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.set.same ---------------
+Peak (Best Batch):                      42.78 M ops/sec
+Average:                                39.50 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.set.notify ---------------
+Peak (Best Batch):                      9.40 M ops/sec
+Average:                                8.61 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.fanout.8 ---------------
+Peak (Best Batch):                      2.22 M ops/sec
+Average:                                2.13 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.fanout.16 ---------------
+Peak (Best Batch):                      0.92 M ops/sec
+Average:                                0.89 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.fanin.8 ---------------
+Peak (Best Batch):                      43.09 M ops/sec
+Average:                                39.80 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.fanin.16 ---------------
+Peak (Best Batch):                      44.35 M ops/sec
+Average:                                39.59 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.fanin.16.all-writes ---------------
+Peak (Best Batch):                      1.37 M ops/sec
+Average:                                1.31 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.getMany.8 ---------------
+Peak (Best Batch):                      8.52 M ops/sec
+Average:                                8.12 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.delete.recreate ---------------
+Peak (Best Batch):                      2.32 M ops/sec
+Average:                                1.94 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.computed.read.clean ---------------
+Peak (Best Batch):                      93.21 M ops/sec
+Average:                                77.98 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.computed.recompute ---------------
+Peak (Best Batch):                      0.64 M ops/sec
+Average:                                0.61 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.computed.chain.1 ---------------
+Peak (Best Batch):                      0.65 M ops/sec
+Average:                                0.62 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.computed.chain.8 ---------------
+Peak (Best Batch):                      0.51 M ops/sec
+Average:                                0.48 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.store.batch.writes.8 ---------------
+Peak (Best Batch):                      6.72 M ops/sec
+Average:                                6.41 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.effect.rerun.via-store ---------------
+Peak (Best Batch):                      0.68 M ops/sec
+Average:                                0.65 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.effect.create.dispose.via-store ---------------
+Peak (Best Batch):                      8.99 M ops/sec
+Average:                                7.63 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[ALIEN3 W/ STORAGE]</span> </strong></summary>
+
+```txt
+------------ ALIEN.persisted.get.hot ---------------
+Peak (Best Batch):                      430.29 M ops/sec
+Average:                                222.09 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.get.missing ---------------
+Peak (Best Batch):                      1.18 M ops/sec
+Average:                                1.07 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.set.changed ---------------
+Peak (Best Batch):                      1.43 M ops/sec
+Average:                                1.33 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.set.same ---------------
+Peak (Best Batch):                      235.57 M ops/sec
+Average:                                219.01 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.set.notify ---------------
+Peak (Best Batch):                      1.47 M ops/sec
+Average:                                1.37 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.fanout.8 ---------------
+Peak (Best Batch):                      1.47 M ops/sec
+Average:                                1.39 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.fanout.16 ---------------
+Peak (Best Batch):                      1.43 M ops/sec
+Average:                                1.35 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.fanin.8 ---------------
+Peak (Best Batch):                      80.04 M ops/sec
+Average:                                74.52 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.fanin.16 ---------------
+Peak (Best Batch):                      96.48 M ops/sec
+Average:                                86.48 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.fanin.16.all-writes ---------------
+Peak (Best Batch):                      0.09 M ops/sec
+Average:                                0.09 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.computed.read.clean ---------------
+Peak (Best Batch):                      205.13 M ops/sec
+Average:                                181.50 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.computed.recompute ---------------
+Peak (Best Batch):                      1.50 M ops/sec
+Average:                                1.38 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.chain.1 ---------------
+Peak (Best Batch):                      1.48 M ops/sec
+Average:                                1.36 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.chain.8 ---------------
+Peak (Best Batch):                      1.43 M ops/sec
+Average:                                1.32 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.batch.writes.8 ---------------
+Peak (Best Batch):                      0.18 M ops/sec
+Average:                                0.17 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.effect.rerun ---------------
+Peak (Best Batch):                      1.44 M ops/sec
+Average:                                1.29 M ops/sec
+---------------------------------------------------------
+------------ ALIEN.persisted.effect.create.dispose ---------------
+Peak (Best Batch):                      18.06 M ops/sec
+Average:                                14.09 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[PREACT2 W/ STORAGE]</span> </strong></summary>
+
+```txt
+------------ PREACT.persisted.get.hot ---------------
+Peak (Best Batch):                      418.24 M ops/sec
+Average:                                187.47 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.get.missing ---------------
+Peak (Best Batch):                      1.65 M ops/sec
+Average:                                1.15 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.set.changed ---------------
+Peak (Best Batch):                      1.37 M ops/sec
+Average:                                1.31 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.set.same ---------------
+Peak (Best Batch):                      115.04 M ops/sec
+Average:                                73.51 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.set.notify ---------------
+Peak (Best Batch):                      1.28 M ops/sec
+Average:                                1.22 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.fanout.8 ---------------
+Peak (Best Batch):                      0.78 M ops/sec
+Average:                                0.75 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.fanout.16 ---------------
+Peak (Best Batch):                      0.43 M ops/sec
+Average:                                0.41 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.fanin.8 ---------------
+Peak (Best Batch):                      55.91 M ops/sec
+Average:                                50.68 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.fanin.16 ---------------
+Peak (Best Batch):                      48.22 M ops/sec
+Average:                                46.55 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.fanin.16.all-writes ---------------
+Peak (Best Batch):                      0.09 M ops/sec
+Average:                                0.08 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.computed.read.clean ---------------
+Peak (Best Batch):                      54.44 M ops/sec
+Average:                                49.12 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.computed.recompute ---------------
+Peak (Best Batch):                      0.43 M ops/sec
+Average:                                0.42 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.chain.1 ---------------
+Peak (Best Batch):                      0.43 M ops/sec
+Average:                                0.42 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.chain.8 ---------------
+Peak (Best Batch):                      0.37 M ops/sec
+Average:                                0.36 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.batch.writes.8 ---------------
+Peak (Best Batch):                      0.18 M ops/sec
+Average:                                0.17 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.effect.rerun ---------------
+Peak (Best Batch):                      0.42 M ops/sec
+Average:                                0.40 M ops/sec
+---------------------------------------------------------
+------------ PREACT.persisted.effect.create.dispose ---------------
+Peak (Best Batch):                      5.71 M ops/sec
+Average:                                5.40 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
 
 
 
 
 
 
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[preact]</span> </strong></summary>
+
+```txt
+------------ PREACT_SIGNALS.signal.read ---------------
+Peak (Best Batch):                      1131.22 M ops/sec
+Average:                                414.98 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.write ---------------
+Peak (Best Batch):                      36.53 M ops/sec
+Average:                                31.83 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.write.same ---------------
+Peak (Best Batch):                      132.35 M ops/sec
+Average:                                117.38 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.write.notify ---------------
+Peak (Best Batch):                      9.44 M ops/sec
+Average:                                8.39 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanout.1 ---------------
+Peak (Best Batch):                      14.35 M ops/sec
+Average:                                12.44 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanout.8 ---------------
+Peak (Best Batch):                      2.10 M ops/sec
+Average:                                1.99 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanout.16 ---------------
+Peak (Best Batch):                      1.16 M ops/sec
+Average:                                1.12 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanout.64 ---------------
+Peak (Best Batch):                      0.24 M ops/sec
+Average:                                0.23 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanout.256 ---------------
+Peak (Best Batch):                      0.08 M ops/sec
+Average:                                0.07 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanin.1 ---------------
+Peak (Best Batch):                      11.18 M ops/sec
+Average:                                9.55 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanin.8 ---------------
+Peak (Best Batch):                      121.20 M ops/sec
+Average:                                110.30 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanin.16 ---------------
+Peak (Best Batch):                      121.12 M ops/sec
+Average:                                112.00 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanin.64 ---------------
+Peak (Best Batch):                      104.08 M ops/sec
+Average:                                97.52 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.signal.fanin.16.all-writes ---------------
+Peak (Best Batch):                      0.17 M ops/sec
+Average:                                0.16 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.read.clean ---------------
+Peak (Best Batch):                      70.92 M ops/sec
+Average:                                67.95 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.invalidate ---------------
+Peak (Best Batch):                      55.82 M ops/sec
+Average:                                45.65 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.recompute ---------------
+Peak (Best Batch):                      20.42 M ops/sec
+Average:                                18.44 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.dependencies.8 ---------------
+Peak (Best Batch):                      4.45 M ops/sec
+Average:                                4.29 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.dependencies.16 ---------------
+Peak (Best Batch):                      2.83 M ops/sec
+Average:                                2.70 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.dependencies.64 ---------------
+Peak (Best Batch):                      0.86 M ops/sec
+Average:                                0.81 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.chain.1 ---------------
+Peak (Best Batch):                      12.84 M ops/sec
+Average:                                11.64 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.chain.8 ---------------
+Peak (Best Batch):                      2.45 M ops/sec
+Average:                                2.37 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.chain.16 ---------------
+Peak (Best Batch):                      1.40 M ops/sec
+Average:                                1.30 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.computed.chain.64 ---------------
+Peak (Best Batch):                      0.36 M ops/sec
+Average:                                0.34 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.batch.two-writes ---------------
+Peak (Best Batch):                      4.82 M ops/sec
+Average:                                3.99 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.batch.writes.8 ---------------
+Peak (Best Batch):                      1.83 M ops/sec
+Average:                                1.76 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.batch.writes.16 ---------------
+Peak (Best Batch):                      1.12 M ops/sec
+Average:                                1.09 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.unbatched.two-writes ---------------
+Peak (Best Batch):                      3.38 M ops/sec
+Average:                                3.04 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.create.dispose.empty ---------------
+Peak (Best Batch):                      8.17 M ops/sec
+Average:                                7.48 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.create.dispose.1 ---------------
+Peak (Best Batch):                      4.66 M ops/sec
+Average:                                4.16 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.create.dispose.8 ---------------
+Peak (Best Batch):                      1.43 M ops/sec
+Average:                                1.35 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.create.dispose.64 ---------------
+Peak (Best Batch):                      0.22 M ops/sec
+Average:                                0.20 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.rerun ---------------
+Peak (Best Batch):                      8.41 M ops/sec
+Average:                                7.75 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.cleanup.rerun ---------------
+Peak (Best Batch):                      6.77 M ops/sec
+Average:                                6.14 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.rerun.8 ---------------
+Peak (Best Batch):                      3.64 M ops/sec
+Average:                                3.44 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.rerun.64 ---------------
+Peak (Best Batch):                      0.83 M ops/sec
+Average:                                0.80 M ops/sec
+---------------------------------------------------------
+------------ PREACT_SIGNALS.effect.dispose ---------------
+Peak (Best Batch):                      6.10 M ops/sec
+Average:                                5.67 M ops/sec
+---------------------------------------------------------
+```
+
+</details>
+
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[ALIEN]</span> </strong></summary>
+
+```txt
+
+```
+
+</details>
 
 
+> [!NOTE] BUILDERS LOG #10
+>
+> New best of best signals solution done, just needs to be tested... hope this work wasnt for nothing. This solution does not include the other atom solution I was working on, but to be honest... other than that massive part it is a very strong solution. Has  agod storage solution, bus, reactive core, dom injection and more...
+>
+> Hopefully, it doesn't now shit the bed for one reason or another on the bench...
+>
+> The original numbers didn't move from testing the foundation again... that's a good sign.
+>
+> if the next tests go as well, it will be a nice little and fast solution. The bench is about to get massive though. And I know some people will have an issue with aliens and preacts numbers in terms of it including storage, but hey... I used the solution that the average users use in conjunction with the solution... not only that, but I didn't add anything myself. In a typical app, the dev... ALWAYS adds something to that pipeline, which then in turn MAKES IT EVEN SLOWER... so not only did I reach for the most common solution, but also literally gave it the best chance it could at getting the highest number.
+>
+> As far as storage goes, in a real world app, this will be the absolute best option. It is only cache, but it is by far much more faster than what you would typically see.
+>
+> Holy fuck... The duplex is high af. I don't think I've ever seen one that high. Duplexs... aren't the fastest things, since you are really making a trade of bi directional send & sub for performance. But here, the trade is small, like really small.
 
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[Results]</span> </strong></summary>
 
+```txt
+------------ the_force.signal.read ---------------
+Peak (Best Batch):                      459.14 M ops/sec
+Average:                                274.05 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.peek ---------------
+Peak (Best Batch):                      444.84 M ops/sec
+Average:                                224.43 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.write ---------------
+Peak (Best Batch):                      67.63 M ops/sec
+Average:                                62.87 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.write.unchanged ---------------
+Peak (Best Batch):                      93.84 M ops/sec
+Average:                                85.25 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.read.write ---------------
+Peak (Best Batch):                      52.87 M ops/sec
+Average:                                36.43 M ops/sec
+---------------------------------------------------------
+------------ the_force.computed.read.cached ---------------
+Peak (Best Batch):                      72.05 M ops/sec
+Average:                                69.96 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.read.first ---------------
+Peak (Best Batch):                      80.40 M ops/sec
+Average:                                76.13 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.invalidate ---------------
+Peak (Best Batch):                      66.60 M ops/sec
+Average:                                60.44 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.recompute ---------------
+Peak (Best Batch):                      77.82 M ops/sec
+Average:                                68.60 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.chain.8 ---------------
+Peak (Best Batch):                      72.06 M ops/sec
+Average:                                64.36 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.chain.32 ---------------
+Peak (Best Batch):                      67.39 M ops/sec
+Average:                                65.18 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_effect.create ---------------
+Peak (Best Batch):                      26.87 M ops/sec
+Average:                                19.46 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_effect.create.dependency ---------------
+Peak (Best Batch):                      25.37 M ops/sec
+Average:                                18.91 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_effect.dispose ---------------
+Peak (Best Batch):                      22.94 M ops/sec
+Average:                                15.06 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_effect.cleanup ---------------
+Peak (Best Batch):                      63.88 M ops/sec
+Average:                                51.46 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_effect.rerun ---------------
+Peak (Best Batch):                      68.98 M ops/sec
+Average:                                55.19 M ops/sec
+---------------------------------------------------------
+------------ the_force.dependencies.fan-in.16 ---------------
+Peak (Best Batch):                      60.27 M ops/sec
+Average:                                47.90 M ops/sec
+---------------------------------------------------------
+------------ the_force.dependencies.fan-out.16 ---------------
+Peak (Best Batch):                      63.96 M ops/sec
+Average:                                52.65 M ops/sec
+---------------------------------------------------------
+------------ the_force.dependencies.conditional.switch ---------------
+Peak (Best Batch):                      74.94 M ops/sec
+Average:                                59.78 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_batch.2 ---------------
+Peak (Best Batch):                      57.42 M ops/sec
+Average:                                46.11 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_batch.16 ---------------
+Peak (Best Batch):                      6.13 M ops/sec
+Average:                                5.71 M ops/sec
+---------------------------------------------------------
+------------ the_force.graph.diamond ---------------
+Peak (Best Batch):                      57.79 M ops/sec
+Average:                                49.78 M ops/sec
+---------------------------------------------------------
+------------ the_force.graph.branch.16 ---------------
+Peak (Best Batch):                      58.37 M ops/sec
+Average:                                48.72 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.send ---------------
+Peak (Best Batch):                      78.31 M ops/sec
+Average:                                71.23 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.hotSend ---------------
+Peak (Best Batch):                      169.66 M ops/sec
+Average:                                142.39 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.stream.publish.1 ---------------
+Peak (Best Batch):                      152.60 M ops/sec
+Average:                                141.17 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.stream.publish.16 ---------------
+Peak (Best Batch):                      36.92 M ops/sec
+Average:                                33.52 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.sub.register.dispose ---------------
+Peak (Best Batch):                      0.87 M ops/sec
+Average:                                0.80 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.stream.register.dispose ---------------
+Peak (Best Batch):                      11.95 M ops/sec
+Average:                                9.66 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.duplex.send ---------------
+Peak (Best Batch):                      167.81 M ops/sec
+Average:                                150.86 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.duplex.sub.register.dispose ---------------
+Peak (Best Batch):                      26.47 M ops/sec
+Average:                                19.57 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.duplex.stream.register.dispose ---------------
+Peak (Best Batch):                      25.70 M ops/sec
+Average:                                20.24 M ops/sec
+---------------------------------------------------------
+```
 
-
-
-
-
-
-
-
-
-
-
+</details>
 

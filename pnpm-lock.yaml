@@ -8,9 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@kamod-ch/signals':
+        specifier: ^1.0.3
+        version: 1.0.3(@preact/signals@2.11.4(preact@11.2.0))(preact@11.2.0)
+      '@preact/signals-core':
+        specifier: ^1.14.5
+        version: 1.14.5
       '@the-w1zard/dx':
-        specifier: ^1.0.31
-        version: 1.0.31
+        specifier: ^1.0.32
+        version: 1.0.32
       '@the-w1zard/resolvers':
         specifier: ^1.0.3
         version: 1.0.3
@@ -19,10 +25,13 @@ importers:
         version: 1.0.9
       '@the-w1zard/the-cloud':
         specifier: ^1.0.6
-        version: 1.0.6(@the-w1zard/dx@1.0.31)
+        version: 1.0.6(@the-w1zard/dx@1.0.32)
       '@the-w1zard/the-registry':
         specifier: ^1.0.12
-        version: 1.0.12(@the-w1zard/dx@1.0.31)
+        version: 1.0.12(@the-w1zard/dx@1.0.32)
+      preact:
+        specifier: ^11.2.0
+        version: 11.2.0
     devDependencies:
       '@the-w1zard/alias_types':
         specifier: ^1.0.16
@@ -92,11 +101,25 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
+  '@kamod-ch/signals@1.0.3':
+    resolution: {integrity: sha512-mnKZus5leC2qE+Zhq2rXFt9tHVeOcIjDWtiKtkAInicHNQgXuR4LpaXrAyQ1znrcik+y85J0W+533OHyN2KKBQ==}
+    peerDependencies:
+      '@preact/signals': ^2.0.0
+      preact: ^10.0.0
+
+  '@preact/signals-core@1.14.5':
+    resolution: {integrity: sha512-vcRv7Ityz5JVmeiVqIluLFzT/PDS/AlhHUpw3/aUWqcVUs6bDGIPXE/6RSC4evBNWYvnniozg5Syfj33al3gkg==}
+
+  '@preact/signals@2.11.4':
+    resolution: {integrity: sha512-Rb+5RPo9gWSaHtzJeauhHxiC8KP/IF2DEPkHPEOGOnuy2wnJzRqyeLRankUCYd6ADqtxS6GnWGv6Ie343d8aYw==}
+    peerDependencies:
+      preact: '>= 10.25.0 || >=11.0.0-0'
+
   '@the-w1zard/alias_types@1.0.16':
     resolution: {integrity: sha512-nKBx1Dv+VajWhJzLcJMTf3aWPD/SiBzygZ3fetISw85nxjr1uQxGdp+tYCkT0rHCCIP1GD58TdaYM0L8Tl5RhQ==}
 
-  '@the-w1zard/dx@1.0.31':
-    resolution: {integrity: sha512-prVzpxuXH1QVz6PxA1/v4EHPoqjsjw32ZENqXpL2lKZZU83P251c0HEI+DeNuqG4E6cEBJ31gAnNaZ7VC+9u8A==}
+  '@the-w1zard/dx@1.0.32':
+    resolution: {integrity: sha512-lgbEgIp8SHiEkeYGivynSXIg/0yBY4FaOp5ih5gM1fmZnLlLqqrRPAOpTqfGwtfJ+llsK7k9L7wzGWC4VI3Gcg==}
 
   '@the-w1zard/prims@1.0.2':
     resolution: {integrity: sha512-KaR/wVnXUCcFg5vfBt2uAjtTg6qKEKJsCsh/8Y9kdRx5KoXSmEWbcZSQ4IiegCsOlq0szVH8hOl3ueYeLLyxjA==}
@@ -140,6 +163,14 @@ packages:
   obug@3.0.0:
     resolution: {integrity: sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==}
     engines: {node: '>=12.20.0'}
+
+  preact@11.2.0:
+    resolution: {integrity: sha512-/HfHI/7N84e6GrWBJ3J280z3mLaRJiDcSvj/A+y/4AbLnND/1UlGHe1sR6oYuTGwId0nP7dqDU9OnLxMPZ7xBg==}
+    peerDependencies:
+      preact-render-to-string: '>=6.7.0'
+    peerDependenciesMeta:
+      preact-render-to-string:
+        optional: true
 
   typescript@6.0.3:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
@@ -210,9 +241,21 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.3
       '@jridgewell/sourcemap-codec': 1.6.0
 
+  '@kamod-ch/signals@1.0.3(@preact/signals@2.11.4(preact@11.2.0))(preact@11.2.0)':
+    dependencies:
+      '@preact/signals': 2.11.4(preact@11.2.0)
+      preact: 11.2.0
+
+  '@preact/signals-core@1.14.5': {}
+
+  '@preact/signals@2.11.4(preact@11.2.0)':
+    dependencies:
+      '@preact/signals-core': 1.14.5
+      preact: 11.2.0
+
   '@the-w1zard/alias_types@1.0.16': {}
 
-  '@the-w1zard/dx@1.0.31':
+  '@the-w1zard/dx@1.0.32':
     dependencies:
       '@babel/parser': 8.1.2
       '@babel/traverse': 8.1.2
@@ -231,19 +274,19 @@ snapshots:
   '@the-w1zard/store@1.0.9':
     dependencies:
       '@the-w1zard/alias_types': 1.0.16
-      '@the-w1zard/dx': 1.0.31
+      '@the-w1zard/dx': 1.0.32
 
-  '@the-w1zard/the-cloud@1.0.6(@the-w1zard/dx@1.0.31)':
+  '@the-w1zard/the-cloud@1.0.6(@the-w1zard/dx@1.0.32)':
     dependencies:
-      '@the-w1zard/dx': 1.0.31
+      '@the-w1zard/dx': 1.0.32
       '@the-w1zard/prims': 1.0.2
       '@the-w1zard/resolvers': 1.0.3
       '@the-w1zard/store': 1.0.9
-      '@the-w1zard/the-registry': 1.0.12(@the-w1zard/dx@1.0.31)
+      '@the-w1zard/the-registry': 1.0.12(@the-w1zard/dx@1.0.32)
 
-  '@the-w1zard/the-registry@1.0.12(@the-w1zard/dx@1.0.31)':
+  '@the-w1zard/the-registry@1.0.12(@the-w1zard/dx@1.0.32)':
     dependencies:
-      '@the-w1zard/dx': 1.0.31
+      '@the-w1zard/dx': 1.0.32
 
   '@the-w1zard/types@1.0.15':
     dependencies:
@@ -262,6 +305,8 @@ snapshots:
   jsesc@3.1.0: {}
 
   obug@3.0.0: {}
+
+  preact@11.2.0: {}
 
   typescript@6.0.3: {}
 

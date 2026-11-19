@@ -458,15 +458,9 @@ class BYTE_CODE_CLOCK {
 		this.register[3] = seq;
 		if (seq === 0) this.register[1] = (this.register[1] + 1) & 0xff;
 	}
-	hasCompletedCycle(startSeq: N, currentSeq: N): B {
-		return ((currentSeq - startSeq) << 24) >> 24 > 0;
-	}
-	get seq(): N {
-		return this.register[3];
-	}
-	get epoch(): N {
-		return this.register[1];
-	}
+	hasCompletedCycle(startSeq: N, currentSeq: N): B { return ((currentSeq - startSeq) << 24) >> 24 > 0; }
+	get seq(): N { return this.register[3]; }
+	get epoch(): N { return this.register[1]; }
 }
 // #endregion
 //                                                                                             BYTE_MAP
@@ -477,7 +471,7 @@ class BYTE_MAP {
 	 constant-time assignment, retrieval, and deletion without searching a registry.
 	======================================================================= ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [DIRECT_SLOT_INDEX] */
 	readonly pidToSlot: I32;
-	constructor(maxParticles: N) {
+	constructor(maxParticles: N = 1024) {
 		this.pidToSlot = new Int32Array(maxParticles).fill(-1);
 	}
 	set(pid: N, slot: N): V {

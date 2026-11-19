@@ -32,7 +32,7 @@ const enum EXEC {
     COMPUTED
 }
 
-export class BINARY_REACTOR {
+export class BINARY_REACTOR2 {
     private state = new Uint8Array(256);
     private flags = new Uint8Array(256);
     private version = new Float64Array(256);
@@ -722,4 +722,3 @@ export class BINARY_REACTOR {
     private execOutput = new Uint32Array(256);
 }
  
-export const BINARY = new BINARY_REACTOR();

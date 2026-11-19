@@ -2,7 +2,7 @@ import { performance } from 'node:perf_hooks';
 import { SIGNALS_DISRUPTOR } from './signals_disruptor';
 import { WarlockDisruptor } from './signals_disruptor2';
 import { WARLOCK2 } from './signals3';
-import { WARLOCK_NGIN } from '../disruptor_signals1';
+import { WARLOCK_NGIN } from '../RAPTER_SIGNALS/disruptor_signals1';
 import { signal as as_, computed as ac, effect as ae } from './signals_alien';
 import { signal as ps, computed as pc, effect as pe } from './signals_preact';
 
