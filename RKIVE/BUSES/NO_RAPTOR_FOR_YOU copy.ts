@@ -1,410 +1,5 @@
-// bus-bench.ts
-// FIGHT=... bun --expose-gc bus-bench.ts
-import { YODA } from "./YODA";
-import { signal as vader_signal, computed as vader_computed, effect as vader_effect, effectScope as vader_effectsope, batch as vader_batch, startBatch as vader_startbatch, endBatch as vader_endbatch, untracked as vader_untracled, bindText as vader_bindtext, bindAttribute as vader_bindattr, bind as vader_bind, SIGNAL_BUS as vader_signalsbus } from "./VADER";
-import { signal as f_sig, computed as f_computed, effect as f_effect, batch as f_batch, startBatch as f_startbatch, endBatch as f_endbatch, untracked as f_untracked, bindText as f_bindtxt, bindAttribute as f_bindatr, bind as f_bind, SIGNALS as f_bus, ChannelMessage } from "./THE_FORCE";
-import { SKYWALKER } from "./SKYWALKER";
-import { SITH } from "./SITH";
-import { PALPATINE } from "./PALPATINE";
-import { JEDI } from "./JEDI";
-import { getActiveSub, setActiveSub, getBatchDepth, startBatch, endBatch, isSignal, isComputed, isEffect, isEffectScope, signal, computed, effect, effectScope, trigger, createStore } from "./signals_alien";
-import { signal as preact_signal, computed as preact_computed, batch as preact_batch, effect as preact_effect, action, createModel, type Model, type ModelConstructor, type ModelFactory, Signal, type ReadonlySignal, untracked as preact_untracked, type SignalOptions, type EffectOptions } from "@preact/signals-core";
-import { SIDIUS } from "./SIDIUS";
-import { persistedSignal } from "@kamod-ch/signals";
+import { getActiveSub, setActiveSub, getBatchDepth, startBatch, endBatch, isSignal, isComputed, isEffect, isEffectScope, signal, computed, effect, effectScope, trigger, createStore } from "./class";
 
-
-const CAPACITY = 1 << 18;
-const DURATION = 12;
-const REPORT_MS = 12;
-const BATCH_SIZE = 100_000; // 500_000
-const TOTAL_BATCHES = 100; // 500
-const RUN_BARE_METAL_CPU_TEST: Boolean = true;
-
-const pid = 1;
-let seq = 0;
-const v = `${++seq}`;
-
-type fighter =
-| "yoda"
-| "vader"
-| "the_force"
-| "SKYWALKER"
-| "SITH"
-| "PALPATINE"
-| "SIDIUS"
-| "JEDI"
-| "alien"
-| "preact"
-| "alien2"
-| "preact2"
-| "alien3"
-
-const FIGHT: fighter = (process.env.FIGHT as fighter) ?? "the_force";
-
-
-type SIG = { r: S; m: S; s: S; k: S; p: U };
-type H = (p: U, msg?: SIG) => number;
-type BUS_CHANNEL = { handler?: H };
-
-const r = "THE_WIZARD_ROOT_REG";
-const m = "SAURON_MASTER_REG";
-const s = "SAURON_SLAVE_REG";
-const k = "__SAURON__";
-
-const handler = (p) => p.p + 1;
-const handle2 = (p) => p.p + 1;
-const handleFlat = (p) => p.p + 1;
-
-// ─────────────────────────────────────────────────────────────
-// BENCH
-// ─────────────────────────────────────────────────────────────
-
-const dur = 1000 * DURATION;
-const report = 1000 * REPORT_MS;
-
-function BARE_METAL_CPU(name: string, write: () => void): void {
-  const batchTimes = new Float64Array(TOTAL_BATCHES);
-  for (let i = 0; i < 2_000_000; i++) write();
-
-  const globalStart = process.hrtime.bigint();
-  for (let b = 0; b < TOTAL_BATCHES; b++) {
-    const batchStart = process.hrtime.bigint();
-    for (let i = 0; i < BATCH_SIZE; i++) write();
-    batchTimes[b] = Number(process.hrtime.bigint() - batchStart);
-  }
-  const globalEnd = process.hrtime.bigint();
-
-  const totalOps = BATCH_SIZE * TOTAL_BATCHES;
-  let bestOpsPerSec = 0;
-  for (let b = 0; b < TOTAL_BATCHES; b++) {
-    const ops = BATCH_SIZE / (batchTimes[b] / 1e9);
-    if (ops > bestOpsPerSec) bestOpsPerSec = ops;
-  }
-  const avg = totalOps / (Number(globalEnd - globalStart) / 1e9);
-
-  console.log(`------------ ${name} ---------------`);
-  console.log(`Peak (Best Batch):                      ${(bestOpsPerSec / 1e6).toFixed(2)} M ops/sec`);
-  console.log(`Average:                                ${(avg / 1e6).toFixed(2)} M ops/sec`);
-  console.log(`---------------------------------------------------------`);
-}3
-
-function BENCH(name: string, write: () => void): void {
-  let windowOps = 0, totalOps = 0, best = 0, elapsedTotal = 0;
-  let start = process.hrtime.bigint();
-  let windowStart = start;
-  let cpuStart = process.cpuUsage();
-
-  console.log(`\n${name}`);
-  console.log("sec | M writes/s | best M/s | avg M/s | CPU %");
-
-  while (elapsedTotal < dur) {
-    for (let i = 0; i < 100_000; i++) write();
-    windowOps += 100_000; totalOps += 100_000;
-    const now = process.hrtime.bigint();
-    const elapsedUs = Number(now - windowStart) / 1_000;
-    elapsedTotal = Number(now - start) / 1e6;
-    if (elapsedUs >= report * 1_000) {
-      const mp = windowOps / elapsedUs;
-      const avg = totalOps / (Number(now - start) / 1e9) / 1e6;
-      const cpuNow = process.cpuUsage();
-      const cpuUs = cpuNow.user - cpuStart.user + cpuNow.system - cpuStart.system;
-      best = Math.max(best, mp);
-      console.log(
-        String(Math.floor(elapsedTotal / 1_000)).padStart(3), "|",
-        mp.toFixed(2).padStart(10), "|",
-        best.toFixed(2).padStart(8), "|",
-        avg.toFixed(7).padStart(7), "|",
-        ((cpuUs / elapsedUs) * 100).toFixed(1).padStart(5)
-      );
-      windowOps = 0; windowStart = now; cpuStart = cpuNow;
-    }
-  }
-}
-
-const bench = RUN_BARE_METAL_CPU_TEST === false ? BENCH : BARE_METAL_CPU;
-
-// ─────────────────────────────────────────────────────────────
-// FIGHTERS
-// ─────────────────────────────────────────────────────────────
-const TAG = {
-	UNDEFINED: 0,
-	NULL: 1,
-	FALSE: 2,
-	TRUE: 3,
-	INT32: 4,
-	FLOAT64: 5,
-	STRING: 6,
-	ARRAY: 7,
-	OBJECT: 8,
-	UINT8ARRAY: 9,
-	REF: 10,
-} as const;
-export class BEAM_CODEC {
-	/* =============================================================================
-     Encodes ordinary JavaScript values into a collider-owned byte slab.
-	 ================================= ⇦✦──⇦✦──✦──✦──←'pew pew' 🧙 [BINARY_CODEC] */
-	private bytes: U8;
-	private view: DataView;
-	private tail = 0;
-
-	private strings = new Map<S, N>();
-	private stringBytes: U8[] = [];
-	private refs = new Map<object, N>();
-	private nextRef = 0;
-
-	constructor(initialCapacity = 1 << 16) {
-		this.bytes = new Uint8Array(initialCapacity);
-		this.view = new DataView(this.bytes.buffer);
-	}
-	encode(value: U): U8 {
-		this.tail = 0;
-		this.strings.clear();
-		this.stringBytes.length = 0;
-		this.refs.clear();
-		this.nextRef = 0;
-
-		this.writeValue(value);
-
-		return this.bytes.subarray(0, this.tail);
-	}
-	/* HC_BINARY_CODEC */
-	decode(binary: U8): U {
-		const savedBytes = this.bytes;
-		const savedView = this.view;
-		const savedTail = this.tail;
-
-		try {
-			this.bytes = binary;
-			this.view = new DataView(binary.buffer, binary.byteOffset, binary.byteLength);
-			this.tail = binary.length;
-
-			this.refs.clear();
-			this.nextRef = 0;
-
-			const cursor = { at: 0 };
-
-			return this.readValue(cursor);
-		} finally {
-			// Restore the encode-side buffer so the next encode()
-			// never writes into the disruptor pool.
-			this.bytes = savedBytes;
-			this.view = savedView;
-			this.tail = savedTail;
-		}
-	}
-	private need(count: N): V {
-		if (this.tail + count <= this.bytes.length) return;
-
-		let size = this.bytes.length;
-
-		while (size < this.tail + count) size *= 2;
-
-		const next = new Uint8Array(size);
-		next.set(this.bytes);
-
-		this.bytes = next;
-		this.view = new DataView(next.buffer);
-	}
-	private u8(value: N): V {
-		this.need(1);
-		this.bytes[this.tail++] = value;
-	}
-	private i32(value: N): V {
-		this.need(4);
-		this.view.setInt32(this.tail, value, true);
-		this.tail += 4;
-	}
-	private f64(value: N): V {
-		this.need(8);
-		this.view.setFloat64(this.tail, value, true);
-		this.tail += 8;
-	}
-	private writeValue(value: U): V {
-		if (value === undefined) return this.u8(TAG.UNDEFINED);
-		if (value === null) return this.u8(TAG.NULL);
-		if (value === false) return this.u8(TAG.FALSE);
-		if (value === true) return this.u8(TAG.TRUE);
-		const type = typeof value;
-		if (type === "number") {
-			const n = value as N;
-			if (Number.isSafeInteger(n) && n >= -2147483648 && n <= 2147483647) {
-				this.u8(TAG.INT32);
-				return this.i32(n);
-			}
-
-			this.u8(TAG.FLOAT64);
-			return this.f64(n);
-		}
-
-		if (type === "string") {
-			return this.writeString(value as S);
-		}
-
-		if (Array.isArray(value)) {
-			return this.writeArray(value);
-		}
-
-		if (value instanceof Uint8Array) {
-			return this.writeBytes(value);
-		}
-
-		if (type === "object") {
-			return this.writeObject(value as object);
-		}
-
-		throw new Error(`HC_BINARY_CODEC: unsupported value type: ${type}`);
-	}
-	private writeString(value: S): V {
-		const encoded = new TextEncoder().encode(value);
-
-		this.u8(TAG.STRING);
-		this.i32(encoded.length);
-		this.need(encoded.length);
-		this.bytes.set(encoded, this.tail);
-		this.tail += encoded.length;
-	}
-	private writeArray(value: U[]): V {
-		const ref = this.beginRef(value);
-
-		this.u8(TAG.ARRAY);
-		this.i32(value.length);
-
-		for (let i = 0; i < value.length; i++) {
-			this.writeValue(value[i]);
-		}
-
-		this.endRef(ref);
-	}
-	private writeBytes(value: U8): V {
-		this.u8(TAG.UINT8ARRAY);
-		this.i32(value.length);
-		this.need(value.length);
-		this.bytes.set(value, this.tail);
-		this.tail += value.length;
-	}
-	private writeObject(value: object): V {
-		const ref = this.beginRef(value);
-		const keys = Object.keys(value);
-
-		this.u8(TAG.OBJECT);
-		this.i32(keys.length);
-
-		for (const key of keys) {
-			this.writeString(key);
-			this.writeValue((value as any)[key]);
-		}
-
-		this.endRef(ref);
-	}
-	private beginRef(value: object): N {
-		const existing = this.refs.get(value);
-
-		if (existing !== undefined) {
-			this.u8(TAG.REF);
-			this.i32(existing);
-			return -1;
-		}
-
-		const ref = this.nextRef++;
-		this.refs.set(value, ref);
-
-		return ref;
-	}
-	private endRef(ref: N): V {
-		// Reserved for future back-reference patching.
-		void ref;
-	}
-	private readU8(cursor: { at: N }): N {
-		return this.bytes[cursor.at++];
-	}
-	private readI32(cursor: { at: N }): N {
-		const value = this.view.getInt32(cursor.at, true);
-		cursor.at += 4;
-
-		return value;
-	}
-	private readF64(cursor: { at: N }): N {
-		const value = this.view.getFloat64(cursor.at, true);
-		cursor.at += 8;
-
-		return value;
-	}
-	private readValue(cursor: { at: N }): U {
-		const tag = this.readU8(cursor);
-
-		switch (tag) {
-			case TAG.UNDEFINED:
-				return undefined;
-
-			case TAG.NULL:
-				return null;
-
-			case TAG.FALSE:
-				return false;
-
-			case TAG.TRUE:
-				return true;
-
-			case TAG.INT32:
-				return this.readI32(cursor);
-
-			case TAG.FLOAT64:
-				return this.readF64(cursor);
-
-			case TAG.STRING:
-				return this.readString(cursor);
-
-			case TAG.ARRAY:
-				return this.readArray(cursor);
-
-			case TAG.OBJECT:
-				return this.readObject(cursor);
-
-			case TAG.UINT8ARRAY:
-				return this.readBytes(cursor);
-
-			default:
-				throw new Error(`HC_BINARY_CODEC: unknown tag ${tag}`);
-		}
-	}
-	private readString(cursor: { at: N }): S {
-		const length = this.readI32(cursor);
-		const bytes = this.bytes.subarray(cursor.at, cursor.at + length);
-
-		cursor.at += length;
-
-		return new TextDecoder().decode(bytes);
-	}
-	private readArray(cursor: { at: N }): U[] {
-		const length = this.readI32(cursor);
-		const out: U[] = new Array(length);
-
-		for (let i = 0; i < length; i++) {
-			out[i] = this.readValue(cursor);
-		}
-
-		return out;
-	}
-	private readObject(cursor: { at: N }): Record<S, U> {
-		const length = this.readI32(cursor);
-		const out: Record<S, U> = {};
-
-		for (let i = 0; i < length; i++) {
-			const key = this.readString(cursor);
-			out[key] = this.readValue(cursor);
-		}
-
-		return out;
-	}
-	private readBytes(cursor: { at: N }): Uint8Array {
-		const length = this.readI32(cursor);
-		const out = this.bytes.slice(cursor.at, cursor.at + length);
-
-		cursor.at += length;
-
-		return out;
-	}
-}
 
 if (FIGHT === "yoda") {
     const yoda = new YODA();
@@ -2432,6 +2027,278 @@ else if (FIGHT === "the_force") {
 		stream16Message.p = stream16Write;
 		sauron.hotPublish(stream16Message);
 	});
+
+	// =====================================================================
+// ADD THIS inside the `else if (FIGHT === "the_force")` block,
+// right after the existing BUS: DUPLEX section and before
+// "// KEEP LIVE REFERENCES". Uses the same `sauron1`, `store` that
+// are already declared at the top of the block:
+//
+//   const sauron1 = new f_bus();
+//   const sauron = sauron1.bus;
+//   const store = sauron1.store;
+//
+// Test names mirror ALIEN2_STORAGE / ALIEN3_STORAGE so results line
+// up directly in the comparison tables.
+// =====================================================================
+
+// -------------------- STORE (mirrors ALIEN2_STORAGE) --------------------
+
+store.set("store.get.hot" as any, 1);
+bench("the_force.store.get.hot", () => {
+    store.get("store.get.hot" as any);
+});
+
+bench("the_force.store.get.missing", () => {
+    store.get("store.get.missing.__absent" as any);
+});
+
+store.set("store.has.existing" as any, 1);
+bench("the_force.store.has.existing", () => {
+    store.has("store.has.existing" as any);
+});
+
+bench("the_force.store.has.missing", () => {
+    store.has("store.has.missing.__absent" as any);
+});
+
+let storeSetChangedValue = 0;
+bench("the_force.store.set.changed", () => {
+    storeSetChangedValue ^= 1;
+    store.set("store.set.changed" as any, storeSetChangedValue);
+});
+
+store.set("store.set.same" as any, 1);
+bench("the_force.store.set.same", () => {
+    store.set("store.set.same" as any, 1);
+});
+
+let storeSetNotifyValue = 0;
+let storeSetNotifyRuns = 0;
+const disposeStoreSetNotify = store.sub("store.set.notify" as any, () => { storeSetNotifyRuns++; });
+bench("the_force.store.set.notify", () => {
+    storeSetNotifyValue ^= 1;
+    store.set("store.set.notify" as any, storeSetNotifyValue);
+});
+
+// FAN-OUT: one key, N subscribers, one write notifies all of them
+let storeFanout8Runs = 0;
+const disposeStoreFanout8: (() => void)[] = [];
+for (let i = 0; i < 8; i++) {
+    disposeStoreFanout8.push(store.sub("store.fanout.8" as any, () => { storeFanout8Runs++; }));
+}
+let storeFanout8Value = 0;
+bench("the_force.store.fanout.8", () => {
+    storeFanout8Value ^= 1;
+    store.set("store.fanout.8" as any, storeFanout8Value);
+});
+
+
+
+// FAN-IN: N source keys collapsed into one derived key via derive()
+const storeFanIn8Sources = Array.from({ length: 8 }, (_, i) => `store.fanin.8.src.${i}`);
+for (const k of storeFanIn8Sources) store.set(k as any, 0);
+const disposeStoreFanIn8 = store.derive(
+    "store.fanin.8.out" as any,
+    storeFanIn8Sources as any,
+    (...vals: number[]) => vals.reduce((a, b) => a + b, 0),
+);
+let storeFanIn8Value = 0;
+bench("the_force.store.fanin.8", () => {
+    storeFanIn8Value ^= 1;
+    store.set(storeFanIn8Sources[0] as any, storeFanIn8Value);
+});
+
+
+// getMany.8
+const storeGetMany8Keys = Array.from({ length: 8 }, (_, i) => `store.getMany.8.${i}`);
+for (const k of storeGetMany8Keys) store.set(k as any, 1);
+bench("the_force.store.getMany.8", () => {
+    store.getMany(storeGetMany8Keys as any);
+});
+
+// delete + recreate, same key, every iteration
+store.set("store.delete.recreate" as any, 1);
+bench("the_force.store.delete.recreate", () => {
+    store.delete("store.delete.recreate" as any);
+    store.create("store.delete.recreate" as any, 1);
+});
+
+// batch of 8 individual writes inside one batch() call
+const storeBatchWrites8Keys = Array.from({ length: 8 }, (_, i) => `store.batch.writes.8.${i}`);
+for (const k of storeBatchWrites8Keys) store.set(k as any, 0);
+let storeBatchWrites8Value = 0;
+bench("the_force.store.batch.writes.8", () => {
+    storeBatchWrites8Value++;
+    f_batch(() => {
+        for (const k of storeBatchWrites8Keys) store.set(k as any, storeBatchWrites8Value);
+    });
+});
+
+// -------------------- PERSISTED (mirrors ALIEN3_STORAGE) --------------------
+// Uses store.persist() to mark each slot persisted, matching ALIEN3's
+// "storage-backed signal" semantics rather than the plain in-memory store above.
+
+store.persist("persisted.get.hot" as any, 1);
+bench("the_force.persisted.get.hot", () => {
+    store.get("persisted.get.hot" as any);
+});
+
+bench("the_force.persisted.get.missing", () => {
+    store.get("persisted.get.missing.__absent" as any);
+});
+
+let persistedSetChangedValue = 0;
+store.persist("persisted.set.changed" as any, 0);
+bench("the_force.persisted.set.changed", () => {
+    persistedSetChangedValue ^= 1;
+    store.set("persisted.set.changed" as any, persistedSetChangedValue);
+});
+
+store.persist("persisted.set.same" as any, 1);
+bench("the_force.persisted.set.same", () => {
+    store.set("persisted.set.same" as any, 1);
+});
+
+let persistedSetNotifyValue = 0;
+let persistedSetNotifyRuns = 0;
+store.persist("persisted.set.notify" as any, 0);
+const disposePersistedSetNotify = store.sub("persisted.set.notify" as any, () => { persistedSetNotifyRuns++; });
+bench("the_force.persisted.set.notify", () => {
+    persistedSetNotifyValue ^= 1;
+    store.set("persisted.set.notify" as any, persistedSetNotifyValue);
+});
+
+let persistedFanout8Runs = 0;
+store.persist("persisted.fanout.8" as any, 0);
+const disposePersistedFanout8: (() => void)[] = [];
+for (let i = 0; i < 8; i++) {
+    disposePersistedFanout8.push(store.sub("persisted.fanout.8" as any, () => { persistedFanout8Runs++; }));
+}
+let persistedFanout8Value = 0;
+bench("the_force.persisted.fanout.8", () => {
+    persistedFanout8Value ^= 1;
+    store.set("persisted.fanout.8" as any, persistedFanout8Value);
+});
+
+
+const persistedFanIn8Sources = Array.from({ length: 8 }, (_, i) => `persisted.fanin.8.src.${i}`);
+for (const k of persistedFanIn8Sources) store.persist(k as any, 0);
+const disposePersistedFanIn8 = store.derive(
+    "persisted.fanin.8.out" as any,
+    persistedFanIn8Sources as any,
+    (...vals: number[]) => vals.reduce((a, b) => a + b, 0),
+);
+let persistedFanIn8Value = 0;
+bench("the_force.persisted.fanin.8", () => {
+    persistedFanIn8Value ^= 1;
+    store.set(persistedFanIn8Sources[0] as any, persistedFanIn8Value);
+});
+
+
+// computed.read.clean — reading a derive() output whose sources haven't changed
+const persistedComputedSource = "persisted.computed.src";
+store.persist(persistedComputedSource as any, 1);
+const disposePersistedComputed = store.derive(
+    "persisted.computed.read.clean" as any,
+    [persistedComputedSource] as any,
+    (v: number) => v * 2,
+);
+bench("the_force.persisted.computed.read.clean", () => {
+    store.get("persisted.computed.read.clean" as any);
+});
+
+// computed.recompute — source changes every iteration, forcing derive's fn to rerun
+let persistedRecomputeValue = 0;
+const persistedRecomputeSource = "persisted.recompute.src";
+store.persist(persistedRecomputeSource as any, 0);
+const disposePersistedRecompute = store.derive(
+    "persisted.computed.recompute" as any,
+    [persistedRecomputeSource] as any,
+    (v: number) => v * 2,
+);
+bench("the_force.persisted.computed.recompute", () => {
+    persistedRecomputeValue++;
+    store.set(persistedRecomputeSource as any, persistedRecomputeValue);
+});
+
+// chain.1 / chain.8 — derive() chained N levels deep
+let persistedChain1Value = 0;
+const persistedChain1Source = "persisted.chain.1.src";
+store.persist(persistedChain1Source as any, 0);
+const disposePersistedChain1 = store.derive(
+    "persisted.chain.1.out" as any,
+    [persistedChain1Source] as any,
+    (v: number) => v + 1,
+);
+bench("the_force.persisted.chain.1", () => {
+    persistedChain1Value++;
+    store.set(persistedChain1Source as any, persistedChain1Value);
+});
+
+let persistedChain8Value = 0;
+const persistedChain8Source = "persisted.chain.8.src.0";
+store.persist(persistedChain8Source as any, 0);
+const disposePersistedChain8: (() => void)[] = [];
+for (let i = 1; i <= 8; i++) {
+    const outKey = `persisted.chain.8.src.${i}`;
+    const inKey = `persisted.chain.8.src.${i - 1}`;
+    disposePersistedChain8.push(
+        store.derive(outKey as any, [inKey] as any, (v: number) => v + 1),
+    );
+}
+bench("the_force.persisted.chain.8", () => {
+    persistedChain8Value++;
+    store.set(persistedChain8Source as any, persistedChain8Value);
+});
+
+// batch of 8 persisted writes inside one batch() call
+const persistedBatchWrites8Keys = Array.from({ length: 8 }, (_, i) => `persisted.batch.writes.8.${i}`);
+for (const k of persistedBatchWrites8Keys) store.persist(k as any, 0);
+let persistedBatchWrites8Value = 0;
+bench("the_force.persisted.batch.writes.8", () => {
+    persistedBatchWrites8Value++;
+    f_batch(() => {
+        for (const k of persistedBatchWrites8Keys) store.set(k as any, persistedBatchWrites8Value);
+    });
+});
+
+// effect.rerun against a persisted slot, via store.sub (the store's own
+// listener path, not f_effect — this is the "real UI binding" shape:
+// a component subscribed to a persisted value re-rendering on write)
+let persistedEffectRerunRuns = 0;
+store.persist("persisted.effect.rerun" as any, 0);
+const disposePersistedEffectRerun = store.sub("persisted.effect.rerun" as any, () => { persistedEffectRerunRuns++; });
+let persistedEffectRerunValue = 0;
+bench("the_force.persisted.effect.rerun", () => {
+    persistedEffectRerunValue++;
+    store.set("persisted.effect.rerun" as any, persistedEffectRerunValue);
+});
+
+// effect.create.dispose against a persisted slot via store.sub register+dispose
+bench("the_force.persisted.effect.create.dispose", () => {
+    const dispose = store.sub("persisted.effect.create.dispose" as any, () => {});
+    dispose();
+});
+
+// -------------------- KEEP LIVE REFERENCES (append to existing void block) --------------------
+void storeSetNotifyRuns;
+void storeFanout8Runs;
+void persistedSetNotifyRuns;
+void persistedFanout8Runs;
+void persistedEffectRerunRuns;
+void disposeStoreSetNotify;
+void disposeStoreFanout8;
+void disposeStoreFanIn8;
+void disposePersistedSetNotify;
+void disposePersistedFanout8;
+void disposePersistedFanIn8;
+void disposePersistedComputed;
+void disposePersistedRecompute;
+void disposePersistedChain1;
+void disposePersistedChain8;
+void disposePersistedEffectRerun;
+
 
 	// BUS: REGISTRATION AND DISPOSAL
 	// FIX #3: this block was duplicated verbatim right below itself in the
@@ -6584,10 +6451,255 @@ else if (FIGHT === "alien3") {
 	void rerunValue;
 }
 
+if (FIGHT === "REACTIVE_SYSTEM") {
+	/* ------------------------------------------------------------------ *
+	 * SIGNAL
+	 * ------------------------------------------------------------------ */
 
+	const readSignal = signal(1);
 
+	bench("REACTIVE_SYSTEM.signal.get", () => {
+		readSignal();
+	});
 
+	let writeValue = 0;
 
+	bench("REACTIVE_SYSTEM.signal.set", () => {
+		readSignal(++writeValue);
+	});
 
+	bench("REACTIVE_SYSTEM.signal.get.set", () => {
+		readSignal();
+		readSignal(++writeValue);
+	});
 
+	/* ------------------------------------------------------------------ *
+	 * COMPUTED
+	 * ------------------------------------------------------------------ */
 
+	const computedSource = signal(1);
+	const cachedComputed = computed(() => computedSource() * 2);
+
+	cachedComputed();
+
+	bench("REACTIVE_SYSTEM.computed.get.cached", () => {
+		cachedComputed();
+	});
+
+	bench("REACTIVE_SYSTEM.computed.invalidate", () => {
+		computedSource(++writeValue);
+	});
+
+	bench("REACTIVE_SYSTEM.computed.recompute", () => {
+		computedSource(++writeValue);
+		cachedComputed();
+	});
+
+	const chainSource = signal(1);
+	const chain1 = computed(() => chainSource() + 1);
+	const chain2 = computed(() => chain1() + 1);
+	const chain3 = computed(() => chain2() + 1);
+
+	chain3();
+
+	bench("REACTIVE_SYSTEM.computed.chain.cached", () => {
+		chain3();
+	});
+
+	bench("REACTIVE_SYSTEM.computed.chain.recompute", () => {
+		chainSource(++writeValue);
+		chain3();
+	});
+
+	/* ------------------------------------------------------------------ *
+	 * EFFECT
+	 * ------------------------------------------------------------------ */
+
+	let effectValue = 0;
+
+	bench("REACTIVE_SYSTEM.effect.create-dispose", () => {
+		const dispose = effect(() => {
+			effectValue++;
+		});
+
+		dispose();
+	});
+
+	const notifySignal = signal(0);
+	let notifyCount = 0;
+
+	const disposeNotify = effect(() => {
+		notifySignal();
+		notifyCount++;
+	});
+
+	bench("REACTIVE_SYSTEM.effect.notify", () => {
+		notifySignal(++writeValue);
+	});
+
+	disposeNotify();
+
+	const cleanupSignal = signal(0);
+	let cleanupCount = 0;
+
+	const disposeCleanup = effect(() => {
+		cleanupSignal();
+
+		return () => {
+			cleanupCount++;
+		};
+	});
+
+	bench("REACTIVE_SYSTEM.effect.cleanup-rerun", () => {
+		cleanupSignal(++writeValue);
+	});
+
+	disposeCleanup();
+
+	/* ------------------------------------------------------------------ *
+	 * DEPENDENCY TRACKING
+	 * ------------------------------------------------------------------ */
+
+	const dependencySource = signal(1);
+	let dependencyResult = 0;
+
+	const disposeDependency = effect(() => {
+		dependencyResult = dependencySource();
+	});
+
+	bench("REACTIVE_SYSTEM.dependency.track", () => {
+		dependencySource(++writeValue);
+	});
+
+	disposeDependency();
+
+	/* ------------------------------------------------------------------ *
+	 * FAN-OUT
+	 * ------------------------------------------------------------------ */
+
+	const fanout16 = signal(0);
+	const fanout16Disposers: (() => void)[] = [];
+
+	for (let i = 0; i < 16; i++) {
+		fanout16Disposers.push(
+			effect(() => {
+				fanout16();
+			}),
+		);
+	}
+
+	bench("REACTIVE_SYSTEM.fanout.16", () => {
+		fanout16(++writeValue);
+	});
+
+	for (const dispose of fanout16Disposers) dispose();
+
+	const fanout64 = signal(0);
+	const fanout64Disposers: (() => void)[] = [];
+
+	for (let i = 0; i < 64; i++) {
+		fanout64Disposers.push(
+			effect(() => {
+				fanout64();
+			}),
+		);
+	}
+
+	bench("REACTIVE_SYSTEM.fanout.64", () => {
+		fanout64(++writeValue);
+	});
+
+	for (const dispose of fanout64Disposers) dispose();
+
+	/* ------------------------------------------------------------------ *
+	 * BATCHING
+	 * ------------------------------------------------------------------ */
+
+	const batchA = signal(0);
+	const batchB = signal(0);
+	const batchC = signal(0);
+
+	bench("REACTIVE_SYSTEM.batch.3-writes", () => {
+		startBatch();
+
+		batchA(++writeValue);
+		batchB(++writeValue);
+		batchC(++writeValue);
+
+		endBatch();
+	});
+
+	const batchSource = signal(0);
+	let batchEffectCount = 0;
+
+	const disposeBatch = effect(() => {
+		batchSource();
+		batchEffectCount++;
+	});
+
+	bench("REACTIVE_SYSTEM.batch.effect.3-writes", () => {
+		startBatch();
+
+		batchSource(++writeValue);
+		batchSource(++writeValue);
+		batchSource(++writeValue);
+
+		endBatch();
+	});
+
+	disposeBatch();
+
+	/* ------------------------------------------------------------------ *
+	 * GRAPH
+	 * ------------------------------------------------------------------ */
+
+	const diamondSource = signal(1);
+	const diamondLeft = computed(() => diamondSource() + 1);
+	const diamondRight = computed(() => diamondSource() + 2);
+	const diamondResult = computed(
+		() => diamondLeft() + diamondRight(),
+	);
+
+	diamondResult();
+
+	bench("REACTIVE_SYSTEM.graph.diamond.cached", () => {
+		diamondResult();
+	});
+
+	bench("REACTIVE_SYSTEM.graph.diamond.recompute", () => {
+		diamondSource(++writeValue);
+		diamondResult();
+	});
+
+	const branchSource = signal(1);
+
+	const branches = Array.from(
+		{ length: 16 },
+		(_, i) => computed(() => branchSource() + i),
+	);
+
+	const branchResult = computed(
+		() => branches.reduce((total, branch) => total + branch(), 0),
+	);
+
+	branchResult();
+
+	bench("REACTIVE_SYSTEM.graph.branch.16.cached", () => {
+		branchResult();
+	});
+
+	bench("REACTIVE_SYSTEM.graph.branch.16.recompute", () => {
+		branchSource(++writeValue);
+		branchResult();
+	});
+
+	/* ------------------------------------------------------------------ *
+	 * KEEP FIXTURES LIVE
+	 * ------------------------------------------------------------------ */
+
+	void effectValue;
+	void cleanupCount;
+	void notifyCount;
+	void dependencyResult;
+	void batchEffectCount;
+}

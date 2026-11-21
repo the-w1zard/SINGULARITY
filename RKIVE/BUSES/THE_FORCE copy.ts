@@ -1528,11 +1528,8 @@ export class SIGNALS {
             n.push(fn);
             e.s = n;
             if (immediate && e.has) {
-                try {
-                    fn(e.v, undefined, k);
-                } catch (x) {
-                    this.err(x);
-                }
+                try {  fn(e.v, undefined, k);  } 
+                catch (x) { this.err(x);  }
             }
             let live = true;
             return () => {
@@ -1979,6 +1976,8 @@ export class Slot {
 		this.k = k;
 	}
 }
+
+
 export class Atom<T> {
 	private readonly _s: SIGNALS["store"];
 	private readonly _e: Slot;
@@ -2002,9 +2001,11 @@ export class Atom<T> {
 		this._s._w(this._e, n, true);
 		return n;
 	}
+   
 	sub(fn: Listener<T>, immediate = false): Unsub { return this._s.sub(this._e.k, fn, immediate); }
 	release(): void { this._s._unpin(this._e);	}
 }
+
 function bcTransport(name: string): Transport | null {
     const BC = (globalThis as any).BroadcastChannel as typeof BroadcastChannel | undefined;
     if (!BC) return null;

@@ -11,7 +11,6 @@
 		"strict": false,
 		"isolatedModules": false,
 		"skipLibCheck": true,
-		"noEmit": true,
 		"types":[
 			"@the-w1zard/dx",
 			"./src/types.d.ts",
@@ -23,6 +22,7 @@
 		"baseUrl": ".",
 		"paths": {
 			"~/*": ["src/*"],
+			"#hlc": ["@the-w1zard/hlc"],
 			"#dx": ["@the-w1zard/dx"],
 			"#electrons": ["./src/electrons/index.ts"],
 			"#protons": ["./src/protons/index.ts"],
@@ -40,9 +40,15 @@
 			"#registry": ["@the-w1zard/the-registry"],
 			"#the_dark_side": ["@the-w1zard/singularity"],
 			"#crdts": ["@the-w1zard/resolvers"],
-		}
+		},
+		"plugins": [
+			{
+			  "transform": "./sauron-transformer.ts",
+			  "debug": true
+			}
+		  ]
 	},
 	"include": ["**/*.ts", "**/*.tsx",  ],
-	"exclude": ["node_modules", "dist", "./RKIVE/**/*", "./rspack.config.ts", "./sauron-rspack.ts"],
+	"exclude": ["node_modules", "dist", "./RKIVE/**/*", "./sauron-transformer.ts", "./sauron-rspack.ts"],
   }
   

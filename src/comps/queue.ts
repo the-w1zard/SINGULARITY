@@ -1,4 +1,3 @@
-import { useState, useCallback, useEffect } from '#sauron'
 //                                                                                                 QUEUE
 // #region ══════════════════════════════════════════════════════════════════════════════════════════════════════
 let queuedLength = 0;
@@ -28,16 +27,16 @@ interface QueueHandle<T, A = unknown> {
 }
 export function useQueue<T = A>(optionsOrConcurrent?: number | QueueOptions): UseQueueResult<T> {
     const queueRef = atom(null) as A;
-    const [results, setResults] = useState<T[]>([]);
-    const [errors, setErrors] = useState<Error[]>([]);
-    const [state, setState] = useState({
+    const [results, setResults] = darkState<T[]>([]);
+    const [errors, setErrors] = darkState<Error[]>([]);
+    const [state, setState] = darkState({
         pending: 0,
         active: 0,
         size: 0,
         isEmpty: true,
         isRunning: false
     });
-    const updateState = useCallback(() => {
+    const updateState = darkCallback(() => {
         if (!queueRef.current) return;
         setState({
             pending: queueRef.current.pending,
@@ -70,7 +69,7 @@ export function useQueue<T = A>(optionsOrConcurrent?: number | QueueOptions): Us
 
 
 
-    const add = useCallback(async (task: () => Promise<T>, options?: { priority?: number }) => {
+    const add = darkCallback(async (task: () => Promise<T>, options?: { priority?: number }) => {
         if (!queueRef.current) throw new Error('Queue not initialized');
         updateState();
         const result = await queueRef.current(task, options);
@@ -78,29 +77,29 @@ export function useQueue<T = A>(optionsOrConcurrent?: number | QueueOptions): Us
         return result as T;
     }, [updateState]);
 
-    const start = useCallback(() => {
+    const start = darkCallback(() => {
         queueRef.current?.start();
         updateState();
     }, [updateState]);
 
-    const stop = useCallback(() => {
+    const stop = darkCallback(() => {
         queueRef.current?.stop();
         updateState();
     }, [updateState]);
 
-    const clear = useCallback(() => {
+    const clear = darkCallback(() => {
         queueRef.current?.clear();
         setResults([]);
         setErrors([]);
         updateState();
     }, [updateState]);
 
-    const flush = useCallback(() => {
+    const flush = darkCallback(() => {
         queueRef.current?.flush();
         updateState();
     }, [updateState]);
 
-    useEffect(() => {
+    darkEffect(() => {
         updateState();
     }, [updateState]);
 

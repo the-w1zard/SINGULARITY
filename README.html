@@ -2544,10 +2544,6 @@ Average:                                5.67 M ops/sec
 ---------------------------------------------------------
 </code></pre>
 </details>
-<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[ALIEN]</span> </strong></summary>
-<pre><code class="language-txt">
-</code></pre>
-</details>
 <div class="markdown-alert markdown-alert-note"><p class="markdown-alert-title"><svg class="octicon octicon-info mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>BUILDERS LOG #10</p><p></p>
 <p>New best of best signals solution done, just needs to be tested... hope this work wasnt for nothing. This solution does not include the other atom solution I was working on, but to be honest... other than that massive part it is a very strong solution. Has  agod storage solution, bus, reactive core, dom injection and more...</p>
 <p>Hopefully, it doesn't now shit the bed for one reason or another on the bench...</p>
@@ -2685,6 +2681,564 @@ Average:                                19.57 M ops/sec
 Peak (Best Batch):                      25.70 M ops/sec
 Average:                                20.24 M ops/sec
 ---------------------------------------------------------
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[Results]</span> </strong></summary>
+<pre><code class="language-txt">------------ the_force.signal.read ---------------
+Peak (Best Batch):                      422.12 M ops/sec
+Average:                                286.06 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.peek ---------------
+Peak (Best Batch):                      461.68 M ops/sec
+Average:                                223.58 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.write ---------------
+Peak (Best Batch):                      67.73 M ops/sec
+Average:                                65.78 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.write.unchanged ---------------
+Peak (Best Batch):                      95.00 M ops/sec
+Average:                                87.59 M ops/sec
+---------------------------------------------------------
+------------ the_force.signal.read.write ---------------
+Peak (Best Batch):                      54.37 M ops/sec
+Average:                                51.29 M ops/sec
+---------------------------------------------------------
+------------ the_force.computed.read.cached ---------------
+Peak (Best Batch):                      73.22 M ops/sec
+Average:                                67.49 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.read.first ---------------
+Peak (Best Batch):                      78.95 M ops/sec
+Average:                                73.12 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.invalidate ---------------
+Peak (Best Batch):                      61.56 M ops/sec
+Average:                                56.34 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.recompute ---------------
+Peak (Best Batch):                      72.72 M ops/sec
+Average:                                67.62 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.chain.8 ---------------
+Peak (Best Batch):                      71.81 M ops/sec
+Average:                                64.78 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_computed.chain.32 ---------------
+Peak (Best Batch):                      66.00 M ops/sec
+Average:                                63.71 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_effect.create ---------------
+Peak (Best Batch):                      26.56 M ops/sec
+Average:                                19.49 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_effect.create.dependency ---------------
+Peak (Best Batch):                      24.85 M ops/sec
+Average:                                18.19 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_effect.dispose ---------------
+Peak (Best Batch):                      22.79 M ops/sec
+Average:                                15.13 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_effect.cleanup ---------------
+Peak (Best Batch):                      57.04 M ops/sec
+Average:                                47.35 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_effect.rerun ---------------
+Peak (Best Batch):                      64.05 M ops/sec
+Average:                                54.14 M ops/sec
+---------------------------------------------------------
+------------ the_force.dependencies.fan-in.16 ---------------
+Peak (Best Batch):                      56.48 M ops/sec
+Average:                                49.24 M ops/sec
+---------------------------------------------------------
+------------ the_force.dependencies.fan-out.16 ---------------
+Peak (Best Batch):                      61.98 M ops/sec
+Average:                                50.10 M ops/sec
+---------------------------------------------------------
+------------ the_force.dependencies.conditional.switch ---------------
+Peak (Best Batch):                      71.62 M ops/sec
+Average:                                59.99 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_batch.2 ---------------
+Peak (Best Batch):                      54.39 M ops/sec
+Average:                                48.17 M ops/sec
+---------------------------------------------------------
+------------ the_force.f_batch.16 ---------------
+Peak (Best Batch):                      6.05 M ops/sec
+Average:                                5.61 M ops/sec
+---------------------------------------------------------
+------------ the_force.graph.diamond ---------------
+Peak (Best Batch):                      55.96 M ops/sec
+Average:                                48.39 M ops/sec
+---------------------------------------------------------
+------------ the_force.graph.branch.16 ---------------
+Peak (Best Batch):                      54.13 M ops/sec
+Average:                                47.87 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.send ---------------
+Peak (Best Batch):                      73.65 M ops/sec
+Average:                                71.04 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.hotSend ---------------
+Peak (Best Batch):                      165.37 M ops/sec
+Average:                                118.85 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.stream.publish.1 ---------------
+Peak (Best Batch):                      138.75 M ops/sec
+Average:                                135.72 M ops/sec
+---------------------------------------------------------
+------------ the_force.bus.stream.publish.16 ---------------
+Peak (Best Batch):                      31.65 M ops/sec
+Average:                                28.22 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.get.hot ---------------
+Peak (Best Batch):                      213.40 M ops/sec
+Average:                                194.54 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.get.missing ---------------
+Peak (Best Batch):                      161.60 M ops/sec
+Average:                                147.76 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.has.existing ---------------
+Peak (Best Batch):                      204.37 M ops/sec
+Average:                                183.92 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.has.missing ---------------
+Peak (Best Batch):                      169.69 M ops/sec
+Average:                                144.84 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.set.changed ---------------
+Peak (Best Batch):                      0.67 M ops/sec
+Average:                                0.64 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.set.same ---------------
+Peak (Best Batch):                      119.15 M ops/sec
+Average:                                112.79 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.set.notify ---------------
+Peak (Best Batch):                      0.68 M ops/sec
+Average:                                0.59 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.fanout.8 ---------------
+Peak (Best Batch):                      0.67 M ops/sec
+Average:                                0.64 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.fanin.8 ---------------
+Peak (Best Batch):                      0.29 M ops/sec
+Average:                                0.25 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.getMany.8 ---------------
+Peak (Best Batch):                      11.46 M ops/sec
+Average:                                10.19 M ops/sec
+---------------------------------------------------------
+------------ the_force.store.delete.recreate ---------------
+Peak (Best Batch):                      0.28 M ops/sec
+Average:                                0.23 M ops/sec
+</code></pre>
+</details>
+<div class="markdown-alert markdown-alert-note"><p class="markdown-alert-title"><svg class="octicon octicon-info mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>BUILDERS LOG #11</p><p></p>
+<p>Shouldn't even be working on this right now... but here we are, not bad for a first shot though. Same test for both, same bench, same machine, new solution hits 12 out of the 18 tests over alien. I'll have to come back to this later but... really though not bad.</p>
+</div>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[ALIEN]</span> </strong></summary>
+<pre><code class="language-txt">------------ REACTIVE_SYSTEM.signal.get ---------------
+Peak (Best Batch):                      1131.22 M ops/sec
+Average:                                422.14 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.signal.set ---------------
+Peak (Best Batch):                      90.69 M ops/sec
+Average:                                79.36 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.signal.get.set ---------------
+Peak (Best Batch):                      87.77 M ops/sec
+Average:                                74.61 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.computed.get.cached ---------------
+Peak (Best Batch):                      81.35 M ops/sec
+Average:                                72.91 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.computed.invalidate ---------------
+Peak (Best Batch):                      66.74 M ops/sec
+Average:                                43.18 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.computed.recompute ---------------
+Peak (Best Batch):                      22.75 M ops/sec
+Average:                                19.77 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.computed.chain.cached ---------------
+Peak (Best Batch):                      107.71 M ops/sec
+Average:                                80.63 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.computed.chain.recompute ---------------
+Peak (Best Batch):                      6.81 M ops/sec
+Average:                                5.63 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.effect.create-dispose ---------------
+Peak (Best Batch):                      20.89 M ops/sec
+Average:                                14.00 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.effect.notify ---------------
+Peak (Best Batch):                      6.62 M ops/sec
+Average:                                5.59 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.effect.cleanup-rerun ---------------
+Peak (Best Batch):                      6.33 M ops/sec
+Average:                                5.45 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.dependency.track ---------------
+Peak (Best Batch):                      21.15 M ops/sec
+Average:                                14.77 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.fanout.16 ---------------
+Peak (Best Batch):                      1.93 M ops/sec
+Average:                                0.95 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.fanout.64 ---------------
+Peak (Best Batch):                      0.52 M ops/sec
+Average:                                0.46 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.batch.3-writes ---------------
+Peak (Best Batch):                      12.07 M ops/sec
+Average:                                9.11 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.batch.effect.3-writes ---------------
+Peak (Best Batch):                      4.11 M ops/sec
+Average:                                3.55 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.graph.diamond.cached ---------------
+Peak (Best Batch):                      115.07 M ops/sec
+Average:                                103.92 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.graph.diamond.recompute ---------------
+Peak (Best Batch):                      3.40 M ops/sec
+Average:                                2.99 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.graph.branch.16.cached ---------------
+Peak (Best Batch):                      117.01 M ops/sec
+Average:                                99.41 M ops/sec
+---------------------------------------------------------
+------------ REACTIVE_SYSTEM.graph.branch.16.recompute ---------------
+Peak (Best Batch):                      0.52 M ops/sec
+Average:                                0.48 M ops/sec
+---------------------------------------------------------
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[ALIEN]</span> </strong></summary>
+<pre><code class="language-txt">------------ SIGNAL_ENGINE.signal.get ---------------
+Peak (Best Batch):                      1453.49 M ops/sec
+Average:                                490.50 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.signal.peek ---------------
+Peak (Best Batch):                      423.55 M ops/sec
+Average:                                212.93 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.signal.set ---------------
+Peak (Best Batch):                      82.05 M ops/sec
+Average:                                69.92 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.signal.get.set ---------------
+Peak (Best Batch):                      99.16 M ops/sec
+Average:                                87.44 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.computed.get.cached ---------------
+Peak (Best Batch):                      76.11 M ops/sec
+Average:                                67.68 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.computed.invalidate ---------------
+Peak (Best Batch):                      38.21 M ops/sec
+Average:                                30.87 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.computed.recompute ---------------
+Peak (Best Batch):                      17.53 M ops/sec
+Average:                                13.35 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.computed.chain.cached ---------------
+Peak (Best Batch):                      73.43 M ops/sec
+Average:                                57.11 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.computed.chain.recompute ---------------
+Peak (Best Batch):                      6.92 M ops/sec
+Average:                                5.23 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.effect.create-dispose ---------------
+Peak (Best Batch):                      23.11 M ops/sec
+Average:                                14.12 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.effect.notify ---------------
+Peak (Best Batch):                      19.85 M ops/sec
+Average:                                13.86 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.effect.cleanup-rerun ---------------
+Peak (Best Batch):                      13.55 M ops/sec
+Average:                                9.24 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.dependency.track ---------------
+Peak (Best Batch):                      13.37 M ops/sec
+Average:                                11.81 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.fanout.16 ---------------
+Peak (Best Batch):                      2.59 M ops/sec
+Average:                                2.33 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.fanout.64 ---------------
+Peak (Best Batch):                      0.73 M ops/sec
+Average:                                0.67 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.batch.3-writes ---------------
+Peak (Best Batch):                      29.15 M ops/sec
+Average:                                25.92 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.batch.effect.3-writes ---------------
+Peak (Best Batch):                      10.96 M ops/sec
+Average:                                9.87 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.graph.diamond.cached ---------------
+Peak (Best Batch):                      125.38 M ops/sec
+Average:                                99.82 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.graph.diamond.recompute ---------------
+Peak (Best Batch):                      4.86 M ops/sec
+Average:                                4.36 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.graph.branch.16.cached ---------------
+Peak (Best Batch):                      154.25 M ops/sec
+Average:                                133.93 M ops/sec
+---------------------------------------------------------
+------------ SIGNAL_ENGINE.graph.branch.16.recompute ---------------
+Peak (Best Batch):                      1.22 M ops/sec
+Average:                                1.06 M ops/sec
+---------------------------------------------------------
+</code></pre>
+</details>
+<div class="markdown-alert markdown-alert-note"><p class="markdown-alert-title"><svg class="octicon octicon-info mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>BUILDERS LOG #12</p><p></p>
+<p>Other than the atoms solution needing to be redone... the dark side is almost complete... so not bad.</p>
+<p>For the bus, cbor has always been the encoder that was used... but I have heard that avro is faster. And now that I have a custom avro encoder, I might as well bench the two against eachother to see which is faster.</p>
+<p>That reminds me, I need to hook the 2 new databases up to the solution, so there is that to do as well. But that also uses cbro, so if avro is truly faster atleast both the bus and the db will be getting upgrades in performance. And it looks to be getting a 2x upgrade... not bad, but gonna compare it by benching some other solutions.</p>
+<p>Ah, fuck me... well, theres a couple of days back to the drawing for a new encoder... fuck. Why am I just now benching these... ahh, I did bench an encoder, but not these ones and obviously at the time, I assumed they would be just as fast. Well... that fucking sucks.</p>
+<p>Well... its currently faster than every solution I have benched it again... but, man I am so annoyed right now, as it means that the disruptors are truly only good for one workload... its not an entire loss, because we do have uses for that, it just means it can't be the go to solution whenever you reach for signals... which it is a fucking very good thing that the dark side has two of them, haha. Not to mention, 2 buses, although weirdly the non-raptor bus beats the raptor, even when the raptor is given the perfect workdload, riddle me that.</p>
+<p>BUT at the very least, yet another solution that we are the fastest that I've tested against, which gives us no deps to rely on while at the same time continuing to raise the ceiling. And raising that ceiling is the name of the game.</p>
+<p>Almsot forgot too, we do have that other signals solution that we were working on earlier, and the tests did actually look good... because I already think that I can come up in the areas where it did not beat alien... soooo, there is that too.</p>
+</div>
+<div class="markdown-alert markdown-alert-note"><p class="markdown-alert-title"><svg class="octicon octicon-info mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>BUILDERS LOG #13</p><p></p>
+<p>I don't know why I am designing a new db... Truly...</p>
+<p>This one is different though, the current custom implementation is a single value file write with atomic writes, using binary as the encoder, and during the atomic process it doesn't append to the file but creates the first file, deletes the original and then renames the newly created file with the actual key value.</p>
+<p>This one is a append-only write-ahead log with periodic snapshots/compaction and obviously hot path reads, currently hitting 1131.22 mill ops / sec. Right I truly do not know if that is... Like amazing, but it is a fuck ton better than what was projected and what can be found out there... that's for sure.</p>
+<p>Ya, the only solution that comes close... uses a god damn fucking server farm... haha, oh my god, ya let me go build that real quick to even the playing field.</p>
+<p>soooooooo......... I think this is... how it is gonna go down.</p>
+<ul>
+<li>Non-raptor hot path call: 1.133 bill</li>
+<li>Raptor hot path call: 3.1 bill</li>
+<li>the solutions actual get call, what I'll do is a check on the key and value, if it meets the reqs then it gets funneled off to the disruptor... and because of that check... probably loose about a billion ops, HOPEFULLY... just a billion, fingers crossed for even less. If it doesn't meet the reqs then it gets funneled to the server db solution.</li>
+</ul>
+<p>And I'm probably going to take the current db that I'm working on, and basically create an adapter out of it... because ngins surface area is vast, and I am not creating that shit again because right now, the current solution is so tiny in comparison soooooo. It would just be a matter of transffering evreything over to an adapter so we would have two VERY lean custom file writing solutions for the server side database, AND... it actually grants us something else too, I don't know why I didn't think of this before...</p>
+<p>So basically the choice is, because I only want one api...</p>
+<ul>
+<li>a dual db, where kv idb is client side, then we have the above mentioned db server side, calling on the api on the client side would auto route the fn call to the idb solution, and the same server side for the server db...</li>
+<li>OR, we bridge the server db to the client side... so the server db would be available for use both client and server...</li>
+</ul>
+<p>It comes down to... offline storage capable, OR... accessing the same storage backend whether ytou are in the client or on the server, since it doesn't matter where you call it from... so that's the trade</p>
+</div>
+<div class="markdown-alert markdown-alert-note"><p class="markdown-alert-title"><svg class="octicon octicon-info mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>BUILDERS LOG #14</p><p></p>
+<p>And we are now starting the last phase of benching everything on the dark side, along with a couple of items from the light side for comparative baselines. As you can see, I am just limiting the upgrades to just the darkside as this is the state / context system for the light side.</p>
+<p>Still have to remake the atoms solution, and do some final placement of code... but we are on the last stretch, fucking finally.</p>
+<p>We still have all the docs to write, which there is a lot of that, hopefully we can get several ais to help with that. I have already gotten a huge chunk already done, since there are already 20 repos up with docs. Not to mention, repos like the one I'm currently writing docs for... This is gonna sound rediculous, but if it were the avg dev it would be split up into roughly 87 repos, instead of the one, lol.</p>
+</div>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[THE LIGHT SIDE: THE CLOUD]</span> </strong></summary>
+<pre><code class="language-txt">------------ JSObj[&#x27;keyy&#x27;]; ---------------
+Peak (Best Batch):                      1697.79 M ops/sec
+Average:                                673.22 M ops/sec
+---------------------------------------------------------
+------------ O2Test[&#x27;keyy&#x27;] ---------------
+Peak (Best Batch):                      423.55 M ops/sec
+Average:                                217.26 M ops/sec
+---------------------------------------------------------
+------------ O2.get(k)  [real #data] ---------------
+Peak (Best Batch):                      77.73 M ops/sec
+Average:                                69.05 M ops/sec
+---------------------------------------------------------
+------------ O2.get(derived clean) ---------------
+Peak (Best Batch):                      69.00 M ops/sec
+Average:                                65.31 M ops/sec
+---------------------------------------------------------
+------------ O2.get(derived dirty) ---------------
+Peak (Best Batch):                      3.20 M ops/sec
+Average:                                2.93 M ops/sec
+---------------------------------------------------------
+------------ O2.get(miss) ---------------
+Peak (Best Batch):                      131.04 M ops/sec
+Average:                                116.88 M ops/sec
+---------------------------------------------------------
+------------ O2.h(k) hit ---------------
+Peak (Best Batch):                      110.41 M ops/sec
+Average:                                70.39 M ops/sec
+---------------------------------------------------------
+------------ O2.h(k) miss ---------------
+Peak (Best Batch):                      178.95 M ops/sec
+Average:                                116.84 M ops/sec
+---------------------------------------------------------
+------------ O2.s(v,k) overwrite ---------------
+Peak (Best Batch):                      7.03 M ops/sec
+Average:                                6.38 M ops/sec
+---------------------------------------------------------
+------------ O2.s(v,k) new+del churn ---------------
+Peak (Best Batch):                      0.92 M ops/sec
+Average:                                0.82 M ops/sec
+---------------------------------------------------------
+------------ O2.size ---------------
+Peak (Best Batch):                      4.93 M ops/sec
+Average:                                4.03 M ops/sec
+---------------------------------------------------------
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[THE DARK SIDE: THE CLOUD]</span> </strong></summary>
+<pre><code class="language-txt">------------ RAVEN.store.get ---------------
+Peak (Best Batch):                      848.18 M ops/sec
+Average:                                100.58 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.has ---------------
+Peak (Best Batch):                      56.47 M ops/sec
+Average:                                16.21 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.set ---------------
+Peak (Best Batch):                      21.46 M ops/sec
+Average:                                14.43 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.set.functional ---------------
+Peak (Best Batch):                      15.02 M ops/sec
+Average:                                11.02 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.get.set ---------------
+Peak (Best Batch):                      18.21 M ops/sec
+Average:                                17.29 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.entries ---------------
+Peak (Best Batch):                      4.33 M ops/sec
+Average:                                4.05 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.subscribe ---------------
+Peak (Best Batch):                      5.61 M ops/sec
+Average:                                4.08 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.persist.get ---------------
+Peak (Best Batch):                      96.22 M ops/sec
+Average:                                93.96 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.persist.has ---------------
+Peak (Best Batch):                      100.07 M ops/sec
+Average:                                95.16 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.persist.set ---------------
+Peak (Best Batch):                      26.52 M ops/sec
+Average:                                18.09 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.get ---------------
+Peak (Best Batch):                      91.61 M ops/sec
+Average:                                75.71 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.set ---------------
+Peak (Best Batch):                      18.10 M ops/sec
+Average:                                13.87 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.get.set ---------------
+Peak (Best Batch):                      42.24 M ops/sec
+Average:                                39.88 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.getAll ---------------
+Peak (Best Batch):                      2.79 M ops/sec
+Average:                                2.58 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.getByPrefix ---------------
+Peak (Best Batch):                      1.99 M ops/sec
+Average:                                1.84 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.subscribe ---------------
+Peak (Best Batch):                      6.22 M ops/sec
+Average:                                5.50 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.notify ---------------
+Peak (Best Batch):                      1.90 M ops/sec
+Average:                                1.29 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.get ---------------
+Peak (Best Batch):                      2.61 M ops/sec
+Average:                                2.07 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.set ---------------
+Peak (Best Batch):                      19.63 M ops/sec
+Average:                                16.64 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.get.set ---------------
+Peak (Best Batch):                      2.40 M ops/sec
+Average:                                1.89 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.selector.get ---------------
+Peak (Best Batch):                      2.65 M ops/sec
+Average:                                2.06 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.selector.set ---------------
+Peak (Best Batch):                      8.88 M ops/sec
+Average:                                7.64 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.derived.get ---------------
+Peak (Best Batch):                      2.61 M ops/sec
+Average:                                2.03 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.derived.set ---------------
+Peak (Best Batch):                      12.12 M ops/sec
+Average:                                11.36 M ops/sec
+---------------------------------------------------------
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[THE DARK SIDE: USE STATE]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[RAPTOR: SIGNALS]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[RAPTOR: SPREADSHEET]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[RAPTOR: STREAMING]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[RAPTOR: BATCHING]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[SIGNALS]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[SIGNALS: ATOMS]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[SIGNALS: NEW IMPLEMENTATION]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[DISTRIBUTED REACTIVE STATE]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[MESSAGE QUEUE / BUS]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[RAPTOR: RULE OF 2]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[DB]</span> </strong></summary>
+<pre><code class="language-txt">
+</code></pre>
+</details>
+<details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[G BUS]</span> </strong></summary>
+<pre><code class="language-txt">
 </code></pre>
 </details>
 

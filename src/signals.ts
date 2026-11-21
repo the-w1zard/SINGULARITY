@@ -45,11 +45,14 @@
     ============================================================================ ⇦✦──⇦✦──✦──✦──← 'pew pew' 🧙 [THE DARK SIDE] */
 //                                                                                                                      IMPORTS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+import "@the-w1zard/alias_types"
+import "@the-w1zard/types"
+import "@the-w1zard/dx"
 import { Registry } from "@the-w1zard/the-registry";
 // import { Mesh } from "@the-w1zard/the-mesh"
 // import { darkState, useEffect } from "@the-w1zard/the-dark-side"
 import { queue, Queue } from "./comps/queue";
-import { M2 } from "#dx";
+//import { M2 } from "#dx";
 import { parseFormula, removeDependencies, registerDependencies, evaluateSpreadsheetAst, writeGraphCell, collectAffected, recalculateCell, recalculateAffected, createEvalContext, isFormula, normalizeCellRef, parseCellRef, cloneGraph, createSpreadsheetGraph, round, gcd, combin, looseEqual, compare, approxMatch, wildcardMatch, matchCriteria, stddev, variance, correl, covariance, linreg, normalPDF, normalCDF, normalInv, dateSerial, fromSerial, networkDays, workday, dateDif, toRoman, formatText, evaluate, toNum, toStr, toBool, isErr, looseEq, cellKey, resolveCell, expandRange, flattenRange, colToIndex, indexToCol, parseRangeStr, tokenize, Parser, SpreadsheetMode, SpreadsheetChain, SpreadsheetRaw, SpreadsheetCell, SpreadsheetGraphState, SpreadsheetCellRef, qualifyAst, clearGraphCellInPlace, writeGraphCellInPlace, isVolatileAst, recalculateDirty, RangeBox, RangeEntry, boxContains, analyzeDependencies, collectDependencies, ASTNode, } from './comps/cell';
 import { BUS_CRYPTO } from "./comps/DISRUPTOR_CRYPTO";
 import { BINARY_CODEC } from "./comps/binary";
@@ -59,8 +62,1073 @@ import { CellVM } from "./comps/cell-worker";
 
 
 // #endregion
-//                                                                                                                       TYPPES
+//                                                                                                                        M2 O2
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export class M2<H = A, T = A> extends Map<H, T> implements M2I<H, T> {
+	// public g = this.get;
+	// public h = this.has;
+	// public d = this.delete;
+	// public c = this.clear
+	public f = this.forEach;//                                                     [FOR EACH]
+
+	#subs?: Set<Sub<H, T>>;
+	#hist?: AR<M2Event<H, T>>;
+	#histLimit = 0;
+	#strict = false;
+	#iterating = 0;
+	#batching = 0;
+	#pending?: M2<H, M2Event<H, T>>;
+	#derived?: M2<H, Derived<H, T>>;
+	#dependents?: M2<H, Set<H>>;
+	#emit(e: M2Event<H, T>): V {
+		if (this.#batching > 0) {
+			// coalesce: last write per key wins, keep prev from first event
+			const pending = this.#pending!.get(e.k);
+			this.#pending!.set(
+				e.k,
+				pending ? { ...e, prev: pending.prev, batch: true } : { ...e, batch: true },
+			);
+			return;
+		}
+	
+		this.#record(e);
+		this.#subs?.forEach((sub) => {
+			try { sub(e); } catch (err: A) { process.emitWarning(err); }
+		});
+	}
+	#record(e: M2Event<H, T>): V {
+		if (!this.#hist) return;
+
+		this.#hist.push(e);
+
+		if (this.#hist.length > this.#histLimit) {
+			this.#hist.splice(0, this.#hist.length - this.#histLimit);
+		}
+	}
+	#invalidate(k: H): V {
+		const deps = this.#dependents?.get(k);
+		if (!deps) return;
+
+		for (const dk of deps) {
+			const d = this.#derived?.get(dk);
+			if (!d || d.dirty) continue;
+
+			d.dirty = true;
+			this.#emit({ op: "dirty", k: dk, has: d.has });
+		}
+	}
+	#computeDerived(k: H, d: Derived<H, T>): T {
+		const vals = d.deps.map((dep) => this.g(dep) as T);
+		const next = d.fn(...vals);
+
+		const had = d.has;
+		const prev = d.value;
+
+		d.value = next;
+		d.has = true;
+		d.dirty = false;
+
+		if (!had || !sameValue(prev, next)) {
+			this.#emit({
+				op: had ? "upd" : "set",
+				k,
+				v: next,
+				prev: prev as T,
+				has: true,
+			});
+		}
+
+		return next;
+	}
+	#assertNotIterating(op: S): V {
+		if (this.#strict && this.#iterating > 0) {
+			throw new Error(`M2I.${op}() during iteration. Use filterKV(), collect keys first, or disable $strict().`);
+		}
+	}
+	public [Symbol.iterator](): MapIterator<[H, T]> {return this.entries();	}
+	public on(fn: Sub<H, T>): () => V {//                                                [ON]
+		(this.#subs ??= new Set()).add(fn);
+		return () => this.off(fn);
+	}
+	public off(fn: Sub<H, T>): V {//                                                    [OFF]
+		this.#subs?.delete(fn);
+	} 
+	public batch(fn: () => V): this {//                                               [BATCH]
+		this.#batching++;
+		this.#pending ??= new M2<H, M2Event<H, T>>();
+	
+		try {
+			fn();
+		} finally {
+			this.#batching--;
+	
+			if (this.#batching === 0) {
+				const events = [...this.#pending.values()];
+				this.#pending = undefined;
+	
+				for (const e of events) {
+					this.#record(e);
+					this.#subs?.forEach(sub => sub(e));
+				}
+			}
+		}
+	
+		return this;
+	}
+	public s(v: UF<T>, k: H): this {//                                                  [SET]
+		this.#assertNotIterating("s");
+
+		const next = rv(v);
+		const has = this.h(k);
+		const prev = has ? this.g(k) : undefined;
+
+		super.set(k, next);
+
+		this.#invalidate(k);
+		this.#emit({
+			op: "set",
+			k,
+			v: next,
+			prev: prev as T,
+			has,
+		});
+
+		return this;
+	}
+	public mutate(k: H, fn: (old: T, has: true) => T): T | UD {//                    [MUTATE]
+		this.#assertNotIterating("mutate");
+	
+		if (!this.h(k)) return undefined;
+	
+		const old = this.g(k) as T;
+		const next = fn(old, true);
+	
+		this.s(next, k);
+		return next;
+	}
+	public d(k: H): B {//                                                            [DELETE]
+		this.#assertNotIterating("delete");
+
+		if (!this.h(k)) return false;
+
+		const prev = this.g(k) as T;
+		const out = super.delete(k);
+
+		this.#invalidate(k);
+		this.#emit({
+			op: "del",
+			k,
+			prev,
+			has: false,
+		});
+
+		return out;
+	}
+	public c(): V {//                                                                 [CLEAR]
+		
+		this.#assertNotIterating("clear");
+
+		const entries = [...this.entries()];
+		super.clear();
+
+		for (const [k, prev] of entries) {
+			this.#invalidate(k);
+			this.#emit({ op: "del", k, prev, has: false });
+		}
+	}
+	public dv(k: H, deps: AR<H>, fn: (...vals: AR<T>) => T): this {//              [DERRIVED]
+		
+		(this.#derived ??= new M2<H, Derived<H, T>>())
+    .set(k, {
+        deps,
+        fn,
+        dirty: true,
+        has: false,
+    });
+
+		for (const dep of deps) {
+			(this.#dependents ??= new M2<H, Set<H>>())
+    .getOrM(() => new Set(), dep)
+    .add(k);
+		}
+
+		return this;
+	}
+	public dirty(...keys: AR<H>): this {//                                            [DIRTY]
+		
+		for (const k of keys) {
+			const d = this.#derived?.get(k);
+
+			if (d && !d.dirty) {
+				d.dirty = true;
+				this.#emit({ op: "dirty", k, has: d.has });
+			}
+		}
+
+		return this;
+	}
+	public g(k: H): T | UD {//                                                         [GET]
+		
+		const d = this.#derived?.get(k);
+
+		if (d) {
+			if (d.dirty || !d.has) return this.#computeDerived(k, d);
+			return d.value;
+		}
+
+		return super.get(k);
+	}
+	public h(k: H): B {//                                                              [HAS]
+		
+		const d = this.#derived?.get(k);
+
+		if (d) {
+			if (d.dirty || !d.has) this.#computeDerived(k, d);
+			return true;
+		}
+
+		return super.has(k);
+	}
+	public $debug(limit: N = 256): this {//                                          [$DEBUG]
+		this.#hist ??= [];
+		this.#histLimit = limit;
+		return this;
+	}
+	public $strict(): this {//                                                      [$STRICT]
+		this.#strict = true;
+		return this;
+	}
+	public $history(): AR<M2Event<H, T>> {//                                       [$HISTORY]
+		return this.#hist ? [...this.#hist] : [];
+	}
+	public $why(k: H): M2Event<H, T> | UD {//                                          [$WHY]
+		if (!this.#hist) return undefined;
+
+		for (let i = this.#hist.length - 1; i >= 0; i--) {
+			if (Object.is(this.#hist[i].k, k)) return this.#hist[i];
+		}
+
+		return undefined;
+	}
+	public $diff(other: M2<H, T>) {//                                                [$DIFF]
+		const add: AR<[H, T]> = [];
+		const del: AR<H> = [];
+		const chg: AR<[H, T, T]> = [];
+
+		for (const [k, v] of this) {
+			if (!other.has(k)) {
+				add.push([k, v]);
+			} else if (!Object.is(other.get(k), v)) {
+				chg.push([k, v, other.get(k) as T]);
+			}
+		}
+
+		for (const k of other.keys()) {
+			if (!this.has(k)) del.push(k);
+		}
+
+		return { add, del, chg };
+	}
+	public *entries(): MapIterator<[H, T]> {//                                     [*ENTRIES]
+		this.#iterating++;
+
+		try {
+			for (const entry of super.entries()) yield entry;
+		} finally {
+			this.#iterating--;
+		}
+	}
+	public *keys(): MapIterator<H> {//                                                [*KEYS]
+		this.#iterating++;
+
+		try {
+			for (const k of super.keys()) yield k;
+		} finally {
+			this.#iterating--;
+		}
+	}
+	public *values(): MapIterator<T> {//                                            [*VALUES]
+		this.#iterating++;
+
+		try {
+			for (const v of super.values()) yield v;
+		} finally {
+			this.#iterating--;
+		}
+	}
+	public swap(value: UF<T>, key: H): T | UD {//                                      [SWAP]
+		const next = rv(value);
+		const previous = this.has(key) ? this.get(key) : next;
+		this.s(next, key);
+		return previous as T | UD;
+	}
+	public take(k: H): T | UD {//                                                      [TAKE]
+		const value = this.g(k);
+		this.d(k);
+		return value;
+	}
+	public peek(k: H): T | false {//                                                   [PEEK]
+		return this.h(k) ? (this.g(k) as T) : false;
+	}
+	public getOrI(value:UF<T>, k: H): T {//                                          [GETORI]
+		if (this.h(k)) return this.g(k) as T;
+		const next = rv(value);
+		this.s(next, k);
+		return next;
+	}
+	public getOrM(make: () => T, k: H): T {//                                        [GETORM]
+		if (this.h(k)) return this.g(k) as T;
+		const value = make();
+		this.s(value, k);
+		return value;
+	}
+	public update(k: H, fn: (old: T, has: B) => T, initial?: UF<T>): T {//           [UPDATE]
+		const has = this.h(k);
+	
+		const old = has
+			? (this.g(k) as T)
+			: initial === undefined
+				? undefined as T
+				: rv(initial);
+	
+		const next = rv(fn(old, has));
+	
+		this.s(next, k);
+		return next;
+	}
+	public setIfAbsent(value: UF<T>, k: H): B {//                               [SETIFABSENT]
+		if (this.h(k)) return false;
+		const next = rv(value);
+		this.s(next, k);
+		return true;
+	}
+	public setIfPresent(value: UF<T>, k: H): B {//                             [SETIFPRESENT]
+		if (!this.h(k)) return false;
+		const next = rv(value);
+		this.s(next, k);
+		return true;
+	}
+	public replace(value: UF<T>, k: H): B {//                                       [REPLACE]
+		const next = rv(value);
+		return this.setIfPresent(next, k);
+	}
+	public inc(key: H, by: N = 1): N {//                                                [INC]
+		return this.update(key, (old) => (((old ?? 0) as N) + by) as unknown as T, 0 as unknown as T) as N;
+	}
+	public touch(k: H): B {//                                                     [SWTOUCHAP]
+		return this.setIfAbsent(undefined as unknown as T, k);
+	}
+	public mapValues<G>(fn: (v: T, k: H) => G): M2I<H, G> {//                      [MAPVALUES]
+		const out = new M2<H, G>();
+		for (const [k, v] of this) out.s(fn(v, k), k);
+		return out;
+	}
+	public mapKeys<G>(fn: (v: T, k: H) => G): M2I<G, T> {//                          [MAPKEYS]
+		const out = new M2<G, T>();
+		for (const [k, v] of this) out.s(v, fn(v, k));
+		return out;
+	}
+	public filterKV(pred: (v: T, k: H) => B): this {//                             [FILTERKV]
+		for (const [k, v] of this) {
+			if (!pred(v, k)) this.d(k);
+		}
+		return this;
+	}
+	public filterKeys(pred: (v: T, k: H) => B): this {//                         [FILTERKEYS]
+		return this.filterKV(pred);
+	}
+	public partition(pred: (v: T, k: H) => B): [M2I<H, T>, M2I<H, T>] {//           [PARTITION]
+		const yes = new M2<H, T>();
+		const no = new M2<H, T>();
+
+		for (const [k, v] of this) {
+			(pred(v, k) ? yes : no).s(v, k);
+		}
+
+		return [yes, no];
+	}
+	public find(pred: (v: T, k: H) => B): [H, T] | UD {//                              [FIND]
+		for (const [k, v] of this) {
+			if (pred(v, k)) return [k, v];
+		}
+		return undefined;
+	}
+	public findKey(pred: (v: T, k: H) => B): H | UD {//                             [FINDKEY]
+		for (const [k, v] of this) {
+			if (pred(v, k)) return k;
+		}
+		return undefined;
+	}
+	public findValue(pred: (v: T, k: H) => B): T | UD {//                         [FINDVALUE]
+		for (const [k, v] of this) {
+			if (pred(v, k)) return v;
+		}
+		return undefined;
+	}
+	public some(pred: (v: T, k: H) => B): B {//                                        [SOME]
+		for (const [k, v] of this) {
+			if (pred(v, k)) return true;
+		}
+		return false;
+	}
+	public every(pred: (v: T, k: H) => B): B {//                                      [EVERY]
+		for (const [k, v] of this) {
+			if (!pred(v, k)) return false;
+		}
+		return true;
+	}
+	public reduce<G>(fn: (acc: G, v: T, k: H) => G, initial: G): G {//               [REDUCE]
+		let acc = initial;
+		for (const [k, v] of this) acc = fn(acc, v, k);
+		return acc;
+	}
+	public forEachKV(fn: (v: T, k: H, map: this) => void): void {//                 [FOREACH]
+		for (const [k, v] of this) fn(v, k, this);
+	}
+	public invert(): M2I<T, H> {//                                                    [INVERT]
+		const out = new M2<T, H>();
+		for (const [k, v] of this) out.s(k, v);
+		return out;
+	}
+	public unique<G>(fn?: (v: T, k: H) => G): M2I<G, T> {//                           [UNIQUE]
+		const out = new M2<G, T>();
+		for (const [k, v] of this) {
+			const key = (fn ? fn(v, k) : v) as unknown as G;
+			if (!out.h(key)) out.s(v, key);
+		}
+		return out;
+	}
+	public pick(keys: Iterable<H>): M2I<H, T> {//                                       [PICK]
+		const out = new M2<H, T>();
+		for (const k of keys) {
+			if (this.h(k)) out.s(this.g(k) as T, k);
+		}
+		return out;
+	}
+	public omit(keys: Iterable<H>): M2I<H, T> {//                                       [EMIT]
+		const omitted = new Set(keys);
+		const out = new M2<H, T>();
+		for (const [k, v] of this) {
+			if (!omitted.has(k)) out.s(v, k);
+		}
+		return out;
+	}
+	public merge(other: Iterable<readonly [H, T]>): this {//                          [MERGE]
+		for (const [k, v] of other){
+		const n = rv(v);
+			 this.s(n, k);
+			}
+		return this;
+	}
+	public clearAndSet(entries: Iterable<readonly [H, T]>): this {//            [CLEARANDSET]
+		return this.batch(() => {
+			this.clear();
+
+			for (const [k, v] of entries) {
+		const n = rv(v);
+				this.s(n, k);
+			}
+		});
+	}
+	public toObject(): OB<T> {//                                                  [TOPOBJECT]
+		const out = {} as OB<T>;
+		for (const [k, v] of this) out[k as S] = v;
+		return out;
+	}
+	public toValues(): A2I<T> { return A2.from(this.values()); }//                 [TOVALUES]
+	public toKeys(): A2I<H> { return A2.from(this.keys()); }//                       [TOKEYS]
+	public toArray(): A2I<[H, T]> { return A2.from(this.entries()); }//             [TOARRAY]
+	public group<G>(fn: (v: T, k: H) => G): M2I<G, A2<T>> {//                          [GROUP]
+		const out = new M2<G, A2<T>>();
+		for (const [k, v] of this) out.getOrM(() => new A2<T>(), fn(v, k)).push(v);
+		return out;
+	}
+	public clone(): this {//                                                          [CLONE]
+		return new M2(this) as this;
+	}
+	public equals(other: M2<H, T>): B {//                                           [EQUALS]
+		if (other === this) return true;
+		if (this.size !== other.size) return false;
+
+		for (const [k, v] of this) {
+			if (!other.has(k) || !sameValue(other.get(k), v)) return false;
+		}
+
+		return true;
+	}
+	static fromObject<X extends Record<S, A>>(obj: X): M2<S, X[keyof X]> {//      [FROMOBBJ]
+		return new M2(Object.entries(obj) as AR<[S, X[keyof X]]>);
+	}
+	static fromEntries<H, T>(entries: I<readonly [H, T]>): M2<H, T> {//        [FROMENTIRES]
+		return new M2(entries);
+	}
+	static from<H, T>(map: RM<H, T>): M2<H, T> {//                                    [FROM]
+		return new M2(map);
+	}
+}
+export class O2<K extends PropertyKey = S, T = A> {
+	#data: Record<K, T> = Object.create(null);
+
+	public f = this.forEachKV;//                                                    [FOR EACH]
+
+	#subs?: Set<Sub<K, T>>;
+	#hist?: M2Event<K, T>[];
+	#histLimit = 0;
+	#strict = false;
+	#iterating = 0;
+	#batching = 0;
+	#pending?: Record<K, M2Event<K, T>>;
+	#derived?: Record<K, Derived<K, T>>;
+	#dependents?: Record<K, Set<K>>;
+
+	constructor(entries?: I<readonly [K, T]>) {//                                   [CONSTRUCT]
+		if (!entries) return;
+		for (const [k, v] of entries) this.#data[k] = v;
+	}
+
+	#rawHas(k: K): B { return Object.prototype.hasOwnProperty.call(this.#data, k); }
+	#rawGet(k: K): T | UD { return this.#data[k]; }
+
+	#emit(e: M2Event<K, T>): V {
+		if (this.#batching > 0) {
+			const pending = this.#pending![e.k];
+			this.#pending![e.k] = pending ? { ...e, prev: pending.prev, batch: true } : { ...e, batch: true };
+			return;
+		}
+
+		this.#record(e);
+		this.#subs?.forEach((sub) => {
+			try { sub(e); } catch (err: A) { process.emitWarning(err); }
+		});
+	}
+	#record(e: M2Event<K, T>): V {
+		if (!this.#hist) return;
+
+		this.#hist.push(e);
+
+		if (this.#hist.length > this.#histLimit) {
+			this.#hist.splice(0, this.#hist.length - this.#histLimit);
+		}
+	}
+	#invalidate(k: K): V {
+		const deps = this.#dependents?.[k];
+		if (!deps) return;
+
+		for (const dk of deps) {
+			const d = this.#derived?.[dk];
+			if (!d || d.dirty) continue;
+
+			d.dirty = true;
+			this.#emit({ op: "dirty", k: dk, has: d.has });
+		}
+	}
+	#computeDerived(k: K, d: Derived<K, T>): T {
+		const vals = d.deps.map((dep) => this.g(dep) as T);
+		const next = d.fn(...vals);
+
+		const had = d.has;
+		const prev = d.value;
+
+		d.value = next;
+		d.has = true;
+		d.dirty = false;
+
+		if (!had || !sameValue(prev, next)) {
+			this.#emit({ op: had ? "upd" : "set", k, v: next, prev: prev as T, has: true });
+		}
+
+		return next;
+	}
+	#assertNotIterating(op: S): V {
+		if (this.#strict && this.#iterating > 0) {
+			throw new Error(`O2.${op}() during iteration. Use filterKV(), collect keys first, or disable $strict().`);
+		}
+	}
+	// IN ORDER TO MATCH MAPS CALL API FOR INSTANT AND EASY CONVERSIONS
+	public get(k: K): T | UD { 
+		const d = this.#derived?.[k];
+		if (d) { if (d.dirty || !d.has) return this.#computeDerived(k, d); return d.value; }
+		return this.#rawGet(k);
+	 }
+	public set(k: K, v: UF<T>): this { 
+		this.#assertNotIterating("s");
+		const next = rv(v);
+		const has = this.h(k);
+		const prev = has ? this.g(k) : undefined;
+		this.#data[k] = next;
+		this.#invalidate(k);
+		this.#emit({ op: "set", k, v: next, prev: prev as T, has });
+		return this;
+	 }   // note: flipped to match Map's (key, value)
+	public has(k: K): B { 
+		const d = this.#derived?.[k];
+		if (d) { if (d.dirty || !d.has) this.#computeDerived(k, d); return true; }
+		return this.#rawHas(k);
+	 }
+	public delete(k: K): B { 
+		this.#assertNotIterating("delete");
+		if (!this.h(k)) return false;
+		const prev = this.g(k) as T;
+		delete this.#data[k];
+		this.#invalidate(k);
+		this.#emit({ op: "del", k, prev, has: false });
+		return true;
+	 }
+	public clear(): V { 
+		this.#assertNotIterating("clear");
+
+		const entries = this.toArray();
+		this.#data = Object.create(null);//              one object swap, no per-key delete
+
+		for (const [k, prev] of entries) {
+			this.#invalidate(k);
+			this.#emit({ op: "del", k, prev, has: false });
+		}
+	 }
+	public forEach(fn: (v: T, k: K, map: this) => void): void { return this.forEachKV(fn); }
+	public get length(): N { return this.size; }
+	static groupBy<T, K extends PropertyKey>(items: I<T>, fn: (item: T, index: N) => K): O2<K, A2<T>> {
+		const out = new O2<K, A2<T>>();
+		let i = 0;
+		for (const item of items) out.getOrM(() => new A2<T>(), fn(item, i++)).push(item);
+		return out;
+	}
+	public get size(): N {//                                                             [SIZE]
+		return Reflect.ownKeys(this.#data).length as N;
+	}
+	public [Symbol.iterator](): Generator<[K, T]> { return this.entries(); }
+	public on(fn: Sub<K, T>): () => V {//                                                  [ON]
+		(this.#subs ??= new Set()).add(fn);
+		return () => this.off(fn);
+	}
+	public off(fn: Sub<K, T>): V {//                                                      [OFF]
+		this.#subs?.delete(fn);
+	}
+	public batch(fn: () => V): this {//                                                 [BATCH]
+		this.#batching++;
+		this.#pending ??= Object.create(null);
+
+		try {
+			fn();
+		} finally {
+			this.#batching--;
+
+			if (this.#batching === 0) {
+				const pending = this.#pending!;
+				this.#pending = undefined;
+
+				for (const k of Reflect.ownKeys(pending) as K[]) {
+					const e = pending[k];
+					this.#record(e);
+					this.#subs?.forEach((sub) => {
+						try { sub(e); } catch (err: A) { process.emitWarning(err); }
+					});
+				}
+			}
+
+		}
+
+		return this;
+	}
+	public s(v: UF<T>, k: K): this {//                                                    [SET]
+		this.#assertNotIterating("s");
+
+		const next = rv(v);
+		const has = this.h(k);
+		const prev = has ? this.g(k) : undefined;
+
+		this.#data[k] = next;
+
+		this.#invalidate(k);
+		this.#emit({ op: "set", k, v: next, prev: prev as T, has });
+
+		return this;
+	}
+	public mutate(k: K, fn: (old: T, has: true) => T): T | UD {//                      [MUTATE]
+		this.#assertNotIterating("mutate");
+
+		if (!this.h(k)) return undefined;
+
+		const old = this.g(k) as T;
+		const next = fn(old, true);
+
+		this.s(next, k);
+		return next;
+	}
+	public d(k: K): B {//                                                              [DELETE]
+		this.#assertNotIterating("delete");
+		if (!this.h(k)) return false;
+		const prev = this.g(k) as T;
+		delete this.#data[k];
+		this.#invalidate(k);
+		this.#emit({ op: "del", k, prev, has: false });
+		return true;
+	}
+	public c(): V {//                                                                   [CLEAR]
+		this.#assertNotIterating("clear");
+
+		const entries = this.toArray();
+		this.#data = Object.create(null);//              one object swap, no per-key delete
+
+		for (const [k, prev] of entries) {
+			this.#invalidate(k);
+			this.#emit({ op: "del", k, prev, has: false });
+		}
+	}
+	public dv(k: K, deps: AR<K>, fn: (...vals: AR<T>) => T): this {//                [DERRIVED]
+		(this.#derived ??= Object.create(null))[k] = { deps, fn, dirty: true, has: false };
+
+		for (const dep of deps) {
+			const dependents = (this.#dependents ??= Object.create(null));
+			(dependents[dep] ??= new Set<K>()).add(k);
+		}
+
+		return this;
+	}
+	public dirty(...keys: AR<K>): this {//                                              [DIRTY]
+		for (const k of keys) {
+			const d = this.#derived?.[k];
+
+			if (d && !d.dirty) {
+				d.dirty = true;
+				this.#emit({ op: "dirty", k, has: d.has });
+			}
+		}
+
+		return this;
+	}
+	public g(k: K): T | UD {//                                                           [GET]
+		const d = this.#derived?.[k];
+		if (d) { if (d.dirty || !d.has) return this.#computeDerived(k, d); return d.value; }
+		return this.#rawGet(k);
+	}
+	public h(k: K): B {//                                                                [HAS]
+		const d = this.#derived?.[k];
+		if (d) { if (d.dirty || !d.has) this.#computeDerived(k, d); return true; }
+		return this.#rawHas(k);
+	}
+	public $debug(limit: N = 256): this {//                                            [$DEBUG]
+		this.#hist ??= [];
+		this.#histLimit = limit;
+		return this;
+	}
+	public $strict(): this {//                                                        [$STRICT]
+		this.#strict = true;
+		return this;
+	}
+	public $history(): M2Event<K, T>[] {//                                          [$HISTORY]
+		return this.#hist ? [...this.#hist] : [];
+	}
+	public $why(k: K): M2Event<K, T> | UD {//                                            [$WHY]
+		if (!this.#hist) return undefined;
+
+		for (let i = this.#hist.length - 1; i >= 0; i--) {
+			if (Object.is(this.#hist[i].k, k)) return this.#hist[i];
+		}
+
+		return undefined;
+	}
+	public $diff(other: O2<K, T>) {//                                                  [$DIFF]
+		const add: AR<[K, T]> = [];
+		const del: AR<K> = [];
+		const chg: AR<[K, T, T]> = [];
+
+		for (const [k, v] of this) {
+			if (!other.h(k)) {
+				add.push([k, v]);
+			} else if (!Object.is(other.g(k), v)) {
+				chg.push([k, v, other.g(k) as T]);
+			}
+		}
+
+		for (const k of other.keys()) {
+			if (!this.h(k)) del.push(k);
+		}
+
+		return { add, del, chg };
+	}
+	public *entries(): Generator<[K, T]> {//                                       [*ENTRIES]
+		this.#iterating++;
+
+		try {
+			for (const k of Reflect.ownKeys(this.#data) as K[]) yield [k, this.#data[k]];
+		} finally {
+			this.#iterating--;
+		}
+	}
+	public *keys(): Generator<K> {//                                                  [*KEYS]
+		this.#iterating++;
+
+		try {
+			for (const k of Reflect.ownKeys(this.#data) as K[]) yield k;
+		} finally {
+			this.#iterating--;
+		}
+	}
+	public *values(): Generator<T> {//                                              [*VALUES]
+		this.#iterating++;
+
+		try {
+			for (const k of Reflect.ownKeys(this.#data) as K[]) yield this.#data[k];
+		} finally {
+			this.#iterating--;
+		}
+	}
+	public swap(value: UF<T>, key: K): T | UD {//                                       [SWAP]
+		const next = rv(value);
+		const previous = this.h(key) ? this.g(key) : next;//       h()/g() kept derived-aware
+		this.s(next, key);
+		return previous as T | UD;
+	}
+	public take(k: K): T | UD {//                                                       [TAKE]
+		const value = this.g(k);
+		this.d(k);
+		return value;
+	}
+	public peek(k: K): T | false {//                                                    [PEEK]
+		return this.h(k) ? (this.g(k) as T) : false;
+	}
+	public getOrI(value: UF<T>, k: K): T {//                                          [GETORI]
+		if (this.h(k)) return this.g(k) as T;
+		const next = rv(value);
+		this.s(next, k);
+		return next;
+	}
+	public getOrM(make: () => T, k: K): T {//                                        [GETORM]
+		if (this.h(k)) return this.g(k) as T;
+		const value = make();
+		this.s(value, k);
+		return value;
+	}
+	public update(k: K, fn: (old: T, has: B) => T, initial?: UF<T>): T {//            [UPDATE]
+		const has = this.h(k);
+
+		const old = has
+			? (this.g(k) as T)
+			: initial === undefined
+				? undefined as T
+				: rv(initial);
+
+		const next = rv(fn(old, has));
+
+		this.s(next, k);
+		return next;
+	}
+	public setIfAbsent(value: UF<T>, k: K): B {//                               [SETIFABSENT]
+		if (this.h(k)) return false;
+		const next = rv(value);
+		this.s(next, k);
+		return true;
+	}
+	public setIfPresent(value: UF<T>, k: K): B {//                             [SETIFPRESENT]
+		if (!this.h(k)) return false;
+		const next = rv(value);
+		this.s(next, k);
+		return true;
+	}
+	public replace(value: UF<T>, k: K): B {//                                        [REPLACE]
+		const next = rv(value);
+		return this.setIfPresent(next, k);
+	}
+	public inc(key: K, by: N = 1): N {//                                                 [INC]
+		return this.update(key, (old) => (((old ?? 0) as N) + by) as unknown as T, 0 as unknown as T) as N;
+	}
+	public touch(k: K): B {//                                                      [SWTOUCHAP]
+		return this.setIfAbsent(undefined as unknown as T, k);
+	}
+	public mapValues<G>(fn: (v: T, k: K) => G): O2<K, G> {//                        [MAPVALUES]
+		const out = new O2<K, G>();
+		for (const [k, v] of this) out.s(fn(v, k), k);
+		return out;
+	}
+	public mapKeys<G extends PropertyKey>(fn: (v: T, k: K) => G): O2<G, T> {//        [MAPKEYS]
+		const out = new O2<G, T>();
+		for (const [k, v] of this) out.s(v, fn(v, k));
+		return out;
+	}
+	public filterKV(pred: (v: T, k: K) => B): this {//                              [FILTERKV]
+		for (const [k, v] of this) {
+			if (!pred(v, k)) this.d(k);
+		}
+		return this;
+	}
+	public filterKeys(pred: (v: T, k: K) => B): this {//                          [FILTERKEYS]
+		return this.filterKV(pred);
+	}
+	public partition(pred: (v: T, k: K) => B): [O2<K, T>, O2<K, T>] {//            [PARTITION]
+		const yes = new O2<K, T>();
+		const no = new O2<K, T>();
+
+		for (const [k, v] of this) {
+			(pred(v, k) ? yes : no).s(v, k);
+		}
+
+		return [yes, no];
+	}
+	public find(pred: (v: T, k: K) => B): [K, T] | UD {//                               [FIND]
+		for (const [k, v] of this) {
+			if (pred(v, k)) return [k, v];
+		}
+		return undefined;
+	}
+	public findKey(pred: (v: T, k: K) => B): K | UD {//                              [FINDKEY]
+		for (const [k, v] of this) {
+			if (pred(v, k)) return k;
+		}
+		return undefined;
+	}
+	public findValue(pred: (v: T, k: K) => B): T | UD {//                          [FINDVALUE]
+		for (const [k, v] of this) {
+			if (pred(v, k)) return v;
+		}
+		return undefined;
+	}
+	public some(pred: (v: T, k: K) => B): B {//                                         [SOME]
+		for (const [k, v] of this) {
+			if (pred(v, k)) return true;
+		}
+		return false;
+	}
+	public every(pred: (v: T, k: K) => B): B {//                                       [EVERY]
+		for (const [k, v] of this) {
+			if (!pred(v, k)) return false;
+		}
+		return true;
+	}
+	public reduce<G>(fn: (acc: G, v: T, k: K) => G, initial: G): G {//                [REDUCE]
+		let acc = initial;
+		for (const [k, v] of this) acc = fn(acc, v, k);
+		return acc;
+	}
+	public forEachKV(fn: (v: T, k: K, map: this) => void): void {//                 [FOREACH]
+		for (const [k, v] of this) fn(v, k, this);
+	}
+	public invert(): O2<A, K> {//               values become keys — must be string|number|symbol
+		const out = new O2<A, K>();
+		for (const [k, v] of this) out.s(k, v as A);
+		return out;
+	}
+	public unique<G extends PropertyKey>(fn?: (v: T, k: K) => G): O2<G, T> {//          [UNIQUE]
+		const out = new O2<G, T>();
+		for (const [k, v] of this) {
+			const key = (fn ? fn(v, k) : v) as unknown as G;
+			if (!out.h(key)) out.s(v, key);
+		}
+		return out;
+	}
+	public pick(keys: Iterable<K>): O2<K, T> {//                                          [PICK]
+		const out = new O2<K, T>();
+		for (const k of keys) {
+			if (this.h(k)) out.s(this.g(k) as T, k);
+		}
+		return out;
+	}
+	public omit(keys: Iterable<K>): O2<K, T> {//                                          [OMIT]
+		const omitted = new Set(keys);
+		const out = new O2<K, T>();
+		for (const [k, v] of this) {
+			if (!omitted.has(k)) out.s(v, k);
+		}
+		return out;
+	}
+	public merge(other: Iterable<readonly [K, T]>): this {//                           [MERGE]
+		for (const [k, v] of other) {
+			const n = rv(v);
+			this.s(n, k);
+		}
+		return this;
+	}
+	public clearAndSet(entries: Iterable<readonly [K, T]>): this {//             [CLEARANDSET]
+		return this.batch(() => {
+			this.c();//                         (M2's version calls the native Map.clear() here
+			for (const [k, v] of entries) {    //  — silent, no del events; c() is almost
+				const n = rv(v);                //  certainly what was intended, so I used it)
+				this.s(n, k);
+			}
+		});
+	}
+	public toObject(): OB<T> {//                                                   [TOOBJECT]
+		const out = {} as OB<T>;
+		for (const [k, v] of this) out[k as S] = v;
+		return out;
+	}
+	public toObjectFast(): OB<T> {//          bulk native copy, skips the iterator entirely
+		return { ...(this.#data as A) };
+	}
+	public snapshot(): OB<T> { return this.toObjectFast(); }//      handy name for hook/selector use
+	public toJSON(): OB<T> { return this.toObjectFast(); }//     JSON.stringify(store) just works
+	public select<G>(fn: (data: Readonly<Record<K, T>>) => G): G {//                   [SELECT]
+		return fn(this.#data);
+	}
+	public patch(partial: Readonly<Partial<Record<K, T>>>): this {//                    [PATCH]
+		return this.batch(() => {
+			for (const k of Reflect.ownKeys(partial) as K[]) this.s((partial as A)[k] as T, k);
+		});
+	}
+	public toValues(): A2I<T> { return A2.from(this.values()); }//                 [TOVALUES]
+	public toKeys(): A2I<K> { return A2.from(this.keys()); }//                       [TOKEYS]
+	public toArray(): A2I<[K, T]> { return A2.from(this.entries()); }//             [TOARRAY]
+	public group<G extends PropertyKey>(fn: (v: T, k: K) => G): O2<G, A2<T>> {//       [GROUP]
+		const out = new O2<G, A2<T>>();
+		for (const [k, v] of this) out.getOrM(() => new A2<T>(), fn(v, k)).push(v);
+		return out;
+	}
+	public clone(): this {//                                                          [CLONE]
+		return new O2<K, T>(this) as this;
+	}
+	public equals(other: O2<K, T>): B {//                                            [EQUALS]
+		if (other === this) return true;
+		if (this.size !== other.size) return false;
+
+		for (const [k, v] of this) {
+			if (!other.h(k) || !sameValue(other.g(k), v)) return false;
+		}
+
+		return true;
+	}
+	static fromObject<X extends OB<A>>(obj: X): O2<S, X[keyof X]> {//              [FROMOBBJ]
+		const out = new O2<S, X[keyof X]>();
+		out.#data = { ...obj } as Record<S, X[keyof X]>;//            direct copy, no per-key emits
+		return out;
+	}
+	static fromEntries<K extends PropertyKey, T>(entries: I<readonly [K, T]>): O2<K, T> {//  [FROMENTIRES]
+		return new O2(entries);
+	}
+	static from<K extends PropertyKey, T>(source: O2<K, T> | Readonly<Record<K, T>>): O2<K, T> {// [FROM]
+		const out = new O2<K, T>();
+		out.#data = source instanceof O2 ? { ...source.#data } : { ...source };
+		return out;
+	}
+}
+// #endregion
+//                                                                                                                        TYPES
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface ChannelMessage<P = U> {
+	r: S;
+	m: S;
+	s: S;
+	k: S;
+	p: P;
+	ts?: N;
+}
+type AvroWriteFn = (w: FastAvroWriter, v: A) => V;
+type AvroReadFn = (r: FastAvroReader) => A;
+type AVROField = { name: S; type: AVROSchema };
+type AVROSchema = S | AVROSchema[] | {
+		type?: S | AVROSchema[];
+		name?: S;
+		namespace?: S;
+		fields?: AVROField[];
+		items?: AVROSchema;
+		values?: AVROSchema;
+		symbols?: AR<S>;
+		size?: N;
+};
+interface StreamLink {
+	fn: (message: ChannelMessage) => void;
+	prev: StreamLink | undefined;
+	next: StreamLink | undefined;
+}
 export interface Rx<T> {
 	(): T;
 	(value: T): void;
@@ -157,7 +1225,7 @@ export interface CustomCodecResult {
   }
 export interface GATE_ACCESS {
     /** Reads the cell's GATE_SHARD if one is bound. Undefined = bare fast path = always open. */
-    gateOf(cell: ATOM | null | UD):  SIGNALS["maul"]["ATOMS"]["GATE"] | UD;
+    gateOf(cell: ATOM | null | UD):  SIGNALS["ATOMS"]["GATE"] | UD;
     isSealed(cell: ATOM | null | UD): B;
     isFrozen(cell: ATOM | null | UD): B;
 }
@@ -267,17 +1335,7 @@ interface MODULE_SLOT {
     onUnload?: (value: MODULE_VALUE) => void;
 }
 type CBORValue = undefined | null | boolean | number | string | Uint8Array | CBORValue[] | { [k: string]: CBORValue }
-type AVROField = { name: S; type: AVROSchema };
-type AVROSchema = S | AVROSchema[] | {
-		type: S | AVROSchema[];
-		name?: S;
-		namespace?: S;
-		fields?: AVROField[];
-		items?: AVROSchema;
-		values?: AVROSchema;
-		symbols?: AR<S>;
-		size?: N;
-};
+
 type AVROValue = any;
 type SIG_BUS_Message<P = A> = {
 	id: S;
@@ -286,18 +1344,18 @@ type SIG_BUS_Message<P = A> = {
 	s: S;
 	k: S;
 	p: { p: P };
-	ts: N;
-	_ack: B;
+	ts?: N;
+	_ack?: B;
   
 	/** Correlates an async reply back to the awaiting send() call. */
 	replyTo?: S;
   
 	/** Marks this message as part of a stream. */
 	stream?: B;
-  
+	priority?: A
 	/** Marks the final stream frame. */
 	end?: B;
-  
+  	ttl?: N
 	error?: {
 	  message: S;
 	  code?: S;
@@ -582,7 +1640,7 @@ class GOVERNOR {
 			}
 
 			// Drain one revolution at the current tier.
-			this.hub.signals.maul_ngin.pass();
+			this.hub.signals.signals_raptor_ngin.pass();
 
 			// Sample load and adjust tier.
 			this.windowActions++;
@@ -620,7 +1678,7 @@ class GOVERNOR {
 	}
 }
 // #endregion
-//                                                                                                [DARTH MAUL] DISRPTOR SIGNALS
+//                                                                                                         [DARTH MAUL] SIGNALS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 const queued = [];
 export const enum ReactiveFlags {
@@ -658,1025 +1716,5114 @@ rx.on((e) => {
 const get = <T>(id: string) => rx.g(id)!.v as T;
 const set = <T>(id: string, v: T) => rx.mutate(id, (b) => { b.v = v; return b; });
 
+const { link, unlink, propagate, checkDirty, shallowPropagate, } = createReactiveSystem({
+    update(node) {
+        if ('getter' in node) {
+            return updateComputed(node);
+        }
+        if ('currentValue' in node) {
+            return updateSignal(node);
+        }
+        node.flags = 1;
+        return true;
+    },
+    notify(effect) {
+        let insertIndex = queuedLength;
+        let firstInsertedIndex = insertIndex;
+        do {
+            queued[insertIndex++] = effect;
+            effect.flags &= ~2;
+            effect = effect.subs?.sub;
+            if (effect === undefined || !(effect.flags & 2)) {
+                break;
+            }
+        } while (true);
+        queuedLength = insertIndex;
+        while (firstInsertedIndex < --insertIndex) {
+            const left = queued[firstInsertedIndex];
+            queued[firstInsertedIndex++] = queued[insertIndex];
+            queued[insertIndex] = left;
+        }
+    },
+    unwatched(node) {
+        if ('getter' in node) {
+            if (node.depsTail !== undefined) {
+                node.flags = 1 | 16;
+                disposeAllDepsInReverse(node);
+            }
+        }
+        else if ('currentValue' in node) {
+        }
+        else if ('fn' in node) {
+            effectOper.call(node);
+        }
+        else {
+            effectScopeOper.call(node);
+        }
+    },
+});
+function updateComputed(c) {
+    if (c.flags & HasChildEffect) {
+        let link = c.depsTail;
+        while (link !== undefined) {
+            const prev = link.prevDep;
+            const dep = link.dep;
+            if (!('getter' in dep) && !('currentValue' in dep)) {
+                unlink(link, c);
+            }
+            link = prev;
+        }
+    }
+    c.depsTail = undefined;
+    c.flags = 1 | 4;
+    const prevSub = setActiveSub(c);
+    try {
+        ++cycle;
+        const oldValue = c.value;
+        return oldValue !== (c.value = c.getter(oldValue));
+    }
+    finally {
+        activeSub = prevSub;
+        c.flags &= ~4;
+        purgeDeps(c);
+    }
+}
+function updateSignal(s) { s.flags = 1; return s.currentValue !== (s.currentValue = s.pendingValue);}
+function run(e) {
+    const flags = e.flags;
+    if (flags & 16
+        || (flags & 32
+            && checkDirty(e.deps, e))) {
+        if (flags & HasChildEffect) {
+            let link = e.depsTail;
+            while (link !== undefined) {
+                const prev = link.prevDep;
+                const dep = link.dep;
+                if (!('getter' in dep) && !('currentValue' in dep)) {
+                    unlink(link, e);
+                }
+                link = prev;
+            }
+        }
+        if (e.cleanup) {
+            runCleanup(e);
+            if (!e.flags) {
+                return;
+            }
+        }
+        e.depsTail = undefined;
+        e.flags = 2 | 4;
+        const prevSub = setActiveSub(e);
+        try {
+            ++cycle;
+            ++runDepth;
+            e.cleanup = e.fn();
+        }
+        finally {
+            --runDepth;
+            activeSub = prevSub;
+            e.flags &= ~4;
+            purgeDeps(e);
+        }
+    }
+    else if (e.deps !== undefined) {
+        e.flags = 2 | (flags & HasChildEffect);
+    }
+}
+function flush() {
+    try {
+        while (notifyIndex < queuedLength) {
+            const effect = queued[notifyIndex];
+            queued[notifyIndex++] = undefined;
+            run(effect);
+        }
+    }
+    finally {
+        while (notifyIndex < queuedLength) {
+            const effect = queued[notifyIndex];
+            queued[notifyIndex++] = undefined;
+            effect.flags |= 2 | 8;
+        }
+        notifyIndex = 0;
+        queuedLength = 0;
+    }
+}
+function computedOper() {
+    const flags = this.flags;
+    if (flags & 16
+        || (flags & 32
+            && (checkDirty(this.deps, this)
+                || (this.flags = flags & ~32, false)))) {
+        if (updateComputed(this)) {
+            const subs = this.subs;
+            if (subs !== undefined) {
+                shallowPropagate(subs);
+            }
+        }
+    }
+    else if (!flags) {
+        this.flags = 1 | 4;
+        const prevSub = setActiveSub(this);
+        try {
+            this.value = this.getter();
+        }
+        finally {
+            activeSub = prevSub;
+            this.flags &= ~4;
+        }
+    }
+    const sub = activeSub;
+    if (sub !== undefined) {
+        link(this, sub, cycle);
+    }
+    return this.value;
+}
+function signalOper(...value) {
+    if (value.length) {
+        if (this.pendingValue !== (this.pendingValue = value[0])) {
+            this.flags = 1 | 16;
+            const subs = this.subs;
+            if (subs !== undefined) {
+                propagate(subs, !!runDepth);
+                if (!batchDepth) {
+                    flush();
+                }
+            }
+        }
+    }
+    else {
+        if (this.flags & 16) {
+            if (updateSignal(this)) {
+                const subs = this.subs;
+                if (subs !== undefined) {
+                    shallowPropagate(subs);
+                }
+            }
+        }
+        const sub = activeSub;
+        if (sub !== undefined) {
+            link(this, sub, cycle);
+        }
+        return this.currentValue;
+    }
+}
+function runCleanup(e) {
+    const cleanup = e.cleanup;
+    e.cleanup = undefined;
+    const prevSub = activeSub;
+    activeSub = undefined;
+    try {
+        cleanup();
+    }
+    finally {
+        activeSub = prevSub;
+    }
+}
+function effectOper() { effectScopeOper.call(this); if (this.cleanup) { runCleanup(this); }
+}
+function effectScopeOper() {
+    this.flags = 0;
+    disposeAllDepsInReverse(this);
+    const sub = this.subs;
+    if (sub !== undefined) {
+        unlink(sub);
+    }
+}
+function disposeAllDepsInReverse(sub) {
+    let link = sub.depsTail;
+    while (link !== undefined) {
+        const prev = link.prevDep;
+        unlink(link, sub);
+        link = prev;
+    }
+}
+function purgeDeps(sub) {
+    const depsTail = sub.depsTail;
+    let dep = depsTail !== undefined ? depsTail.nextDep : sub.deps;
+    while (dep !== undefined) {
+        dep = unlink(dep, sub);
+    }
+}
+function makeRx<T>(id: string, b: Binding<T>): Rx<T> {
+	const fn = (...args: [] | [T]) => {
+		if (args.length === 0) return b.v;
+		set(id, args[0]);
+	};
+
+	const r = fn as unknown as Rx<T>;
+	Object.defineProperties(r, { id: { value: id }, node: { value: b.node }, el: { value: b.el } });
+
+	b.write(b.v);
+	rx.s(b, id);
+
+	r.attach = (parent) => { for (const n of b.owned) parent.appendChild(n); return r; };
+	r.dispose = () => {
+		rx.d(id);
+		_signals_root.unmount.delete(r.dispose); // idempotent under a second call
+		for (const n of b.owned) n.parentNode?.removeChild(n);
+	};
+
+	_signals_root.unmount.add(r.dispose);
+
+	return r;
+}
+export function getActiveSub() { return activeSub;}
+export function setActiveSub(sub) { const prevSub = activeSub; activeSub = sub; return prevSub;}
+export function getBatchDepth() { return batchDepth;}
+export function startBatch() { ++batchDepth;}
+export function endBatch() { if (!--batchDepth) { flush(); }}
+export function isSignal(fn) { return fn.name === 'bound ' + signalOper.name;}
+export function isComputed(fn) { return fn.name === 'bound ' + computedOper.name;}
+export function isEffect(fn) { return fn.name === 'bound ' + effectOper.name;}
+export function isEffectScope(fn) { return fn.name === 'bound ' + effectScopeOper.name;}
+
+export function computed(getter) {
+    return computedOper.bind({
+        value: undefined,
+        subs: undefined,
+        subsTail: undefined,
+        deps: undefined,
+        depsTail: undefined,
+        flags: 0,
+        getter: getter,
+    });
+}
+export function effect(fn) {
+    const e = {
+        fn,
+        cleanup: undefined,
+        subs: undefined,
+        subsTail: undefined,
+        deps: undefined,
+        depsTail: undefined,
+        flags: 2 | 4,
+    };
+    const prevSub = setActiveSub(e);
+    if (prevSub !== undefined) {
+        link(e, prevSub, 0);
+        prevSub.flags |= HasChildEffect;
+    }
+    try {
+        ++runDepth;
+        e.cleanup = e.fn();
+    }
+    finally {
+        --runDepth;
+        activeSub = prevSub;
+        e.flags &= ~4;
+    }
+    return effectOper.bind(e);
+}
+export function effectScope(fn) {
+    const e = {
+        deps: undefined,
+        depsTail: undefined,
+        subs: undefined,
+        subsTail: undefined,
+        flags: 1,
+    };
+    const prevSub = setActiveSub(e);
+    if (prevSub !== undefined) {
+        link(e, prevSub, 0);
+        prevSub.flags |= HasChildEffect;
+    }
+    try {
+        fn();
+    }
+    finally {
+        activeSub = prevSub;
+    }
+    return effectScopeOper.bind(e);
+}
+export function trigger(fn) {
+    const sub = {
+        deps: undefined,
+        depsTail: undefined,
+        flags: 2,
+    };
+    const prevSub = setActiveSub(sub);
+    try {
+        fn();
+    }
+    finally {
+        activeSub = prevSub;
+        sub.flags = 0;
+        let link = sub.deps;
+        while (link !== undefined) {
+            const dep = link.dep;
+            link = unlink(link, sub);
+            const subs = dep.subs;
+            if (subs !== undefined) {
+                propagate(subs, !!runDepth);
+                shallowPropagate(subs);
+            }
+        }
+        if (!batchDepth) {
+            flush();
+        }
+    }
+}
+export function createReactiveSystem({ update, notify, unwatched, }) {
+    return {
+        link,
+        unlink,
+        propagate,
+        checkDirty,
+        shallowPropagate,
+    };
+    function link(dep, sub, version) {
+        const prevDep = sub.depsTail;
+        if (prevDep !== undefined && prevDep.dep === dep) {
+            return;
+        }
+        const nextDep = prevDep !== undefined ? prevDep.nextDep : sub.deps;
+        if (nextDep !== undefined && nextDep.dep === dep) {
+            nextDep.version = version;
+            sub.depsTail = nextDep;
+            return;
+        }
+        const prevSub = dep.subsTail;
+        if (prevSub !== undefined && prevSub.version === version && prevSub.sub === sub) {
+            return;
+        }
+        const newLink = sub.depsTail
+            = dep.subsTail
+                = {
+                    version,
+                    dep,
+                    sub,
+                    prevDep,
+                    nextDep,
+                    prevSub,
+                    nextSub: undefined,
+                };
+        if (nextDep !== undefined) {
+            nextDep.prevDep = newLink;
+        }
+        if (prevDep !== undefined) {
+            prevDep.nextDep = newLink;
+        }
+        else {
+            sub.deps = newLink;
+        }
+        if (prevSub !== undefined) {
+            prevSub.nextSub = newLink;
+        }
+        else {
+            dep.subs = newLink;
+        }
+    }
+    function unlink(link, sub = link.sub) {
+        const { dep, prevDep, nextDep, nextSub, prevSub } = link;
+        if (nextDep !== undefined) {
+            nextDep.prevDep = prevDep;
+        }
+        else {
+            sub.depsTail = prevDep;
+        }
+        if (prevDep !== undefined) {
+            prevDep.nextDep = nextDep;
+        }
+        else {
+            sub.deps = nextDep;
+        }
+        if (nextSub !== undefined) {
+            nextSub.prevSub = prevSub;
+        }
+        else {
+            dep.subsTail = prevSub;
+        }
+        if (prevSub !== undefined) {
+            prevSub.nextSub = nextSub;
+        }
+        else if ((dep.subs = nextSub) === undefined) {
+            unwatched(dep);
+        }
+        return nextDep;
+    }
+    function propagate(link, innerWrite) {
+        let next = link.nextSub;
+        let stack;
+        top: do {
+            const sub = link.sub;
+            let flags = sub.flags;
+            if (!(flags & (4 | 8 | 16 | 32))) {
+                sub.flags = flags | 32;
+                if (innerWrite) {
+                    sub.flags |= 8;
+                }
+            }
+            else if (!(flags & (4 | 8))) {
+                flags = 0;
+            }
+            else if (!(flags & 4)) {
+                sub.flags = (flags & ~8) | 32;
+            }
+            else if (!(flags & (16 | 32)) && isValidLink(link, sub)) {
+                sub.flags = flags | (8 | 32);
+                flags &= 1;
+            }
+            else {
+                flags = 0;
+            }
+            if (flags & 2) {
+                notify(sub);
+            }
+            if (flags & 1) {
+                const subSubs = sub.subs;
+                if (subSubs !== undefined) {
+                    const nextSub = (link = subSubs).nextSub;
+                    if (nextSub !== undefined) {
+                        stack = { value: next, prev: stack };
+                        next = nextSub;
+                    }
+                    continue;
+                }
+            }
+            if ((link = next) !== undefined) {
+                next = link.nextSub;
+                continue;
+            }
+            while (stack !== undefined) {
+                link = stack.value;
+                stack = stack.prev;
+                if (link !== undefined) {
+                    next = link.nextSub;
+                    continue top;
+                }
+            }
+            break;
+        } while (true);
+    }
+    function checkDirty(link, sub) {
+        let stack;
+        let checkDepth = 0;
+        let dirty = false;
+        top: do {
+            const dep = link.dep;
+            const flags = dep.flags;
+            if (sub.flags & 16) {
+                dirty = true;
+            }
+            else if ((flags & (1 | 16)) === (1 | 16)) {
+                const subs = dep.subs;
+                if (update(dep)) {
+                    if (subs.nextSub !== undefined) {
+                        shallowPropagate(subs);
+                    }
+                    dirty = true;
+                }
+            }
+            else if ((flags & (1 | 32)) === (1 | 32)) {
+                stack = { value: link, prev: stack };
+                link = dep.deps;
+                sub = dep;
+                ++checkDepth;
+                continue;
+            }
+            if (!dirty) {
+                const nextDep = link.nextDep;
+                if (nextDep !== undefined) {
+                    link = nextDep;
+                    continue;
+                }
+            }
+            while (checkDepth--) {
+                link = stack.value;
+                stack = stack.prev;
+                if (dirty) {
+                    const subs = sub.subs;
+                    if (update(sub)) {
+                        if (subs.nextSub !== undefined) {
+                            shallowPropagate(subs);
+                        }
+                        sub = link.sub;
+                        continue;
+                    }
+                    dirty = false;
+                }
+                else {
+                    sub.flags &= ~32;
+                }
+                sub = link.sub;
+                const nextDep = link.nextDep;
+                if (nextDep !== undefined) {
+                    link = nextDep;
+                    continue top;
+                }
+            }
+            return dirty && !!sub.flags;
+        } while (true);
+    }
+    function shallowPropagate(link) {
+        do {
+            const sub = link.sub;
+            const flags = sub.flags;
+            if ((flags & (32 | 16)) === 32) {
+                sub.flags = flags | 16;
+                if ((flags & (2 | 4)) === 2) {
+                    notify(sub);
+                }
+            }
+        } while ((link = link.nextSub) !== undefined);
+    }
+    function isValidLink(checkLink, sub) {
+        let link = sub.depsTail;
+        while (link !== undefined) {
+            if (link === checkLink) {
+                return true;
+            }
+            link = link.prevDep;
+        }
+        return false;
+    }
+}
+export function signal(initialValue) {
+    return signalOper.bind({
+        currentValue: initialValue,
+        pendingValue: initialValue,
+        subs: undefined,
+        subsTail: undefined,
+        flags: 1,
+    });
+}
+export function signalRx<T>(): Rx<T | undefined>;
+export function signalRx<T>(initialValue: T, injectDom?: boolean): Rx<T>;
+export function signalRx<T>(initialValue?: T, injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
+	const el = injectDom ? document.createElement('span') : null;
+	el?.setAttribute('data-sid', __sauron_id__);
+
+	return makeRx(__sauron_id__, {
+		v: initialValue, node: el, el, owned: el ? [el] : [],
+		write(v) { if (el) el.textContent = str(v); },
+	});
+}
+export function signalRxTxt<T>(): Rx<T | undefined>;
+export function signalRxTxt<T>(initialValue: T, node?: Node, injectDom?: boolean): Rx<T>;
+export function signalRxTxt<T>(initialValue?: T, node?: Node, injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
+	let text = (node as Text | null) ?? null;
+	const owned: Node[] = [];
+
+	if (!text && injectDom) owned.push(document.createComment(__sauron_id__), (text = document.createTextNode('')));
+
+	return makeRx(__sauron_id__, {
+		v: initialValue, node: text, el: text?.parentElement ?? null, owned,
+		write(v) { if (text) text.data = str(v); },
+	});
+}
+export function signalRxAtr<T>(): Rx<T | undefined>;
+export function signalRxAtr<T>(initialValue: T, node?: Element, attributeName?: string, injectDom?: boolean): Rx<T>;
+export function signalRxAtr<T>(initialValue?: T, node?: Element, attributeName = 'value',
+	injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
+
+	if (node && injectDom && !node.hasAttribute('data-sid')) node.setAttribute('data-sid', __sauron_id__);
+	const live = node instanceof HTMLInputElement && attributeName === 'value' ? node : null;
+
+	return makeRx(__sauron_id__, {
+		v: initialValue, node, el: node ?? null, owned: [],
+		write(v) {
+			if (!node) return;
+			if (v == null || v === false) node.removeAttribute(attributeName);
+			else node.setAttribute(attributeName, v === true ? '' : str(v));
+			if (live && live.value !== str(v) && document.activeElement !== live) live.value = str(v);
+		},
+	});
+}
+export function scanRoot(root: ParentNode = document, componentId = _signals_root.id) {
+	const out: Record<string, string | null> = Object.create(null);
+
+	for (const el of root.querySelectorAll('[data-sid]')) {
+		out[el.getAttribute('data-sid')!] = el.getAttribute('value') ?? el.textContent;
+	}
+
+	const w = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
+	while (w.nextNode()) {
+		const c = w.currentNode as Comment;
+		if (c.data.startsWith('rx')) out[c.data] = c.nextSibling?.textContent ?? null;
+	}
+
+	return out;
+}
+// #endregion
+//                                                                                                [DARTH MAUL] DISRPTOR SIGNALS
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class SIGNALS {
 	public root: DEATH_STAR
-	constructor(root: DEATH_STAR) { this.root = root }
+	public r: A = "THE_WIZARD_ROOT_REG";
+	public m: A = "SAURON_MASTER_REG";
+	public s: A = "SAURON_SLAVE_REG";
+	public k: A = "__SAURON__";
 
-	public r2x = new (class R2X {// EXAMPLE CLASS SHAPE
-		public hub: DEATH_STAR
-		public signals: SIGNALS
-		constructor(s: SIGNALS) {
-			this.hub = s.root
-			this.signals = s
+	public hub: DEATH_STAR
+	public signals: SIGNALS
+
+	public selfId: S
+	#SIGNAL_CELLS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
+	public _signal_cells: Record<S, A>
+
+	#SIGNAL_LISTENERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
+	public _signal_listeners: Record<S, Set<(value: A) => void>>;
+
+	#SIGNAL_GLOBAL_LISTENERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
+	public _signal_global_listeners: Record<S, Set<(key: A, value: A) => void>>;
+
+	#SIGNAL_WAITERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
+	public _signal_waiters: Record<S, Set<(value: A) => void>>;
+
+	#SIGNAL_PERSISTENT: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
+	
+	public _signal_persistent: Record<S, A>
+	#SIGNAL_PERSISTENT_KEYS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
+	public _signal_persistent_keys: Record<S, A>
+	
+	public get_(c:S = "signal_cells") {
+		let _
+		switch (c) {
+			case "signal_cells": { _ = this._signal_cells; break; }
+			case "signal_listeners": { _ = this._signal_listeners; break; }
+			case "signal_global_listeners": { _ = this._signal_global_listeners; break; }
+			case "signal_waiters": { _ = this._signal_waiters; break; }
+			case "signal_persistent": { _ = this._signal_persistent; break; }
+			case "signal_persistent_keys": { _ = this._signal_persistent_keys; break; }
+			default: {  break; }
 		}
-
-		
-
-	})(this);
-	public R21 = class R2X {
-        public hub: DEATH_STAR;
-        public signals: SIGNALS;
-
-        constructor(s: SIGNALS) {
-            this.hub = s.root;
-            this.signals = s;
-        }
-    };
-	public rx = new (class RX {// REACTIVE ENGINE
-		public root: DEATH_STAR
-		public hub: SIGNALS
-		public signals: SIGNALS["signals"]
-		constructor(s: SIGNALS) { 
-			this.root = s.root;
-			this.hub = s;
-			this.signals = s.signals;
-		 }
-		
-		private batchDepth = 0;
-		private openScopes = new Set<BatchScope>();
-		private dirty = new Set<FlushCallback>();
-		private _flushScheduled = false;
-		private _adapter: RuntimeAdapter | null = null;
-		private _currentHookState: HookState | null = null;
-		private _currentComponent: ComponentInstance | null = null;
-		private PRIORITY_ORDER: Priority[] = ["immediate", "user-blocking", "normal", "background", "idle"];
-		private GLOBAL_SCOPE = Symbol("global-scope");
-		private scopeCursors: Record<Priority, number> = { immediate: 0, "user-blocking": 0, normal: 0, background: 0, idle: 0 };
-		private currentScope: symbol | string = this.GLOBAL_SCOPE;
-		private loopScheduled = false;
-		private _subscribers = new Map<string, Set<() => void>>();
-		private _components = new Map<string, ComponentInstance>();
-		private _pendingNotifications = new Set<string>();
-		private externalSubscribers = new Set<() => void>();
-		private _externalSubscribers = new Map<string, Map<string, Map<string, Map<SignalKey, Set<(value: A) => void>>>>>();
-		isSignal(fn: () => V): B {	return fn.name === 'bound ' + signalOper.name;}
-		isComputed(fn: () => V): B { return fn.name === 'bound ' + computedOper.name;}
-		isEffect(fn: () => V): B {	return fn.name === 'bound ' + effectOper.name;}
-		isEffectScope(fn: () => V): B {	return fn.name === 'bound ' + effectScopeOper.name;}
-		public notifyHook(key: string) {
-			this._pendingNotifications.add(key);
-			if (!this._flushScheduled) {
-				this._flushScheduled = true;
-				queueMicrotask(this._flushHookNotifications);
+		return _
+	}
+	public getHash(c:S = "signal_cells", r:S = this.r) {
+		let root;
+		switch (c) {
+			case "signal_cells": { root = this.#SIGNAL_CELLS[r]; break; }
+			case "signal_listeners": { root = this.#SIGNAL_LISTENERS[r]; break; }
+			case "signal_global_listeners": { root = this.#SIGNAL_GLOBAL_LISTENERS[r]; break; }
+			case "signal_waiters": { root = this.#SIGNAL_WAITERS[r]; break; }
+			case "signal_persistent": { root = this.#SIGNAL_PERSISTENT[r]; break; }
+			case "signal_persistent_keys": { root = this.#SIGNAL_PERSISTENT_KEYS[r]; break; }
+			default: {  break; }
+		}
+		return root
+	}
+	public get_root(c: S = "signal_cells", r: S) {
+		let root;
+		switch (c) {
+			case "signal_cells": { root = this.#SIGNAL_CELLS[r]; break; }
+			case "signal_listeners": { root = this.#SIGNAL_LISTENERS[r]; break; }
+			case "signal_global_listeners": { root = this.#SIGNAL_GLOBAL_LISTENERS[r]; break; }
+			case "signal_waiters": { root = this.#SIGNAL_WAITERS[r]; break; }
+			case "signal_persistent": { root = this.#SIGNAL_PERSISTENT[r]; break; }
+			case "signal_persistent_keys": { root = this.#SIGNAL_PERSISTENT_KEYS[r]; break; }
+		}
+		if (!root) {
+			root = Object.create(null);
+			switch (c) {
+				case "signal_cells": { this.#SIGNAL_CELLS[r] = root; break; }
+				case "signal_listeners": { this.#SIGNAL_LISTENERS[r] = root; break; }
+				case "signal_global_listeners": { this.#SIGNAL_GLOBAL_LISTENERS[r] = root; break; }
+				case "signal_waiters": { this.#SIGNAL_WAITERS[r] = root; break; }
+				case "signal_persistent": { this.#SIGNAL_PERSISTENT[r] = root; break; }
+				case "signal_persistent_keys": { this.#SIGNAL_PERSISTENT_KEYS[r] = root; break; }
 			}
 		}
-		public subscribeToHook(key: string, cb: () => void): () => void {
-			if (!this._subscribers.has(key)) this._subscribers.set(key, new Set());
-			this._subscribers.get(key)!.add(cb);
-			return () => {
-				this._subscribers.get(key)?.delete(cb);
-				if (this._subscribers.get(key)?.size === 0) this._subscribers.delete(key);
+		return root;
+	}
+	public getS(s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") {
+		const rL = this.get_root(c, r);
+		const mL = (rL[m] ??= Object.create(null));
+		const sL = (mL[s] ??= Object.create(null));
+		return sL;
+	}
+	public getM(m: S = this.m, r: S = this.r, c = "signal_cells") {
+		const rL = this.get_root(c, r);
+		const mL = (rL[m] ??= Object.create(null));
+		return mL;
+	}
+	public getR(r: S = this.r, c = "signal_cells") {
+		const rL = this.get_root(c, r); 
+		return rL;
+	}
+	public get = (() => {
+		const fn = <T = A>(k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
+			const rL = this.get_root(c, r);
+			const mL = (rL[m] ??= Object.create(null));
+			const registry = (mL[s] ??= Object.create(null));
+			const z = registry[k];
+			if (!z) return
+			else return z
+		}
+		return fn;
+	})();
+	getHot(k: S) {
+		   return this._signal_cells[k];
+	}
+	public read = (() => {
+		const fn = <T = A>(k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
+			const rL = this.get_root(c, r);
+			const mL = (rL[m] ??= Object.create(null));
+			const registry = (mL[s] ??= Object.create(null));
+			const z = registry[k];
+			if (!z) return
+			else return z
+		}
+		 
+		return fn;
+	})();
+	readHot(k: S)  {
+		 return this._signal_cells[k];
+	}
+	public write = (() => {
+		const fn = <T = A>(v: T | (() => T), k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
+			const rL = this.get_root(c, r);
+			const mL = (rL[m] ??= Object.create(null));
+			const registry = (mL[s] ??= Object.create(null));
+			const t = UF(v);
+			const atom = signal(t);
+			registry[k] = atom;
+			return atom;
+		} 
+		return fn;
+	})();
+	setHot<T = A>(v: T | (() => T), k: S)   {
+		const registry = this._signal_cells
+		const t = UF(v);
+		const atom = signal(t);
+		registry[k] = atom;
+		return atom;
+	}
+	public notifyKeyListeners(key: A, value: A | UD, opts: ScopeOptions): void {
+		const listeners = this._signal_listeners[key];
+		if (!listeners) return;
+		for (const listener of listeners) {
+			try { listener(value); }
+			catch (err) { console.error(`[Sauron Signal Listener Error]:`, err); }
+		}
+	}
+	public scheduleGlobalNotify(key: A, value: A | UD, opts: ScopeOptions): void {
+		const globalListeners = this._signal_global_listeners["_signal_global_listeners_raven"];
+		if (globalListeners) {
+			for (const listener of globalListeners) {
+				try { listener(key, value); }
+				catch (err) { console.error(`[Sauron Signal Global Listener Error]:`, err); }
+			}
+		}
+	
+		const waiters = this._signal_waiters[key];
+		if (waiters) {
+			const resolved = Array.from(waiters);
+			delete this._signal_waiters[key];
+			for (const resolve of resolved) {
+				try { resolve(value); }
+				catch (err) { console.error(`[Sauron Signal Waiter Error]:`, err); }
+			}
+		}
+	}
+	private notifyAll( key: A, value: A | UD, opts: ScopeOptions,	): void {
+		this.notifyKeyListeners(key, value, opts);
+		this.scheduleGlobalNotify(key, value, opts);
+	}
+	public atom = (() => {
+		const fn = <T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.reg._sid()}`, s = this.s, m = this.m, r = this.r, ) => {
+			return {
+				get value(): T { return this.signal(undefined, k, s, m, r); },
+				get current(): T { return this.signal(undefined, k, s, m, r); },
+				peek(): T { return this.signal(undefined, k, s, m, r); },
+				set value(v: T) { this.signal(v, k, s, m, r); },
+				set current(v: T) { this.signal(v, k, s, m, r); },
+				set crt(v: T) { this.signal(v, k, s, m, r); },
+				set set(v: T) { this.signal(v, k, s, m, r); },
 			};
 		}
-		public endHookDependencyCapture() { this._currentHookState = null;	}
-		public beginHookDependencyCapture(hook: HookState) { this._currentHookState = hook;	}
-		public registerDOMBinding(node: Node, update: (node: Node, value: A) => void) {
-			const hook = this._currentHookState;
-			if (!hook) return;
-			const binding = { node, update, active: true };
-			if (!hook.bindings) { hook.bindings = new Set(); }
-			hook.bindings.add(binding);
-			const anyNode = node as A;
-			if (!anyNode.__sauron_bindings__) { anyNode.__sauron_bindings__ = new Set(); }
-			anyNode.__sauron_bindings__.add(hook);
-			return () => {
-				if (!binding.active) return;
-				binding.active = false;
-				hook.bindings?.delete(binding);
-				anyNode.__sauron_bindings__?.delete(hook);
+		fn.hot = <T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.reg._sid()}`, s = this.s, m = this.m, r = this.r, )  => {
+			return {
+				get value(): T { return this.signal.hot(k); },
+				get current(): T { return this.signal.hot(k); },
+				peek(): T { return this.signal.hot(k); },
+				set value(v: T) { this.signal.hot(k, v); },
+				set current(v: T) { this.signal.hot(k, v); },
+				set crt(v: T) { this.signal.hot(k, v); },
+				set set(v: T) { this.signal.hot(k, v); },
 			};
 		}
-		public setCurrentComponent(instance: ComponentInstance | null) { this._currentComponent = instance;	}
-		public registerDOMRef(name: string, node: Node) {
-			if (!this._currentHookState) return;
-			if (!this._currentHookState.domRefs) this._currentHookState.domRefs = new Map();
-			this._currentHookState.domRefs.set(name, node);
-		}
-		public getDOMRef(name: string): Node | undefined {
-			if (!this._currentHookState || !this._currentHookState.domRefs) return undefined;
-			return this._currentHookState.domRefs.get(name);
-		}
-		public getCurrentComponent = (): ComponentInstance => {
-			if (isReact === true && IS_THE_WIZARD === false) {
-				if (this._currentComponent) return this._currentComponent;
-				return _root;
-			} else {
-				if (!init_hooks_context) {
-					this.signals.state.set("_root", _root,  {s: this.signals.s, m: this.signals.m, r: this.signals.r});
-					init_hooks_context = true;
-				}
-				const updated_ctx = this.signals.state.get("_root",  {s: this.signals.s, m: this.signals.m, r: this.signals.r}) as ComponentInstance;
-				if (updated_ctx && updated_ctx.id === this.signals.r) return updated_ctx;
-				else return _root;
+		return fn;
+	})();
+	public signal = (() => {
+		const fn = <T = A,>(v: T | (() => T), k: SignalKey, s = this.s, m = this.m, r = this.r, c = "signal_cells") => {
+			const rL = this.get_root(c, r);
+			const mL = (rL[m] ??= Object.create(null));
+			const registry = (mL[s] ??= Object.create(null));
+			let atom = registry[k];
+	
+			if (atom && v === undefined) { return atom; }
+			if (atom && v !== undefined) {
+				const t = UF(v);
+				registry[k] = t;
+				return t;
 			}
+	
+			const initialValue = UF(v);
+			atom = signal(initialValue);
+			registry[k] = atom;
+			return atom;
 		};
-		public unmountComponent(id: string) {
-			const instance = this._components.get(id);
-			if (!instance) return;
-			for (const dispose of instance.unmount) {
-				try { dispose(); } 
-				catch (error) { console.error(`[THE_CLOUD][UNMOUNT] cleanup failed for "${id}":`, error); }
+		fn.hot = <T = A,>(k: SignalKey, v?: T | (() => T)) => {
+			const registry = this._signal_cells;
+			let atom = registry[k];
+	
+			if (atom && v === undefined) { return atom; }
+			if (atom && v !== undefined) {
+				const t = UF(v);
+				registry[k] = t;
+				return t;
 			}
-			instance.unmount.clear();
-			for (const hook of instance.hooks.values()) {
-				try { hook.cleanup?.(); }
-				catch (error) {  console.error(`[THE_CLOUD][UNMOUNT] hook cleanup failed for "${id}":`, error); }
-			}
-			instance.hooks.clear();
-			this._components.delete(id);
-		}
-		public mountComponent(id: string, renderFn?: () => void): ComponentInstance {
-			const instance: ComponentInstance = { id, hooks: new Map(), unmount: new Set(), render: renderFn, };
-			this._components.set(id, instance);
-			return instance;
-		}
-		public hmrPreserve(): Map<string, Map<string, A>> {
-			const snapshot = new Map<string, Map<string, A>>();
-			this._components.forEach((instance, id) => {
-				const hooks = new Map<string, A>();
-				instance.hooks.forEach((state, key) => { hooks.set(key, state.value); });
-				snapshot.set(id, hooks);
-			});
-			return snapshot;
-		}
-		public hmrRestore(snapshot: Map<string, Map<string, A>>) {
-			snapshot.forEach((hooks, id) => {
-				const instance = this._components.get(id);
-				if (!instance) return;
-				hooks.forEach((value, key) => {
-					const state = instance.hooks.get(key);
-					if (state) state.value = value;
-				});
-			});
-		}
-		public _devRecord: ((componentId: string, hookName: string, sauronId: string, key: string, value: A) => void) | null = null;
-		public devRecord(componentId: string, hookName: string, sauronId: string, key: string, value: A) {
-			return this._devRecord?.(componentId, hookName, sauronId, key, value);
-		}
-		public registerDevRecorder(fn: typeof this._devRecord) { this._devRecord = fn;	}
-		public rerender = (key?: string): void => {
-			if (key !== undefined) {
-				//   const hs = graphHookStates.get(key);
-				// if (hs) notifyHook(`${GRAPH_BRIDGE_COMPONENT_ID}:${key}`);
-				this.notifyHook(key);
-			} else {
-				this.flushSync();
-			}
+	
+			const initialValue = UF(v);
+			atom = signal(initialValue);
+			registry[k] = atom;
+			return atom;
 		};
-		public flushHookKey = (key: string) => {
-			const [componentId] = key.split(":");
-			/**
-			 * Store/global synthetic hook keys do not map to a component hook state.
-			 * They simply notify subscribers.
-			 */
-			if (componentId === "store") {
-				this._subscribers.get(key)?.forEach((callback: A) => {
-					if (typeof callback !== "function") return;
-					callback();
-					this.onFlush(callback);
-				});
-				return;
+		return fn;
+	})();
+	public store = {
+		get: <T = A,>(key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | UD => {
+			const { s, m, r } = opts;
+			const value = this.get<T>(key, s, m, r);
+	
+			if (value !== undefined) {
+				return MaybePromise(value);
 			}
 	
-			const component = this._components.get(componentId) ?? _root;
-			const hook = component?.hooks.get(key);
+			const persistent = this._signal_persistent;
+			const persistKeys = this._signal_persistent_keys;
 	
-			/**
-			 * Prefer direct DOM binding updates where bindings exist.
-			 */
-			if (hook?.bindings && hook.bindings.size > 0) {
-				for (const binding of hook.bindings) {
-					if (!binding.active) continue;
-	
-					binding.update(binding.node, hook.value);
-				}
-	
-				return;
-			}
-			this._subscribers.get(key)?.forEach((callback: A) => {
-				if (typeof callback !== "function") return;
-	
-				callback();
-				this.onFlush(callback);
-			});
-		};
-		public _flushHookNotifications = () => {
-			this._flushScheduled = false;
-			const keys = Array.from(this._pendingNotifications);
-			this._pendingNotifications.clear();
-	
-			for (const key of keys) {
-				this.flushHookKey(key);
-			}
-		};
-		public readonly instanceId: string = `instance_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-		public onFlush(cb: FlushCallback): void { this.dirty.add(cb); this.scheduleDrain();	}
-		public scheduleDrain(): void {
-			if (this._flushScheduled) return;
-			this._flushScheduled = true;
-			queueMicrotask(this.drain);
-		}
-		public drain(): void {
-			this._flushScheduled = false;
-			if (this.dirty.size === 0) return;
-	
-			// An explicit openBatch() scope is still open (deliberately spanning an await) —
-			// don't drop the pending callbacks, just wait for closeBatch() to let them through.
-			if (this.openScopes.size > 0) {
-				this.scheduleDrain();
-				return;
+			if (key in persistKeys && key in persistent) {
+				const hydrated = persistent[key] as T;
+				this.write(hydrated, key, s, m, r);
+				return MaybePromise(hydrated);
 			}
 	
-			const callbacks = this.dirty;
-			this.dirty = new Set();
-			for (const cb of callbacks) cb();
-		}
-		public microtask(fn: FlushCallback): void {	 queueMicrotask(fn); }
-		public batch<T>(fn: () => T): T {
-			this.batchDepth++;
-			try {
-				return fn();
-			} finally {
-				this.batchDepth--;
-				if (this.batchDepth === 0) {
-					this.flush();
-				}
+			return MaybePromise(undefined);
+		},
+		set: <T = A,>( key: A, value: T | ((prev: T | UD) => T), opts: { triggerRender?: B; cap?: N } & ScopeOptions = { s: this.s, m: this.m, r: this.r, triggerRender: true, cap: 200 }, ): T | UD => {
+			const { triggerRender = true, s, m, r } = opts;
+			const prev = this.get<T>(key, s, m, r);
+			const next = typeof value === "function" ? (value as (prev: T | UD) => T)(prev) : value;
+			if (Object.is(prev, next)) { return MaybePromise(prev as T); }
+			this.write(next, key, s, m, r);
+			if (key in this._signal_persistent_keys) { this._signal_persistent[key] = next; }
+			this.notifyKeyListeners(key, next as A, { s, m, r });
+			if (triggerRender) { this.scheduleGlobalNotify(key, next as A, { s, m, r }); }
+			return MaybePromise(next as T);
+		},
+		subscribe: <T = A,>( key: A,  listener: (value: T) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }, ): (() => void) => {
+			const listeners = this._signal_listeners;
+	
+			if (!(key in listeners)) {
+				listeners[key] = new Set();
 			}
-		}
-		public openBatch(): BatchScope {
-			const scope: BatchScope = Symbol("batch-scope");
-			this.openScopes.add(scope);
-			return scope;
-		}
-		public closeBatch(scope: BatchScope): void {
-			this.openScopes.delete(scope);
-			if (this.openScopes.size === 0 && this.dirty.size > 0) { this.scheduleDrain(); }
-		}
-		public isBatching(): boolean { return this.batchDepth > 0 || this.openScopes.size > 0;	}
-		public flushSync(): void {
-			if (this.openScopes.size > 0) return;
-			this._flushScheduled = false;
-			if (this.dirty.size === 0) return;
-			const callbacks = this.dirty;
-			this.dirty = new Set();
-			for (const cb of callbacks) cb();
-		}
-		public flush<T>(fn?: () => T): T | void {
-			if (!fn) { this.flushSync(); return; }
-			this.batchDepth++;
-			let result: T;
-			try { result = fn(); } 
-			finally { this.batchDepth--; }
-			this.flushSync();
+	
+			listeners[key]!.add(listener as (value: A) => void);
+	
+			return () => {
+				const current = listeners[key];
+				if (!current) return;
+				current.delete(listener as (value: A) => void);
+				if (current.size === 0) delete listeners[key];
+			};
+		},
+		delete: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): B => {
+			const { s, m, r } = opts;
+			const cells = this._signal_cells;
+			const existed = key in cells;
+	
+			if (existed) delete cells[key];
+	
+			if (key in this._signal_persistent_keys) {
+				delete this._signal_persistent_keys[key];
+				delete this._signal_persistent[key];
+			}
+	
+			this.notifyKeyListeners(key, undefined, { s, m, r });
+			if (existed) this.scheduleGlobalNotify(key, undefined, { s, m, r });
+	
+			delete this._signal_listeners[key];
+			return MaybePromise(existed);
+		},
+		entries: <T = A,>(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): [A, T][] => {
+			const cells = this._signal_cells;
+			const result: [A, T][] = [];
+	
+			for (const key of Object.keys(cells) as A[]) {
+				const value = cells[key] as T;
+				if (value !== undefined) result.push([key, value]);
+			}
+	
+			return MaybePromise(result);
+		},
+		persist: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+			const { s, m, r } = opts;
+			const value = this.get(key, s, m, r);
+	
+			this._signal_persistent_keys[key] = true;
+			if (value !== undefined) this._signal_persistent[key] = value;
+		},
+		unpersist: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+			delete this._signal_persistent_keys[key];
+			delete this._signal_persistent[key];
+		},
+		has: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): B => {
+			const { s, m, r } = opts;
+			const value = this.get(key, s, m, r);
+			return MaybePromise(value !== undefined);
+		},
+		clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+			const cells = this._signal_cells;
+	
+			for (const key of Object.keys(cells) as A[]) {
+				delete cells[key];
+				this.notifyKeyListeners(key, undefined, opts);
+				this.scheduleGlobalNotify(key, undefined, opts);
+			}
+	
+			for (const key of Object.keys(this._signal_listeners) as A[]) {
+				delete this._signal_listeners[key];
+			}
+		},
+		clearPersistent: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+			for (const k of Object.keys(this._signal_persistent) as A[]) delete this._signal_persistent[k];
+			for (const k of Object.keys(this._signal_persistent_keys) as A[]) delete this._signal_persistent_keys[k];
+		},
+		_emit: (key: A, s = this.s, m = this.m, r = this.r): void => {
+			const opts = { s, m, r };
+			const value = this.get(key, s, m, r);
+			if (value === undefined) return;
+			this.notifyAll(key, value, opts);
+		},
+	};
+	public state: SauronState = {
+		get: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | UD => {
+			return this.store.get<T>(key as A, opts);
+		},
+		set: <T = A,>(key: string | symbol, value: T | ((prev: T | UD) => T), opts: { triggerRender?: B } & ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+			const { s, m, r, triggerRender = true } = opts;
+			this.store.set(key as A, value, { s, m, r, triggerRender });
+		},
+		delete: (key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): B => {
+			return this.store.delete(key as A, opts);
+		},
+		getByPrefix: <T = A,>(prefix: string, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): { key: string; value: T }[] => {
+			return this.store.entries<T>(opts)
+				.filter(([key]) => typeof key === "string" && key.startsWith(prefix))
+				.map(([key, value]) => ({ key: key as string, value }));
+		},
+		getAll: <T = A,>(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Record<string | symbol, T> => {
+			const result: Record<string | symbol, T> = {};
+			for (const [key, value] of this.store.entries<T>(opts)) result[key] = value;
 			return result;
-		}
-		public enqueue(task: ScheduledTask): void {
-			if (task.priority === "immediate") {
-				this.microtask(() => this.runOne(task));
-				return;
-			}
-			const tier = queues[task.priority];
-			if (!tier.has(task.scope)) tier.set(task.scope, []);
-			tier.get(task.scope)!.push(task);
-			this.scheduleLoop();
-		}
-		public scheduleLoop(): void {
-			if (this.loopScheduled) return;
-			this.loopScheduled = true;
-			setImmediate(this.drainOne);
-		}
-		public pickNext(): ScheduledTask | undefined {
-			for (const p of this.PRIORITY_ORDER) {
-				if (p === "immediate") continue;
-				const tier = queues[p];
-				if (tier.size === 0) continue;
-				const scopes = Array.from(tier.keys());
-				const idx = this.scopeCursors[p] % scopes.length;
-				const scope = scopes[idx];
-				const list = tier.get(scope)!;
-				const task = list.shift()!;
-				if (list.length === 0) tier.delete(scope);
-				this.scopeCursors[p] = idx + 1;
-				return MaybePromise(task);
-			}
-			return undefined;
-		}
-		public runOne(task: ScheduledTask): void {
-			if (task.cancelled || task.signal?.aborted) return;
-			const prev = this.currentScope;
-			this.currentScope = task.scope;
-			try { task.fn(); } 
-			finally { this.currentScope = prev; }
-		}
-		public drainOne(): void {
-			this.loopScheduled = false;
-			const task = this.pickNext();
-			if (task) this.runOne(task);
-			if (Object.values(queues).some((m) => m.size > 0)) this.scheduleLoop();
-		}
-		public schedule(fn: () => void, opts: { priority?: Priority; scope?: string; signal?: AbortSignal } = {}): Task {
-			const task: ScheduledTask = { priority: opts.priority ?? "normal", scope: opts.scope ?? this.currentScope, fn, signal: opts.signal, cancelled: false };
-			// signals.chains().sc.addEventListener('abort', () => { task.cancelled = true })
-			this.enqueue(task);
-			const self = this;
-			return {
-				cancel(): void { task.cancelled = true; },
-				reprioritize(next: Priority): void {
-					if (task.cancelled || next === task.priority) return;
-					const old = queues[task.priority].get(task.scope);
-					if (old) {
-						const i = old.indexOf(task);
-						if (i !== -1) old.splice(i, 1);
-						if (old.length === 0) queues[task.priority].delete(task.scope);
-					}
-					task.priority = next;
-					self.enqueue(task);
-				},
-			};
-		}
-		public withRequestScope<T>(requestId: string, fn: () => T): T {
-			const prev = this.currentScope;
-			this.currentScope = requestId;
-			try { return fn(); }
-			 finally { this.currentScope = prev; }
-		}
-		public yieldToScheduler(): Promise<void> {
-			return new Promise((resolve) => { this.schedule(() => resolve(), { priority: "normal", scope: this.currentScope as string });		});
-		}
-		public scheduleChunked(work: Iterable<() => void> | Iterator<() => void>, opts: { priority?: Priority; scope?: string; chunkBudgetMs?: number } = {}): Task {
-			const iterator: Iterator<() => void> = Symbol.iterator in (work as A) ? (work as Iterable<() => void>)[Symbol.iterator]() : (work as Iterator<() => void>);
-			const chunkBudgetMs = opts.chunkBudgetMs ?? 5;
-			const scope = opts.scope ?? (this.currentScope as string);
-			let cancelled = false;
-			let priority = opts.priority ?? "normal";
-			const self = this;
+		},
+		subscribe: <T = A,>(key: string | symbol, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
+			return this.store.subscribe<T>(key as A, listener, opts);
+		},
+		subscribeAll: (listener: (key: string | symbol, value: A) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
+			const listeners = this._signal_global_listeners;
+			const K = "_signal_global_listeners_raven";
 	
-			function runChunk(): void {
-				if (cancelled) return;
-				const start = performance.now();
-				while (true) {
-					const { value: step, done } = iterator.next();
-					if (done) return;
-					step();
-					const elapsed = performance.now() - start;
-					if (elapsed >= chunkBudgetMs) break;
-				}
-				if (!cancelled) self.schedule(runChunk, { priority, scope });
+			if (!(K in listeners)) listeners[K] = new Set();
+			const set = listeners[K]!;
+			set.add(listener as any);
+	
+			return () => {
+				set.delete(listener as any);
+				if (set.size === 0) delete listeners[K];
+			};
+		},
+		clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
+			this.store.clear(opts);
+	
+			for (const key of Object.keys(this._signal_waiters) as A[]) {
+				delete this._signal_waiters[key];
 			}
 	
-			this.schedule(runChunk, { priority, scope });
-			return {
-				cancel(): void {
-					cancelled = true;
-				},
-				reprioritize(next: Priority): void {
-					priority = next;
-				},
-			};
+			const globalListeners = this._signal_global_listeners["_signal_global_listeners_raven"];
+			globalListeners?.clear();
+		},
+		waitFor: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Promise<T> => {
+			const existing = this.state.get<T>(key, opts);
+			if (existing !== undefined) return Promise.resolve(existing as T);
+	
+			return new Promise<T>((resolve) => {
+				const waiters = this._signal_waiters;
+				const k = key as unknown as A;
+				if (!(k in waiters)) waiters[k] = new Set();
+				waiters[k]!.add(resolve as any);
+			});
+		},
+	};
+	public cell = (() => {
+		const fn = <T = A>(key: A, s?: S, m?: S, r?: S) => {
+			return MaybePromise(this.state.get<T>(key, { s, m, r }));
+		};
+		fn.getAll= <T = A>(opts?: ScopeOptions): Record<S | SY, T> =>{
+			return this.state.getAll<T>(opts);
 		}
-		public _reactHookCursor = 0;
-		public _currentRenderInstanceCheck: A = null;
-		public _isReactRenderContext(): boolean {
-			const _react = isReact as A;
-			if (!_react) return false;
-			if (IS_THE_WIZARD) return false;
-			try {
-				_react.darkState;
-				// If darkState is callable without throwing, we're in a React render context
-				// We probe by checking if the dispatcher is active via a known internal
-				const internals = (_react as A).__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
-				const dispatcher = internals?.ReactCurrentDispatcher?.current ?? internals?.H;
-				return !!dispatcher;
-			} catch (e) {
-				// log(`[THE_CLOUD][_IS_REACT_RENDER_CONTEXT]`, { error: e, }, t.error)
+		fn.set=<T = A>(label: A, value: T, triggerRender = true, s?: S, m?: S, r?: S) =>{
+			this.cell._broadcastSS(label, value, "sauron", "set");
+			return MaybePromise(this.state.set(label, value, { triggerRender, s, m, r }));
+		}
+		fn._broadcastSS=(key: A, value: A, storageType: S, fn: S, path?: S, domain?: S, options?: A) =>{
+			_localChange = true;
+			_channel?.postMessage({ key, value, storageType, fn, path, domain, options });
+		}
+		fn.subAll=(fn: (key: S | symbol, value: A) => V, s?: S, m?: S, r?: S): () => V =>{
+			if (!fn) return () => {};
+			return this.state.subscribeAll(fn, { s, m, r });
+		}
+		fn.sub=<T = A>(k: A, fn: (value: T) => void, s?: S, m?: S, r?: S): () => void =>{
+			if (!k || !fn) return () => {};
+			return MaybePromise(this.state.subscribe<T>(k, fn, { s, m, r }));
+		}
+		fn.delete=(label: A, s?: S, m?: S, r?: S): B =>{
+			if (!label) return false;
+			const v = this.state.delete(label, { s, m, r });
+			this.cell._broadcastSS(label, undefined, "sauron", "delete");
+			return v;
+		}
+		fn.waitFor=<T = A>(label: S, s?: S, m?: S, r?: S): P<T> =>{
+			return this.state.waitFor<T>(label, { s, m, r });
+		}
+		fn.deleteMany= async(keys: A[], s?: S, m?: S, r?: S): P<B> =>{
+			if (!Array.isArray(keys) || keys.length === 0) {
 				return false;
 			}
+			let allDeleted = true;
+	
+			// Batch all deletes without triggering renders until the end
+			for (let i = 0; i < keys.length; i++) {
+				const deleted = this.cell.delete(keys[i], s, m, r);
+				if (!deleted) {
+					allDeleted = false;
+				}
+			}
+	
+			return allDeleted;
 		}
-		public createHook<T>(hookName: string, sauronId: string, initializer: () => HookState, updater: (state: HookState, key: string, notify: (key: string) => void) => T, triggerRender: boolean = true): T {
-			if (isReact === true && IS_THE_WIZARD === false) {
-				try {
-					const isReact = this._isReactRenderContext();
-					const { instance, forceUpdate } = isReact && this._adapter ? this._adapter.getComponentInstance() : { instance: this.getCurrentComponent(), forceUpdate: undefined };
-	
-					const component = instance;
-	
-					// ─── THE TARGETED FIX ───────────────────────────────────────────────────────
-					// Use sequential indexing when in React so it matches React's rendering slots.
-					// Otherwise, use Sauron's default compilation ID string.
-					const stableSlotId = isReact ? `seq-${this._reactHookCursor++}` : sauronId;
-					const key = `${component.id}:${hookName}:${stableSlotId}`;
-					// ────────────────────────────────────────────────────────────────────────────
-					if (!this._components.has(component.id)) {
-						this._components.set(component.id, component);
-					}
-	
-					if (!component.hooks.has(key)) {
-						const state = initializer();
-						component.hooks.set(key, state);
-						if (component.render) {
-							const unsub = this.subscribeToHook(key, () => component.render?.());
-							component.unmount.add(unsub);
-						}
-					}
-	
-					if (isReact && this._adapter && forceUpdate) { this._adapter.onHookSubscribe(key, forceUpdate); }
-	
-					const notify = (k: string) => {
-						if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
-							const state = component.hooks.get(k);
-							this.devRecord(component.id, hookName, stableSlotId, k, state?.value);
-						}
-						this.notifyHook(k);
-					};
-	
-					const hookState = component.hooks.get(key)!;
-					this.beginHookDependencyCapture(hookState);
-					try { return updater(hookState, key, notify); 	} 
-					finally { this.endHookDependencyCapture(); }
-				} catch (e: A) {
-					//  log(`[THE_CLOUD][CREATE_HOOK]`, { error: e, }, t.error)
-					return e.error;
-				}
-			} else {
-				try {
-					const component = this.getCurrentComponent();
-					const key = `${component.id}:${hookName}:${sauronId}`;
-	
-					if (!this._components.has(component.id)) { this._components.set(component.id, component); }
-	
-					if (!component.hooks.has(key)) {
-						const state = initializer();
-						component.hooks.set(key, state);
-	
-						if (triggerRender && component.render) {
-							const unsub = this.subscribeToHook(key, () => component.render?.());
-							component.unmount.add(unsub);
-						}
-					}
-	
-					const notify = (k: string) => {
-						if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
-							const state = component.hooks.get(k);
-							this.devRecord(component.id, hookName, sauronId, k, state?.value);
-						}
-						if (triggerRender) this.notifyHook(k);
-					};
-	
-					const hookState = component.hooks.get(key)!;
-					this.beginHookDependencyCapture(hookState);
-					try { return updater(hookState, key, notify); }
-					finally { this.endHookDependencyCapture(); }
-				} catch (e: A) {
-					// log(`[THE_CLOUD][CREATE_HOOK]`, { error: e, }, t.error)
-					return e.error;
-				}
+		fn.setMany=async<T = Record<S, A>>(entries: T): Promise<void>=> {
+			if (!entries || typeof entries !== "object") {
+				return;
+			}
+			// Batch all sets without triggering renders until the end
+			const entriesArray = Object.entries(entries);
+			for (let i = 0; i < entriesArray.length; i++) {
+				const [key, value] = entriesArray[i];
+				// Only trigger render on the last item to avoid multiple renders
+				const triggerRender = i === entriesArray.length - 1;
+				this.cell.set(key, value, triggerRender);
 			}
 		}
-	})(this);
-	public signals = new (class DOM_SIGNALS {
-			public r: A = "THE_WIZARD_ROOT_REG";
-			public m: A = "SAURON_MASTER_REG";
-			public s: A = "SAURON_SLAVE_REG";
-			public k: A = "__SAURON__";
-
-			public hub: DEATH_STAR
-			public signals: SIGNALS
-
-			public selfId: S
-			#SIGNAL_CELLS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-			public _signal_cells: Record<S, A>
-		
-			#SIGNAL_LISTENERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-			public _signal_listeners: Record<S, ST<(value: A) => void>>;
-		
-			#SIGNAL_GLOBAL_LISTENERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-			public _signal_global_listeners: Record<S, ST<(key: A, value: A) => void>>;
-		
-			#SIGNAL_WAITERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-			public _signal_waiters: Record<S, ST<(value: A) => void>>;
-		
-			#SIGNAL_PERSISTENT: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-			
-			public _signal_persistent: Record<S, A>
-			#SIGNAL_PERSISTENT_KEYS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-			public _signal_persistent_keys: Record<S, A>
-			
-			constructor(s: SIGNALS) {
-				this.r = s.root.r ?? "THE_WIZARD_ROOT_REG";
-				this.m = s.root.m ?? "SAURON_MASTER_REG";
-				this.s = s.root.s ?? "SAURON_SLAVE_REG";
-				this.k = s.root.k ?? "THE_K_KEY";
-				this.hub = s.root
-				this.signals = s
-
-				this._signal_cells = this.getS(this.s, this.m, this.r, "#SIGNAL_CELLS");
-				this._signal_listeners = this.getS(this.s, this.m, this.r, "#SIGNAL_LISTENERS");
-				this._signal_global_listeners = this.getS(this.s, this.m, this.r, "#SIGNAL_GLOBAL_LISTENERS");
-				this._signal_waiters = this.getS(this.s, this.m, this.r, "#SIGNAL_WAITERS");
-				this._signal_persistent = this.getS(this.s, this.m, this.r, "#SIGNAL_PERSISTENT");
-				this._signal_persistent_keys = this.getS(this.s, this.m, this.r, "#SIGNAL_PERSISTENT_KEYS");
-				this.selfId = `bus_${this.hub.REGISTRY._sid()}`
+		fn.getMany=async<T = A>(keys: S[], s?: S, m?: S, r?: S) =>{
+			if (!Array.isArray(keys) || keys.length === 0) {
+				return {};
 			}
-			public get_(c:S = "signal_cells") {
-				let _
-				switch (c) {
-					case "signal_cells": { _ = this._signal_cells; break; }
-					case "signal_listeners": { _ = this._signal_listeners; break; }
-					case "signal_global_listeners": { _ = this._signal_global_listeners; break; }
-					case "signal_waiters": { _ = this._signal_waiters; break; }
-					case "signal_persistent": { _ = this._signal_persistent; break; }
-					case "signal_persistent_keys": { _ = this._signal_persistent_keys; break; }
-					default: {  break; }
-				}
-				return _
+	
+			const result: Record<S, T | undefined> = {};
+	
+			const promises = keys.map(async (key) => {
+				const value = await this.cell<T>(key, s, m, r);
+				return { key, value };
+			});
+	
+			const results = await Promise.all(promises);
+	
+			for (const { key, value } of results) {
+				result[key] = value;
 			}
-			public getHash(c:S = "signal_cells", r:S = this.r) {
-				let root;
-				switch (c) {
-					case "signal_cells": { root = this.#SIGNAL_CELLS[r]; break; }
-					case "signal_listeners": { root = this.#SIGNAL_LISTENERS[r]; break; }
-					case "signal_global_listeners": { root = this.#SIGNAL_GLOBAL_LISTENERS[r]; break; }
-					case "signal_waiters": { root = this.#SIGNAL_WAITERS[r]; break; }
-					case "signal_persistent": { root = this.#SIGNAL_PERSISTENT[r]; break; }
-					case "signal_persistent_keys": { root = this.#SIGNAL_PERSISTENT_KEYS[r]; break; }
-					default: {  break; }
-				}
-				return root
-			}
-			public get_root(c: S = "signal_cells", r: S) {
-				let root;
-				switch (c) {
-					case "signal_cells": { root = this.#SIGNAL_CELLS[r]; break; }
-					case "signal_listeners": { root = this.#SIGNAL_LISTENERS[r]; break; }
-					case "signal_global_listeners": { root = this.#SIGNAL_GLOBAL_LISTENERS[r]; break; }
-					case "signal_waiters": { root = this.#SIGNAL_WAITERS[r]; break; }
-					case "signal_persistent": { root = this.#SIGNAL_PERSISTENT[r]; break; }
-					case "signal_persistent_keys": { root = this.#SIGNAL_PERSISTENT_KEYS[r]; break; }
-				}
-				if (!root) {
-					root = Object.create(null);
-					switch (c) {
-						case "signal_cells": { this.#SIGNAL_CELLS[r] = root; break; }
-						case "signal_listeners": { this.#SIGNAL_LISTENERS[r] = root; break; }
-						case "signal_global_listeners": { this.#SIGNAL_GLOBAL_LISTENERS[r] = root; break; }
-						case "signal_waiters": { this.#SIGNAL_WAITERS[r] = root; break; }
-						case "signal_persistent": { this.#SIGNAL_PERSISTENT[r] = root; break; }
-						case "signal_persistent_keys": { this.#SIGNAL_PERSISTENT_KEYS[r] = root; break; }
-					}
-				}
-				return root;
-			}
-			public getS(s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") {
-				const rL = this.get_root(c, r);
-				const mL = (rL[m] ??= Object.create(null));
-				const sL = (mL[s] ??= Object.create(null));
-				return sL;
-			}
-			public getM(m: S = this.m, r: S = this.r, c = "signal_cells") {
-				const rL = this.get_root(c, r);
-				const mL = (rL[m] ??= Object.create(null));
-				return mL;
-			}
-			public getR(r: S = this.r, c = "signal_cells") {
-				const rL = this.get_root(c, r); 
-				return rL;
-			}
-			public get = (() => {
-				const fn = <T = A>(k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
-					const rL = this.get_root(c, r);
-					const mL = (rL[m] ??= Object.create(null));
-					const registry = (mL[s] ??= Object.create(null));
-					const z = registry[k];
-					if (!z) return
-					else return z
-				}
-				return fn;
-				fn.hot = (k: S) => {
-					const c = this._signal_cells[k];
-					if (!c) return
-					else return c
-				}
-			})();
-			public read = (() => {
-				const fn = <T = A>(k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
-					const rL = this.get_root(c, r);
-					const mL = (rL[m] ??= Object.create(null));
-					const registry = (mL[s] ??= Object.create(null));
-					const z = registry[k];
-					if (!z) return
-					else return z
-				}
-				return fn;
-				fn.hot = (k: S) => {
-					const c = this._signal_cells[k];
-					if (!c) return
-					else return c
-				}
-			})();
-			public write = (() => {
-				const fn = <T = A>(v: T | (() => T), k: S,s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") => {
-					const rL = this.get_root(c, r);
-					const mL = (rL[m] ??= Object.create(null));
-					const registry = (mL[s] ??= Object.create(null));
-					const t = UF(v);
-					const atom = signal(t);
-					registry[k] = atom;
-					return atom;
-				}
-				fn.hot =  <T = A>(v: T | (() => T), k: S) => {
-					const registry = this._signal_cells
-					const t = UF(v);
-					const atom = signal(t);
-					registry[k] = atom;
-					return atom;
-				}
-				return fn;
-			})();
-			public notifyKeyListeners(key: A, value: A | UD, opts: ScopeOptions): void {
-				const listeners = this._signal_listeners[key];
-				if (!listeners) return;
-				for (const listener of listeners) {
-					try { listener(value); }
-					catch (err) { console.error(`[Sauron Signal Listener Error]:`, err); }
-				}
-			}
-			public scheduleGlobalNotify(key: A, value: A | UD, opts: ScopeOptions): void {
-				const globalListeners = this._signal_global_listeners["_signal_global_listeners_raven"];
-				if (globalListeners) {
-					for (const listener of globalListeners) {
-						try { listener(key, value); }
-						catch (err) { console.error(`[Sauron Signal Global Listener Error]:`, err); }
-					}
-				}
-			
-				const waiters = this._signal_waiters[key];
-				if (waiters) {
-					const resolved = Array.from(waiters);
-					delete this._signal_waiters[key];
-					for (const resolve of resolved) {
-						try { resolve(value); }
-						catch (err) { console.error(`[Sauron Signal Waiter Error]:`, err); }
-					}
-				}
-			}
-			private notifyAll( key: A, value: A | UD, opts: ScopeOptions,	): void {
-				this.notifyKeyListeners(key, value, opts);
-				this.scheduleGlobalNotify(key, value, opts);
-			}
-			public atom = (() => {
-				const fn = <T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid()}`, s = this.s, m = this.m, r = this.r, ) => {
-					return {
-						get value(): T { return this.signal(undefined, k, s, m, r); },
-						get current(): T { return this.signal(undefined, k, s, m, r); },
-						peek(): T { return this.signal(undefined, k, s, m, r); },
-						set value(v: T) { this.signal(v, k, s, m, r); },
-						set current(v: T) { this.signal(v, k, s, m, r); },
-						set crt(v: T) { this.signal(v, k, s, m, r); },
-						set set(v: T) { this.signal(v, k, s, m, r); },
-					};
-				}
-				fn.hot = <T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid()}`, s = this.s, m = this.m, r = this.r, )  => {
-					return {
-						get value(): T { return this.signal.hot(k); },
-						get current(): T { return this.signal.hot(k); },
-						peek(): T { return this.signal.hot(k); },
-						set value(v: T) { this.signal.hot(k, v); },
-						set current(v: T) { this.signal.hot(k, v); },
-						set crt(v: T) { this.signal.hot(k, v); },
-						set set(v: T) { this.signal.hot(k, v); },
-					};
-				}
-				return fn;
-			})();
-			public signal = (() => {
-				const fn = <T = A,>(v: T | (() => T), k: SignalKey, s = this.s, m = this.m, r = this.r, c = "signal_cells") => {
-					const rL = this.get_root(c, r);
-					const mL = (rL[m] ??= Object.create(null));
-					const registry = (mL[s] ??= Object.create(null));
-					let atom = registry[k];
-			
-					if (atom && v === undefined) { return atom; }
-					if (atom && v !== undefined) {
-						const t = UF(v);
-						registry[k] = t;
-						return t;
-					}
-			
-					const initialValue = UF(v);
-					atom = signal(initialValue);
-					registry[k] = atom;
-					return atom;
-				};
-				fn.hot = <T = A,>(k: SignalKey, v?: T | (() => T)) => {
-					const registry = this._signal_cells;
-					let atom = registry[k];
-			
-					if (atom && v === undefined) { return atom; }
-					if (atom && v !== undefined) {
-						const t = UF(v);
-						registry[k] = t;
-						return t;
-					}
-			
-					const initialValue = UF(v);
-					atom = signal(initialValue);
-					registry[k] = atom;
-					return atom;
-				};
-				return fn;
-			})();
-			public store = {
-				get: <T = A,>(key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | UD => {
-					const { s, m, r } = opts;
-					const value = this.get<T>(key, s, m, r);
-			
-					if (value !== undefined) {
-						return MaybePromise(value);
-					}
-			
-					const persistent = this._signal_persistent;
-					const persistKeys = this._signal_persistent_keys;
-			
-					if (key in persistKeys && key in persistent) {
-						const hydrated = persistent[key] as T;
-						this.write(hydrated, key, s, m, r);
-						return MaybePromise(hydrated);
-					}
-			
-					return MaybePromise(undefined);
+	
+			return result;
+		}
+		return fn;
+	})();
+	public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
+		const existing = this.state.get(k, { s: s, m: m, r: r });
+		if (existing !== undefined) return existing;
+		const t = typeof v === "function" ? v() : v;
+		this.state.set(k, t, { triggerRender: true, s: s, m: m, r: r });
+		return t;
+	} 
+	 
+	public ATOM = (() => {
+		function mergeInto<T extends object>(target: T, source: object): T {
+			Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
+			return target;
+		}
+		function resolveFactory(raw: any): any {
+			return typeof raw === "function" ? raw : () => raw;
+		}
+		const NINJA_STUB_BRAND = "__is_atom_stub__";
+		function makeStub(trace?: any): any {
+			return new Proxy(() => makeStub(trace), {
+				get: (_t, prop) => (prop === NINJA_STUB_BRAND ? true : makeStub(trace)),
+				apply: () => makeStub(trace),
+			});
+		}
+		function withTypoGuard<T extends Record<string, any>>(result: T, label: string): T {
+			return new Proxy(result, {
+				get(target, prop, receiver) {
+					if (typeof prop === "symbol" || prop in target) return Reflect.get(target, prop, receiver);
+					throw new Error(`\n[${label} Typo Error] Property "${String(prop)}" does not exist on this ${label} definition.\n  -> Available definitions: [ ${Object.keys(target).join(", ")} ]\n`);
 				},
-				set: <T = A,>( key: A, value: T | ((prev: T | UD) => T), opts: { triggerRender?: B; cap?: N } & ScopeOptions = { s: this.s, m: this.m, r: this.r, triggerRender: true, cap: 200 }, ): T | UD => {
-					const { triggerRender = true, s, m, r } = opts;
-					const prev = this.get<T>(key, s, m, r);
-					const next = typeof value === "function" ? (value as (prev: T | UD) => T)(prev) : value;
-					if (Object.is(prev, next)) { return MaybePromise(prev as T); }
-					this.write(next, key, s, m, r);
-					if (key in this._signal_persistent_keys) { this._signal_persistent[key] = next; }
-					this.notifyKeyListeners(key, next as A, { s, m, r });
-					if (triggerRender) { this.scheduleGlobalNotify(key, next as A, { s, m, r }); }
-					return MaybePromise(next as T);
-				},
-				subscribe: <T = A,>( key: A,  listener: (value: T) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }, ): (() => void) => {
-					const listeners = this._signal_listeners;
-			
-					if (!(key in listeners)) {
-						listeners[key] = new Set();
+			});
+		}
+		// ============================================================================
+		//  ONE CELL PER MASTER INSTANCE — the platform primitives, nothing else.
+		//      const { selfProxy, liveTarget } = createLiveSelf(instanceId)
+		//      Object.assign(liveTarget, pass)
+		//      const [o, o$] = root.DISRUPTOR.useCell.obj(liveTarget, label, category)
+		//      o$.merge(result)
+		//  liveTarget IS the cell value: the mailbox seeds the store with it and
+		//  setLive sends that same object, so self and the cell are one object with
+		//  one write path. Namespaces are one level: liveTarget.<name>.
+		// ============================================================================
+		function createLiveSelf(instanceId: string) {
+			const liveTarget: any = {};
+			const selfProxy = new Proxy(liveTarget, {
+				get: (t, k: any) => t[k],
+				set: (t, k: any, v: any) => { t[k] = v; this.hub.root.state.state.set(`${instanceId}:${k}`, v); return true; },
+			});
+			return { selfProxy, liveTarget };
+		}
+		function nsSelf(liveTarget: any, name: string, publish: () => void, useCell: () => any) {
+			const rec = () => (liveTarget[name] ??= {});
+			return new Proxy({}, {
+				get(_t, key: any) {
+					if (typeof key !== "string" || key === "then") return undefined;
+					if (key === "useCell") return useCell;
+					if (key in rec()) return rec()[key];
+					if (key in liveTarget) {
+						if (liveTarget[key]?._isNamespace) throw new Error(`[isolation] "${name}" cannot reach namespace "${key}"`);
+						return liveTarget[key];
 					}
-			
-					listeners[key]!.add(listener as (value: A) => void);
-			
-					return () => {
-						const current = listeners[key];
-						if (!current) return;
-						current.delete(listener as (value: A) => void);
-						if (current.size === 0) delete listeners[key];
-					};
+					return undefined;
 				},
-				delete: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): B => {
-					const { s, m, r } = opts;
-					const cells = this._signal_cells;
-					const existed = key in cells;
-			
-					if (existed) delete cells[key];
-			
-					if (key in this._signal_persistent_keys) {
-						delete this._signal_persistent_keys[key];
-						delete this._signal_persistent[key];
-					}
-			
-					this.notifyKeyListeners(key, undefined, { s, m, r });
-					if (existed) this.scheduleGlobalNotify(key, undefined, { s, m, r });
-			
-					delete this._signal_listeners[key];
-					return MaybePromise(existed);
+				set(_t, key: any, value: any) {
+					if (typeof key !== "string") return false;
+					rec()[key] = value;
+					publish();
+					return true;
 				},
-				entries: <T = A,>(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): [A, T][] => {
-					const cells = this._signal_cells;
-					const result: [A, T][] = [];
-			
-					for (const key of Object.keys(cells) as A[]) {
-						const value = cells[key] as T;
-						if (value !== undefined) result.push([key, value]);
-					}
-			
-					return MaybePromise(result);
-				},
-				persist: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
-					const { s, m, r } = opts;
-					const value = this.get(key, s, m, r);
-			
-					this._signal_persistent_keys[key] = true;
-					if (value !== undefined) this._signal_persistent[key] = value;
-				},
-				unpersist: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
-					delete this._signal_persistent_keys[key];
-					delete this._signal_persistent[key];
-				},
-				has: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): B => {
-					const { s, m, r } = opts;
-					const value = this.get(key, s, m, r);
-					return MaybePromise(value !== undefined);
-				},
-				clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
-					const cells = this._signal_cells;
-			
-					for (const key of Object.keys(cells) as A[]) {
-						delete cells[key];
-						this.notifyKeyListeners(key, undefined, opts);
-						this.scheduleGlobalNotify(key, undefined, opts);
-					}
-			
-					for (const key of Object.keys(this._signal_listeners) as A[]) {
-						delete this._signal_listeners[key];
-					}
-				},
-				clearPersistent: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
-					for (const k of Object.keys(this._signal_persistent) as A[]) delete this._signal_persistent[k];
-					for (const k of Object.keys(this._signal_persistent_keys) as A[]) delete this._signal_persistent_keys[k];
-				},
-				_emit: (key: A, s = this.s, m = this.m, r = this.r): void => {
-					const opts = { s, m, r };
-					const value = this.get(key, s, m, r);
-					if (value === undefined) return;
-					this.notifyAll(key, value, opts);
-				},
+				has(_t, key: any) { return typeof key === "string" && (key in rec() || key in liveTarget); },
+			});
+		}
+		// The atom's useCell: [own record, merge into own record].
+		function cellHandle(record: () => any, publish: () => void) {
+			const merge = (patch: any) => {
+				const p = typeof patch === "function" ? patch(record()) : patch;
+				if (p && typeof p === "object") Object.assign(record(), p);
+				publish();
 			};
-			public state: SauronState = {
-				get: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | UD => {
-					return this.store.get<T>(key as A, opts);
-				},
-				set: <T = A,>(key: string | symbol, value: T | ((prev: T | UD) => T), opts: { triggerRender?: B } & ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
-					const { s, m, r, triggerRender = true } = opts;
-					this.store.set(key as A, value, { s, m, r, triggerRender });
-				},
-				delete: (key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): B => {
-					return this.store.delete(key as A, opts);
-				},
-				getByPrefix: <T = A,>(prefix: string, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): { key: string; value: T }[] => {
-					return this.store.entries<T>(opts)
-						.filter(([key]) => typeof key === "string" && key.startsWith(prefix))
-						.map(([key, value]) => ({ key: key as string, value }));
-				},
-				getAll: <T = A,>(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Record<string | symbol, T> => {
-					const result: Record<string | symbol, T> = {};
-					for (const [key, value] of this.store.entries<T>(opts)) result[key] = value;
-					return result;
-				},
-				subscribe: <T = A,>(key: string | symbol, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
-					return this.store.subscribe<T>(key as A, listener, opts);
-				},
-				subscribeAll: (listener: (key: string | symbol, value: A) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
-					const listeners = this._signal_global_listeners;
-					const K = "_signal_global_listeners_raven";
-			
-					if (!(K in listeners)) listeners[K] = new Set();
-					const set = listeners[K]!;
-					set.add(listener as any);
-			
-					return () => {
-						set.delete(listener as any);
-						if (set.size === 0) delete listeners[K];
-					};
-				},
-				clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
-					this.store.clear(opts);
-			
-					for (const key of Object.keys(this._signal_waiters) as A[]) {
-						delete this._signal_waiters[key];
+			const h: any = [record(), merge];
+			h.get = (key?: string) => (key === undefined ? record() : record()[key]);
+			h.set = (key: any, value?: any) => {
+				if (typeof key === "string") merge({ [key]: value });
+				else if (key && typeof key === "object") merge(key);
+				return h;
+			};
+			return h;
+		}
+		function requiredBindables() {
+			return { gate: SIGNALS["signals_raptor"]["ATOMS"]["GATE"], subscription: SIGNALS["signals_raptor"]["ATOMS"]["SUBSCRIPTION"], context:SIGNALS["signals_raptor"]["ATOMS"]["CONTEXT"]  };
+		}
+		function withoutKeys(obj: any, keys: string[]) {
+			const desc: any = Object.getOwnPropertyDescriptors(obj);
+			for (const k of keys) delete desc[k];
+			return desc;
+		}
+		function createMaster(kind: string, config: any) {
+			const kindFactory = resolveFactory(this.signals.signals.state.get(kind));
+			if (!kindFactory) throw new TypeError(`Unknown master atom: ${kind}`);
+		
+			const instanceId = `${kind}:${this.root.reg._sid()}`;
+			const { selfProxy, liveTarget } = createLiveSelf(instanceId);
+			const names = new Set<string>();
+			const refreshers: Record<string, () => void> = {};
+			let o$: any;
+		
+			const publish = () => {
+				if (!o$) return; // still seeding: the first merge publishes the whole record
+				for (const f of Object.values(refreshers)) f();
+				o$.merge({});
+				for (const n of names) liveTarget[n]._version = liveTarget._version;
+			};
+		
+			const bind = (name: string, factory: any, cfg: any) => {
+				if (name in liveTarget && !names.has(name)) throw new Error(`[COLLISION] bound atom "${name}" collides with master field "${name}"`);
+				names.add(name);
+				liveTarget[name] = Object.assign(liveTarget[name] ?? {}, { _isNamespace: true });
+				const useCell = () => cellHandle(() => liveTarget[name], publish);
+				const self = nsSelf(liveTarget, name, publish, useCell);
+				const ctx: any = { self, useCell, channel: (l: any) => this.signals.signals.state.subscribe(instanceId, l), master: selfProxy, config: cfg, k: root.k, s: root.s, m: root.m, r: root.r };
+				const out = factory(ctx);
+				Object.defineProperties(liveTarget[name], withoutKeys(out, ["bindables", "refresh"]));
+				if (typeof out.refresh === "function") refreshers[name] = out.refresh;
+			};
+		
+			const view = (name: string) => {
+				const rec = liveTarget[name];
+				return new Proxy(rec, {
+					get: (t, k: any) => (typeof t[k] === "function" ? t[k].bind(rec) : t[k]),
+					set: (t, k: any, v: any) => { t[k] = v; publish(); return true; },
+				});
+			};
+		
+			const masterCtx = (cfg: any) => {
+				const ctx: any = { self: selfProxy, useCell: () => cellHandle(() => liveTarget, publish), channel: (l: any) => this.root.signals.signals.state.subscribe(instanceId, l), config: cfg, master: selfProxy, k: root.k, s: root.s, m: root.m, r: root.r };
+				for (const name of names) ctx[name] = view(name);
+				return ctx;
+			};
+		
+			// seed: config lives at the root, same level as the namespaces
+			for (const [key, v] of Object.entries(config)) {
+				if (key === "_version") throw new Error(`[COLLISION] "_version" is reserved by the cell`);
+				liveTarget[key] = v;
+			}
+		
+			// open the cell on the seeded object — this IS the resource from here on
+			const [cell, handle] = this.root.bus.drs.useCell.obj(liveTarget, instanceId, kind);
+			o$ = handle;
+		
+			// 1. required bound atoms first — the master reads gate.sealed on read()
+			for (const [name, factory] of Object.entries(requiredBindables())) bind(name, factory, config);
+		
+			// 2. probe for the master's own bindables list, then build those too
+			const probe = kindFactory(masterCtx(config));
+			for (const [name, factory] of Object.entries((probe as any).bindables ?? {})) bind(name, resolveFactory(factory), config);
+		
+			// 3. re-run the factory now that every namespace exists (live views)
+			const built = kindFactory(masterCtx(config));
+		
+			// 4. the master's own fields into the root
+			const masterFields = withoutKeys(built, ["bindables", "value"]);
+			for (const key of Object.keys(masterFields)) {
+				if (key === "_version") throw new Error(`[COLLISION] "_version" is reserved by the cell`);
+				if (names.has(key)) throw new Error(`[COLLISION] master field "${key}" collides with bound atom "${key}"`);
+			}
+			Object.defineProperties(liveTarget, masterFields);
+		
+			// 5. the public surface: flat master ops + one handle per namespace
+			const api: any = { atom: kind };
+			for (const name of names) api[name] = view(name);
+			for (const fn of ["read", "write", "subscribe", "waitFor"]) if (fn in liveTarget) api[fn] = liveTarget[fn];
+			for (const key of Object.keys(masterFields)) {
+				if (key in api) continue;
+				if (typeof liveTarget[key] === "function") { api[key] = liveTarget[key]; continue; }
+				Object.defineProperty(api, key, { enumerable: true, get: () => liveTarget[key] });
+			}
+			api.version = () => cell._version;
+		
+			publish(); // build is one publish: every namespace refreshes together
+			return withTypoGuard(api, instanceId.split(":")[1]);
+		}
+		const z = () => {}
+		z.MASTER = (name: string, arg: any)=>{ 
+			const f = resolveFactory(arg); 
+			if (this.root && this.root.state) this.root.state.state.set(name, f); 
+			return f; }
+		z.BIND=(name: string, arg: any)=> { const f = resolveFactory(arg);if (this.root && this.root.state) this.root.state.state.set(name, f); return f; }
+		z.BINDABLE=(factory: any)=> { return factory; }
+		z.CONTRACT=(arg1: any, arg2?: any): any =>{
+			let num = 0
+			const id = this.root && this.root.reg ? `${this.root.reg._sid()}` :  `${++num}`;
+			const categoryName = typeof arg1 === "string" ? arg1 : `ATOM_CONTRACT${id}`;
+			const rawConfig = typeof arg1 === "string" ? arg2 : arg1;
+			if (rawConfig === undefined || rawConfig === null) throw new Error("Self is required");
+			const factory = resolveFactory(rawConfig);
+			const pass = factory({});
+			const kind = pass.atom ?? "ATOM";
+			// atomContract(7) and atomContract({ value: 7 }) both mean the same thing
+			const contract = ((config: any = {}) => {
+				const normalized = config && typeof config === "object" ? config : { value: config };
+				return createMaster(kind, normalized);
+			}) as any;
+			Object.assign(contract, pass);
+			if(this.root && this.root.signals && this.root.signals.signals && this.root.signals.signals.state) this.root.signals.signals.state.set(categoryName, contract);
+			return contract;
+		}
+		return z
+	})(); 
+	public MASTERS = (() => {
+		const z = () => {}
+		z.SAURON = this.ATOM.MASTER("SAURON", <T = A>({ self, master, config }: A) => ({}));
+		z.MSG_Q = this.ATOM.MASTER("MSG_Q", <T = A>({ self, master, config }: A) => ({}));
+		z.SLAB = this.ATOM.MASTER("SLAB", <T = A>({ self, master, config }: A) => ({}));
+		z.DRS = this.ATOM.MASTER("DRS", <X = A>({ self, master, config }: A) => ({}));
+		z.SUB = this.ATOM.MASTER("SUB", <T = A>({ self, master, config }: A) => ({}));
+		z.STREAM = this.ATOM.MASTER("STREAM", <T = A>({ self, master, config }: A) => ({}));
+		z.SPREADSHEET = this.ATOM.MASTER("SPREADSHEET", <T = A>({ self, master, config }: A) => ({}));
+		z.SEND = this.ATOM.MASTER("SEND", <T = A>({ self, master, config }: A) => ({}));
+		z.CLOUD = this.ATOM.MASTER("CLOUD", <T = A>({ self, master, config }: A) => ({}));
+		z.DUPLEX = this.ATOM.MASTER("DUPLEX", <T = A>({ self, master, config }: A) => ({}));
+		z.MODULE = this.ATOM.MASTER("MODULE", <T = A>({ self, master, config }: A) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+			pipeline: 'A' ,
+			send(message: A, signal?: A) { 	},
+			dispatch(hook: A, ctx: A, terminal: () => V) { },
+			deliver(ctx: A){ },
+		}));
+		z.MODULE_STORAGE = this.ATOM.MASTER("MODULE_STORAGE_PROTON", <T = A>({ self, master, config }: A) => ({}));
+		z.S_CLASS = this.ATOM.MASTER("S_CLASS", <T = A>({ self, master, config }: A) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+			pipeline: 'A' ,
+			send(message: A, signal?: A) { 	},
+			dispatch(hook: A, ctx: A, terminal: () => V) { },
+			deliver(ctx: A){ },
+		}));
+		z.S_CLASS_STORAGE = this.ATOM.MASTER("S_CLASS_STORAGE_PROTON", <T = A>({ self, master, config }: A) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+			pipeline: 'A' ,
+			send(message: A, signal?: A) { 	},
+			dispatch(hook: A, ctx: A, terminal: () => V) { },
+			deliver(ctx: A){ },
+		}));
+		z.ATOM = this.ATOM.MASTER('ATOM',<T = A>({ self, config, gate, subscription, SEALED_ERROR, conflict }: A) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+			value: config.value as U,
+			read() {
+				const r = self.value;
+				if (r !== null) { if (gate?.sealed || gate?.frozen) throw new SEALED_ERROR.log(self.k); }
+				return self.value;
+			},
+			write(next: U) {
+				if (gate?.sealed || gate?.frozen) return false;
+				const current = self.value;
+				if (Object.is(current, next)) return false;
+				const decision = conflict.check({
+				  current,
+				  incoming: next,
+				  previous: self.previous ?? current,
+				});
+				if (!decision.accepted) {  return false; }
+				const resolved = decision.value;
+				if (Object.is(current, resolved)) return false;
+				self.useCell().set("value", resolved);
+				return true;
+			  },
+			subscribe(listener: LISTENER<A>): UNSUBSCRIBE { return subscription.subscribe(listener); },
+			waitFor() {},
+		}));
+		z.VERTEX = this.ATOM.MASTER("VERTEX", <T = A>({ self,config, gate, subscription, SEALED_ERROR }: A) => ({
+			value: config.value as U,
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+			pid: 1,
+			slabRegistry: new Map<number, Uint8Array>(),
+			...(() => {
+				const capacity = (() => {
+					const need = (value: U): N =>
+						Array.isArray(value) ? value.length + 1 :
+						value instanceof Map || value instanceof Set ? value.size + 1 : 2;
+		
+					const size = need(self.value);
+		
+					return size > 8192 ? 64 :
+						size <= 64 ? 64 :
+						size <= 128 ? 128 :
+						size <= 256 ? 256 :
+						size <= 1024 ? 1024 : 8192;
+				})();
+		
+				const lane = new Int32Array(config.capacity ?? capacity).fill(-1);
+				const ops = new Uint8Array(config.capacity ?? capacity);
+				const posX = new Float32Array(config.capacity ?? capacity);
+				const posY = new Float32Array(config.capacity ?? capacity);
+				const val = new Int32Array(config.capacity ?? capacity);
+				const freePids = new Int32Array(config.capacity ?? capacity);
+		
+				let freeHead = 0;
+				let freeTail = 0;
+				let laneLen = 0;
+				let nextId = 0;
+		
+				const ids = new Map<S, N>();
+				const names: S[] = [];
+				const pids = new Map<S, N>();
+				const addresses = new Map<N, [N, N, N, N]>();
+				const listener: Array<ListenerFn | UD> = [];
+				const pidToHash = new Uint32Array(config.capacity ?? capacity);
+				const channelMap = new Int32Array(config.capacity ?? capacity);
+				const subChannelMap = new Int32Array(config.capacity ?? capacity);
+				const tripChannelMap = new Int32Array(config.capacity ?? capacity);
+				const dirtyPids = new Int32Array(config.capacity ?? capacity);
+		
+				for (let i = 1; i < lane.length; i++) {
+					freePids[freeTail++] = i;
+				}
+		
+				lane[0] = TRACER_PID;
+				val[TRACER_PID] = 0;
+				ops[TRACER_PID] = OP.NONE;
+				laneLen = 1;
+		
+				return {
+					capacity: lane.length,
+					lane,
+					ops,
+					posX,
+					posY,
+					val,
+					freePids,
+					freeHead,
+					freeTail,
+					laneLen,
+					ids,
+					names,
+					pids,
+					addresses,
+					nextId,
+					listener,
+					pidToHash,
+					nextAllocatedPid: 1,
+					channelMap,
+					subChannelMap,
+					tripChannelMap,
+					dirtyPids,
+				};
+			})(),
+			need(value: U): N {        return Array.isArray(value) ? value.length + 1 : value instanceof Map || value instanceof Set ? value.size + 1 : 2;    },
+			BINARY_CODEC: new BINARY_CODEC(),
+			...(() => {
+				const codec = new BINARY_CODEC();
+		
+				return {
+					codec,
+					encodeToSlab(pid: N, value: A): N {
+						if (typeof value === "number") {
+							self.slabRegistry.delete(pid);
+							return value;
+						}
+		
+						const bytes = codec.encode_msg(value);
+						self.slabRegistry.set(pid, bytes);
+						return bytes.byteLength;
+					},
+		
+					clearSlab(pid: N): void {
+						self.slabRegistry.delete(pid);
+					},
+		
+					hasSlab(pid: N): B {
+						return self.slabRegistry.has(pid);
+					},
+		
+					readSlabValue<T>(pid: N): T | NU {
+						const bytes = self.slabRegistry.get(pid);
+						return bytes ? codec.decode_msg(bytes) as T : null;
+					},
+				};
+			})(),
+			...(() => {
+				const codec = self.BINARY_CODEC;
+				const x = self.posX;
+				const y = self.posY;
+				const pid = self.pid;
+		
+				const initialize = () => {
+					const value = self.value;
+					const v = codec.encode_msg(value);
+					const position = self.getPosition(pid);
+		
+					if (self.need(value) > 8192) {
+						self.encodeToSlab(pid, v);
+						x[pid] = position.x;
+						y[pid] = position.y;
+						self.ops[pid] = OP.WRITE;
+						self.lane[self.laneLen++] = pid;
+					} else {
+						const vb = codec.encode_msg(v);
+						self.edit(position.x, position.y, vb, pid);
 					}
-			
-					const globalListeners = this._signal_global_listeners["_signal_global_listeners_raven"];
-					globalListeners?.clear();
-				},
-				waitFor: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Promise<T> => {
-					const existing = this.state.get<T>(key, opts);
-					if (existing !== undefined) return Promise.resolve(existing as T);
-			
-					return new Promise<T>((resolve) => {
-						const waiters = this._signal_waiters;
-						const k = key as unknown as A;
-						if (!(k in waiters)) waiters[k] = new Set();
-						waiters[k]!.add(resolve as any);
+				};
+		
+				return { initialize };
+			})(),
+			check_size_and_edit(value: A): V {
+				const v = self.BINARY_CODEC.encode_msg(value);
+				const { x, y } = self.getPosition(self.pid);
+		
+				if (self.need(value) > 8192) {
+					self.encodeToSlab(self.pid, v);
+					self.posX[self.pid] = x;
+					self.posY[self.pid] = y;
+					self.ops[self.pid] = OP.EDIT;
+					self.lane[self.laneLen++] = self.pid;
+				} else {
+					self.create(x, y, v, self.pid);
+				}
+			},
+			getX(pid: N): N { return self.posX[pid]; },
+			getY(pid: N): N { return self.posY[pid]; },
+			getPosition(pid: N): { x: N; y: N } { return { x: self.posX[pid], y: self.posY[pid] }; },
+			create(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.WRITE; self.lane[self.laneLen++] = pid; },
+			edit(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.EDIT; },
+			subscribeValue(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SUB; },
+			readValue(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.READ; },
+			effect(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.EFFECT; },
+			delete(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DELETE; },
+			compact(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.COMPACT; },
+			none(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.NONE; },
+			send(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SEND; },
+			sub(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SUB; },
+			duplex(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DUPLEX; },
+			stream(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.STREAM; },
+			drc(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DRC; },
+			reclaimPid(pid: N): V { self.posX[pid] = 0; self.posY[pid] = 0; self.val[pid] = 0; self.ops[pid] = OP.NONE; self.freePids[self.freeTail] = pid; self.freeTail = (self.freeTail + 1) % self.capacity; },
+			pass(): void {
+				const len = self.laneLen;
+				let writeIdx = 0;
+				let i = 0;
+				const unrolledLimit = len - (len % 4);
+		
+				for (; i < unrolledLimit; i += 4) {
+					let pid = self.lane[i];
+		
+					if (pid === TRACER_PID) {
+						self.val[TRACER_PID]++;
+						self.lane[writeIdx++] = pid;
+					} else if (self.ops[pid] === OP.DELETE) {
+						self.reclaimPid(pid);
+					} else {
+						self.ops[pid] = OP.NONE;
+						self.lane[writeIdx++] = pid;
+					}
+		
+					pid = self.lane[i + 1];
+		
+					if (pid === TRACER_PID) {
+						self.val[TRACER_PID]++;
+						self.lane[writeIdx++] = pid;
+					} else if (self.ops[pid] === OP.DELETE) {
+						self.reclaimPid(pid);
+					} else {
+						self.ops[pid] = OP.NONE;
+						self.lane[writeIdx++] = pid;
+					}
+		
+					pid = self.lane[i + 2];
+		
+					if (pid === TRACER_PID) {
+						self.val[TRACER_PID]++;
+						self.lane[writeIdx++] = pid;
+					} else if (self.ops[pid] === OP.DELETE) {
+						self.reclaimPid(pid);
+					} else {
+						self.ops[pid] = OP.NONE;
+						self.lane[writeIdx++] = pid;
+					}
+		
+					pid = self.lane[i + 3];
+		
+					if (pid === TRACER_PID) {
+						self.val[TRACER_PID]++;
+						self.lane[writeIdx++] = pid;
+					} else if (self.ops[pid] === OP.DELETE) {
+						self.reclaimPid(pid);
+					} else {
+						self.ops[pid] = OP.NONE;
+						self.lane[writeIdx++] = pid;
+					}
+				}
+		
+				for (; i < len; i++) {
+					const pid = self.lane[i];
+		
+					if (pid === TRACER_PID) {
+						self.val[TRACER_PID]++;
+						self.lane[writeIdx++] = pid;
+					} else if (self.ops[pid] === OP.DELETE) {
+						self.reclaimPid(pid);
+					} else {
+						self.ops[pid] = OP.NONE;
+						self.lane[writeIdx++] = pid;
+					}
+				}
+		
+				self.laneLen = writeIdx;
+			},
+			get tick(): N { return self.val[TRACER_PID]; },
+			get length(): N { return self.laneLen; },
+			getLoadFactor(): N {
+				const activeCount = Math.max(0, self.laneLen - 1);
+				return activeCount / (self.capacity - 1);
+			},
+			read() {
+				const r = self.registry;
+				if (r !== null) {  if (gate !== undefined && gate.sealed)  throw new SEALED_ERROR.log(self.key);  }
+				return self.value;
+			},
+			write(next: A): B {
+				const r = self.registry;
+				if (r === null) { self.value = next; return true; }
+		
+				if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
+				const previous = self.value;
+				if (Object.is(previous, next)) return false;
+				self.value = next;
+		 
+				if (subscription !== undefined)  subscription.notify({ key: self.key, previous, current: next });
+				return true;
+			},
+			subscribe(listener: LISTENER<A>): UNSUBSCRIBE {return subscription.subscribe(listener); },
+			waitFor() {},
+		})); 
+		return z
+	})(); 
+	public ATOMS = (() => {
+		const z = () => {}
+		z.LIFECYCLE = this.ATOM.BIND("ADAPTER", ({ self, master, config }: any) => ({}));
+		z.ASYNC = this.ATOM.BIND("ADAPTER", ({ self, master, config }: any) => ({}));
+		z.ADAPTER = this.ATOM.BIND("ADAPTER", ({ self, master, config }: any) => ({}));
+		z.AW_SET = this.ATOM.BIND("AW_SET", ({ self, master, config }: any) => ({}));
+		z.CASUAL_CURSOR = this.ATOM.BIND("CASUAL_CURSOR", ({ self, master, config }: any) => ({}));
+		z.DELTA_STORE = this.ATOM.BIND("DELTA_STORE", ({ self, master, config }: any) => ({}));
+		z.G_SET = this.ATOM.BIND("G_SET", ({ self, master, config }: any) => ({}));
+		z.VERSION_VECTOR = this.ATOM.BIND("VERSION_VECTOR", ({ self, master, config }: any) => ({}));
+		z.CIRCUIT_BREAKER = this.ATOM.BIND("CIRCUIT_BREAKER", ({ self, master, config }: any) => ({}));
+		z.CQRS = this.ATOM.BIND("CQRS", ({ self, master, config }: any) => ({}));
+		z.RAFT = this.ATOM.BIND("RAFT", ({ self, master, config }: any) => ({}));
+		z.YJS = this.ATOM.BIND("YJS", ({ self, master, config }: any) => ({}));
+		z.DIFFPATCH = this.ATOM.BIND("DIFFPATCH", ({ self, master, config }: any) => ({}));
+		z.HYBRID_LOGICAL_CLOCK = this.ATOM.BIND("HYBRID_LOGICAL_CLOCK", ({ self, master, config }: any) => ({}));
+		z.LWW = this.ATOM.BIND("LWW", ({ self, master, config }: any) => ({}));
+		z.LWW_ELEMENTAL = this.ATOM.BIND("LWW_ELEMENTAL", ({ self, master, config }: any) => ({}));
+		z.MV = this.ATOM.BIND("MV", ({ self, master, config }: any) => ({}));
+		z.OPTIMISTIC = this.ATOM.BIND("OPTIMISTIC", ({ self, master, config }: any) => ({}));
+		z.OR = this.ATOM.BIND("OR", ({ self, master, config }: any) => ({}));
+		z.PN = this.ATOM.BIND("PN", ({ self, master, config }: any) => ({}));
+		z.REVERSE_HEARTBEAT_MGR = this.ATOM.BIND("REVERSE_HEARTBEAT_MGR", ({ self, master, config }: any) => ({}));
+		z.SEMAPHORE = this.ATOM.BIND("SEMAPHORE", ({ self, master, config }: any) => ({}));
+		z.TOMBSTONE_COMPACTOR = this.ATOM.BIND("TOMBSTONE_COMPACTOR", ({ self, master, config }: any) => ({}));
+		z.YIMIR = this.ATOM.BIND("YIMIR", ({ self, master, config }: any) => ({}));
+		z.HYBRID_LOGICAL_CLOCK_CRDT = this.ATOM.BIND("HYBRID_LOGICAL_CLOCK_CRDT", ({ self, master, config }: any) => ({}));
+		z.SOA_QUAD_TIERED_REGISTRY = this.ATOM.BIND("SOA_QUAD_TIERED_REGISTRY", ({ self, master, config }: any) => ({}));
+		z.BINARY = this.ATOM.BIND("BINARY", ({ self, master, config }: any) => ({}));
+		z.SIGNAL = this.ATOM.BIND("SIGNAL", ({ self, master, config }: any) => ({}));
+		z.GOVERNOR = this.ATOM.BIND("GOVERNOR", ({ self, master, config }: any) => ({}));
+		z.BYTE_CODE_VM = this.ATOM.BIND("BYTE_CODE_VM", ({ self, master, config }: any) => ({}));
+		z.CHANNEL = this.ATOM.BIND("CHANNEL", ({ self, master, config }: any) => ({}));
+		z.CHANNELS = this.ATOM.BIND("CHANNELS", ({ self, master, config }: any) => ({}));
+		z.MIDDLEWARE = this.ATOM.BIND("MIDDLEWARE", ({ self, master, config }: any) => ({}));
+		z.BEAM_CODEC = this.ATOM.BIND("BEAM_CODEC", ({ self, master, config }: any) => ({}));
+		z.GOVERNER = this.ATOM.BIND("GOVERNER", ({ self, master, config }: any) => ({}));
+		z.INJECTION_CODEC = this.ATOM.BIND("INJECTION_CODEC", ({ self, master, config }: any) => ({}));
+		z.RUN_ON = this.ATOM.BIND("RUN_ON", ({ self, master, config }: any) => ({}));
+		z.SEALED_ERROR = this.ATOM.BIND("SEALED_ERROR", ({ self, master, config }: any) => ({}));
+		z.SHELL = this.ATOM.BIND("SHELL", ({ self, master, config }: any) => ({}));
+		z.TRANSFORM = this.ATOM.BIND("TRANSFORM", ({ self, master, config }: any) => ({}));
+		z.CONFLICT = this.ATOM.BIND("CONFLICT", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			conflictStrategy: (config.conflictStrategy ?? "latest") as "latest" | "fail" | "accumulate",
+			conflict: config.conflict,
+		
+			resolve<T>(current: T, incoming: T): T {
+				switch (self.conflictStrategy) {
+					case "fail":
+						throw new Error("SOUL_NEUTRON conflict: concurrent values cannot be merged");
+		
+					case "accumulate":
+						if (typeof current === "number" && typeof incoming === "number") return (current + incoming) as T;
+						if (Array.isArray(current) && Array.isArray(incoming)) return [...current, ...incoming] as T;
+						if (typeof current === "string" && typeof incoming === "string") return (current + incoming) as T;
+						throw new TypeError("SOUL_NEUTRON accumulate conflict requires matching number, string, or array values");
+		
+					case "latest":
+					default:
+						return incoming;
+				}
+			},
+		}));
+		z.CONTEXT = this.ATOM.BIND("CONTEXT", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			store: new Map<S, A>(),
+		
+			set(key: S, value: A): void {
+				self.store.set(key, value);
+				// if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('context_set', undefined, undefined, undefined, { key });
+			},
+		
+			get(key: S): A | undefined {
+				return self.store.get(key);
+			},
+		
+			/** Read with a fallback — context lookups always expect a default. */
+			getOr(key: S, fallback: A): A {
+				return self.store.has(key) ? self.store.get(key) as A : fallback;
+			},
+		
+			has(key: S): B {
+				return self.store.has(key);
+			},
+		
+			delete(key: S): B {
+				return self.store.delete(key);
+			},
+		
+			keys(): S[] {
+				return [...self.store.keys()];
+			},
+		
+			/** Full snapshot, for hand-off / persistence / diagnostics. */
+			snapshot(): Record<S, A> {
+				return Object.fromEntries(self.store);
+			},
+		
+			/** Restore from a snapshot. Replaces the store wholesale. */
+			restore(snap: Record<S, A>): void {
+				self.store = new Map(Object.entries(snap));
+			},
+		
+			/** Merge a partial snapshot over the current store (existing keys win unless overwrite). */
+			merge(snap: Record<S, A>, overwrite = false): void {
+				for (const [k, v] of Object.entries(snap)) {
+					if (!overwrite && self.store.has(k)) continue;
+					self.store.set(k, v);
+				}
+			},
+		
+			/** Scoped read: return a sub-object of the store whose keys start with the prefix. */
+			scoped(prefix: S): Record<S, A> {
+				const out: Record<S, A> = {};
+				for (const [k, v] of self.store) {
+					if (k.startsWith(prefix)) out[k] = v;
+				}
+				return out;
+			},
+		
+			purge(): void {
+				self.store.clear();
+			},
+		}));
+		z.ENCRYPTION = this.ATOM.BIND("ENCRYPTION", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			encryptionConfigs: [] as EncryptionConfig[],
+		
+			getEncryptionConfigs(): EncryptionConfig[] {
+				return [...self.encryptionConfigs];
+			},
+		
+			configureEncryption(config: EncryptionConfig): void {
+				self.encryptionConfigs.push(config);
+			},
+		}));
+		z.GROUPS = this.ATOM.BIND("GROUPS", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			groups: new Map<string, {
+				channels: Set<string>;
+				enabled: boolean;
+				middleware: ((msg: CSEMessage) => boolean | void)[];
+			}>(),
+		
+			createGroup(name: string, channels: string[] = [], options?: GroupOptions): void {
+				self.groups.set(name, {
+					channels: new Set(channels),
+					enabled: options?.enabled ?? true,
+					middleware: options?.middleware ? [options.middleware] : [],
+				});
+			},
+		
+			deleteGroup(name: string): void {
+				self.groups.delete(name);
+			},
+		
+			enableGroup(name: string): void {
+				const g = self.groups.get(name);
+				if (!g) return;
+				g.enabled = true;
+			},
+		
+			disableGroup(name: string): void {
+				const g = self.groups.get(name);
+				if (!g) return;
+				g.enabled = false;
+			},
+		
+			addToGroup(name: string, rt: string): void {
+				const g = self.groups.get(name);
+				if (!g) return;
+				g.channels.add(rt);
+			},
+		
+			removeFromGroup(name: string, rt: string): void {
+				const g = self.groups.get(name);
+				if (!g) return;
+				g.channels.delete(rt);
+			},
+		
+			async groupBroadcast(
+				name: string,
+				p: any,
+				sl = self.sl,
+				ms = self.ms,
+				rt = self.rt,
+				ttl?: number,
+			): Promise<void> {
+				const g = self.groups.get(name);
+				if (!g || !g.enabled) return;
+		
+				await Promise.all(
+					[...g.channels].map(ch => self.broadcast(p, ch, sl, ms, rt, ttl)),
+				);
+			},
+		
+			groupUse(name: string, fn: (msg: CSEMessage) => boolean | void): void {
+				const g = self.groups.get(name);
+				if (!g) return;
+				g.middleware.push(fn);
+			},
+		
+			getAllGroups(): Record<string, {
+				channels: string[];
+				enabled: boolean;
+				middlewareCount: number;
+			}> {
+				const out: Record<string, {
+					channels: string[];
+					enabled: boolean;
+					middlewareCount: number;
+				}> = {};
+		
+				for (const [name, g] of self.groups) {
+					out[name] = {
+						channels: [...g.channels],
+						enabled: g.enabled,
+						middlewareCount: g.middleware.length,
+					};
+				}
+		
+				return out;
+			},
+		}));
+		z.HISTORY = this.ATOM.BIND("HISTORY", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			history: new Map<string, CSEMessage[]>(),
+			defaultLimit: 128,
+			limits: new Map<string, number>(),
+		
+			/** Append one message. Returns the entry so callers can thread it onward. */
+			record(rt: string, msg: CSEMessage): CSEMessage {
+				let list = self.history.get(rt);
+				if (!list) {
+					list = [];
+					self.history.set(rt, list);
+				}
+		
+				list.push(msg);
+		
+				const limit = self.limits.get(rt) ?? self.defaultLimit;
+				if (list.length > limit) list.splice(0, list.length - limit);
+		
+				return msg;
+			},
+		
+			setChannelLimit(rt: string, limit: number): void {
+				self.limits.set(rt, limit);
+		
+				const list = self.history.get(rt);
+				if (list && list.length > limit) {
+					list.splice(0, list.length - limit);
+				}
+			},
+		
+			getChannelLimit(rt: string): number {
+				return self.limits.get(rt) ?? self.defaultLimit;
+			},
+		
+			getRecentHistory(rt: string, limit = 3): CSEMessage[] {
+				return (self.history.get(rt) ?? []).slice(-limit);
+			},
+		
+			getChannelHistory(rt: string): CSEMessage[] {
+				return [...(self.history.get(rt) ?? [])];
+			},
+		
+			getAllHistoryChannels(): string[] {
+				return [...self.history.keys()];
+			},
+		
+			getChannelDepth(rt: string): number {
+				return (self.history.get(rt) ?? []).length;
+			},
+		
+			getHistorySizes(): Record<string, number> {
+				const out: Record<string, number> = {};
+				for (const [ch, list] of self.history) out[ch] = list.length;
+				return out;
+			},
+		
+			clearChannel(rt: string): void {
+				self.history.delete(rt);
+			},
+		
+			purge(): void {
+				self.history.clear();
+				self.limits.clear();
+			},
+		}));
+		z.META = this.ATOM.BIND("META", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			// ── your blob, organized ───────────────────────────────────────────────────────────────────
+			_batches: new Set<string | symbol>(),
+			_batchQueue: new Map<string | symbol, A>(),
+			_batchOpts: new Map<string | symbol, { triggerRender?: B }>(),
+			_globalListeners: new Set<(key: S | symbol, value: A) => void>(),
+			_global_subscribers: new Map<S, Set<() => void>>(),
+			_sys: new Map<S, SysEntry>(),
+			_sealed: new Set<S>(),
+			_frozen: new Set<S>(),
+			_keyContracts: new Map<S, Set<S>>(),
+			_conflicts: new Map<S, ConflictPolicy>(),
+			_conflictStrategies: new Map<S, "latest" | "fail" | "accumulate">(),
+			_causal: new Map<S, CausalEntry[]>(),
+			_scopes: new Map<S, SignalScope>(),
+			_msgHandlers: new Map<S, Set<(p: A) => void>>(),
+			_lastWriteSource: new Map<S, S>(),
+			_mainMap: new Map<A, S>(),
+			_tupleCache: new Map<S, S>(),
+			_weakMap: new WeakMap<object, S>(),
+			_boundaries: new WeakMap<object, S>(),
+		
+			// ── sys entries ────────────────────────────────────────────────────────────────────────────
+			/** Register or update a system entry for this cell. */
+			setSys(name: S, entry: Partial<SysEntry> & { value?: A, source?:A }): SysEntry {
+				const prev = self._sys.get(name);
+				const next: SysEntry = {
+					name,
+					value: entry.value ?? prev?.value,
+					ts: Date.now(),
+					revision: (prev?.revision ?? 0) + 1,
+					source: entry.source ?? "meta",
+				} as A;
+				self._sys.set(name, next);
+				return next;
+			},
+		
+			getSys(name: S): SysEntry | null {
+				return self._sys.get(name) ?? null;
+			},
+		
+			deleteSys(name: S): B {
+				return self._sys.delete(name);
+			},
+		
+			listSys(): S[] {
+				return [...self._sys.keys()];
+			},
+		
+			// ── causal log ─────────────────────────────────────────────────────────────────────────────
+			/** Append a causal entry. Keep it cheap — callers pass what they know. */
+			recordCausal(key: S, cause: S, value?: A): void {
+				const list = self._causal.get(key) ?? [];
+				list.push({ cause, value, ts: Date.now() });
+		
+				// hard cap so long-lived cells don't balloon
+				if (list.length > 256) list.splice(0, list.length - 256);
+		
+				self._causal.set(key, list);
+			},
+		
+			getCausal(key: S): CausalEntry[] {
+				return self._causal.get(key) ?? [];
+			},
+		
+			clearCausal(key?: S): void {
+				if (key) self._causal.delete(key);
+				else self._causal.clear();
+			},
+		
+			// ── last write provenance ──────────────────────────────────────────────────────────────────
+			noteWrite(key: S, source: S): void {
+				self._lastWriteSource.set(key, source);
+			},
+		
+			whoWrote(key: S): S | null {
+				return self._lastWriteSource.get(key) ?? null;
+			},
+		
+			// ── msg handlers ───────────────────────────────────────────────────────────────────────────
+			addMsgHandler(key: S, fn: (p: A) => void): () => void {
+				const set = self._msgHandlers.get(key) ?? new Set();
+				set.add(fn);
+				self._msgHandlers.set(key, set);
+				return () => set.delete(fn);
+			},
+		
+			emitMsg(key: S, p: A): void {
+				for (const fn of self._msgHandlers.get(key) ?? []) {
+					try {
+						fn(p);
+					} catch (e) {
+						console.error(`[meta-shard] msg handler failed for "${key}":`, e);
+					}
+				}
+			},
+		
+			// ── global listeners ───────────────────────────────────────────────────────────────────────
+			onGlobal(fn: (key: S | symbol, value: A) => void): () => void {
+				self._globalListeners.add(fn);
+				return () => self._globalListeners.delete(fn);
+			},
+		
+			emitGlobal(key: S | symbol, value: A): void {
+				for (const fn of self._globalListeners) {
+					try {
+						fn(key, value);
+					} catch (e) {
+						console.error("[meta-shard] global listener failed:", e);
+					}
+				}
+			},
+		
+			// ── inspect / purge ────────────────────────────────────────────────────────────────────────
+			inspect(): Record<S, A> {
+				return {
+					sys: Object.fromEntries(self._sys),
+					causalKeys: [...self._causal.keys()],
+					sealed: [...self._sealed],
+					frozen: [...self._frozen],
+					lastWriteSource: Object.fromEntries(self._lastWriteSource),
+					msgHandlerKeys: [...self._msgHandlers.keys()],
+					globalListenerCount: self._globalListeners.size,
+				};
+			},
+		
+			purge(): void {
+				for (const map of [
+					self._batchQueue,
+					self._batchOpts,
+					self._global_subscribers,
+					self._sys,
+					self._keyContracts,
+					self._conflicts,
+					self._conflictStrategies,
+					self._causal,
+					self._scopes,
+					self._msgHandlers,
+					self._lastWriteSource,
+					self._mainMap,
+					self._tupleCache,
+				] as Map<A, A>[]) {
+					map.clear();
+				}
+		
+				self._batches.clear();
+				self._sealed.clear();
+				self._frozen.clear();
+				self._globalListeners.clear();
+				self._weakMap = new WeakMap();
+				self._boundaries = new WeakMap();
+			},
+		}));
+		z.OFFSEC = this.ATOM.BIND("OFFSEC", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			secrets: new Set<A>(),
+			audit: [] as OFFSEC_AUDIT_ENTRY[],
+			maxAudit: (config.maxAudit ?? 500) as N,
+		
+			// ── secret marking ─────────────────────────────────────────────────────────────────────────
+			/** Mark a value (token, key, credential) as secret. Reference equality by default. */
+			markSecret(value: A): void {
+				self.secrets.add(value);
+			},
+		
+			isSecret(value: A): B {
+				return self.secrets.has(value);
+			},
+		
+			clearSecret(value: A): B {
+				return self.secrets.delete(value);
+			},
+		
+			/**
+			 * Deep-scan a message for marked secrets; replace with '[REDACTED]' before the message
+			 * leaves the boundary. Mutates nothing — returns a copy when a hit occurs.
+			 */
+			scrub<T>(payload: T): { clean: T; redacted: N } {
+				let redacted = 0;
+				const seen = new Set<object>();
+		
+				const walk = (v: unknown): unknown => {
+					if (self.secrets.has(v as A)) {
+						redacted++;
+						return "[REDACTED]";
+					}
+		
+					if (v === null || typeof v !== "object") return v;
+					if (seen.has(v as object)) return "[CYCLIC]";
+		
+					seen.add(v as object);
+		
+					if (Array.isArray(v)) return v.map(walk);
+		
+					const out: Record<S, unknown> = {};
+					for (const [k, val] of Object.entries(v as Record<S, unknown>)) {
+						out[k] = walk(val);
+					}
+		
+					return out;
+				};
+		
+				const clean = walk(payload) as T;
+		
+				if (redacted) {
+					self.audit.push({
+						at: Date.now(),
+						what: `scrubbed ${redacted} secret(s)`,
 					});
-				},
-			};
-			public cell = (() => {
-				const fn = <T = A>(key: A, s?: S, m?: S, r?: S) => {
-					return MaybePromise(this.state.get<T>(key, { s, m, r }));
-				};
-				fn.getAll= <T = A>(opts?: ScopeOptions): Record<S | SY, T> =>{
-					return this.state.getAll<T>(opts);
+		
+					if (self.audit.length > self.maxAudit) self.audit.shift();
 				}
-				fn.set=<T = A>(label: A, value: T, triggerRender = true, s?: S, m?: S, r?: S) =>{
-					this.cell._broadcastSS(label, value, "sauron", "set");
-					return MaybePromise(this.state.set(label, value, { triggerRender, s, m, r }));
-				}
-				fn._broadcastSS=(key: A, value: A, storageType: S, fn: S, path?: S, domain?: S, options?: A) =>{
-					_localChange = true;
-					_channel?.postMessage({ key, value, storageType, fn, path, domain, options });
-				}
-				fn.subAll=(fn: (key: S | symbol, value: A) => V, s?: S, m?: S, r?: S): () => V =>{
-					if (!fn) return () => {};
-					return this.state.subscribeAll(fn, { s, m, r });
-				}
-				fn.sub=<T = A>(k: A, fn: (value: T) => void, s?: S, m?: S, r?: S): () => void =>{
-					if (!k || !fn) return () => {};
-					return MaybePromise(this.state.subscribe<T>(k, fn, { s, m, r }));
-				}
-				fn.delete=(label: A, s?: S, m?: S, r?: S): B =>{
-					if (!label) return false;
-					const v = this.state.delete(label, { s, m, r });
-					this.cell._broadcastSS(label, undefined, "sauron", "delete");
-					return v;
-				}
-				fn.waitFor=<T = A>(label: S, s?: S, m?: S, r?: S): P<T> =>{
-					return this.state.waitFor<T>(label, { s, m, r });
-				}
-				fn.deleteMany= async(keys: A[], s?: S, m?: S, r?: S): P<B> =>{
-					if (!Array.isArray(keys) || keys.length === 0) {
-						return false;
+		
+				return { clean, redacted };
+			},
+		
+			listAudit(): OFFSEC_AUDIT_ENTRY[] {
+				return [...self.audit];
+			},
+		
+			purge(): void {
+				self.secrets.clear();
+				self.audit.length = 0;
+			},
+		}));
+		z.PERMISSIONS = this.ATOM.BIND("PERMISSIONS", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			permissions: new Map<string, ChannelPermissions>(),
+		
+			setPermissions(rt: string, perms: ChannelPermissions): void {
+				self.permissions.set(rt, perms);
+			},
+		
+			getPermissions(rt: string): ChannelPermissions | undefined {
+				return self.permissions.get(rt);
+			},
+		
+			removePermissions(rt: string): B {
+				return self.permissions.delete(rt);
+			},
+		
+			hasPermissions(rt: string): B {
+				return self.permissions.has(rt);
+			},
+		
+			getAllPermissions(): Record<string, ChannelPermissions> {
+				return Object.fromEntries(self.permissions);
+			},
+		
+			listProtectedChannels(): string[] {
+				return [...self.permissions.keys()];
+			},
+		
+			/** Wildcard-aware lookup: exact wins, else longest matching prefix before `*`. */
+			resolvePermissions(rt: string): ChannelPermissions | undefined {
+				if (self.permissions.has(rt)) return self.permissions.get(rt);
+		
+				let best: ChannelPermissions | undefined;
+				let bestLen = -1;
+		
+				for (const [pattern, perms] of self.permissions) {
+					const star = pattern.indexOf("*");
+					if (star === -1) continue;
+		
+					if (rt.startsWith(pattern.slice(0, star)) && star > bestLen) {
+						best = perms;
+						bestLen = star;
 					}
-					let allDeleted = true;
-			
-					// Batch all deletes without triggering renders until the end
-					for (let i = 0; i < keys.length; i++) {
-						const deleted = this.cell.delete(keys[i], s, m, r);
-						if (!deleted) {
-							allDeleted = false;
+				}
+		
+				return best;
+			},
+		
+			/** Check one capability. No permission set → allowed (open channel). */
+			check(
+				rt: string,
+				action: "read" | "write" | "send" | "subscribe" | "admin",
+				role?: S,
+			): B {
+				const perms = self.resolvePermissions(rt);
+				if (!perms) return true;
+		
+				if (role && perms.roles && perms.roles.length && !perms.roles.includes(role)) {
+					return false;
+				}
+		
+				if (action === "read") return perms.read;
+				if (action === "write") return perms.write;
+		
+				return perms[action] ?? perms.write;
+			},
+		
+			purge(): void {
+				self.permissions.clear();
+			},
+		}));
+		z.PERSISTENCE = this.ATOM.BIND("PERSISTENCE", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			durableOffsets: new Map<string, number>(),
+			persisted: config.persisted as B | undefined,
+			durableHistory: new Map<string, CSEMessage[]>(),
+		
+			getDurableHistorySizes(): Record<string, number> {
+				const out: Record<string, number> = {};
+		
+				for (const [ch, hist] of self.durableHistory) {
+					out[ch] = hist.length;
+				}
+		
+				return out;
+			},
+		
+			async replay(options: ReplayOptions, handler: CSEHandler): Promise<void> {
+				const history = self.durableHistory.get(options.rt) ?? [];
+				let slice = history;
+		
+				if (options.fromOffset !== undefined) {
+					slice = slice.slice(options.fromOffset);
+				}
+		
+				if (options.toOffset !== undefined) {
+					slice = slice.slice(0, options.toOffset);
+				}
+		
+				if (options.fromTimestamp !== undefined) {
+					slice = slice.filter(m => m.ts !== undefined && m.ts >= options.fromTimestamp!);
+				}
+		
+				if (options.toTimestamp !== undefined) {
+					slice = slice.filter(m => m.ts !== undefined && m.ts <= options.toTimestamp!);
+				}
+		
+				for (const m of slice) {
+					handler(m.p);
+				}
+			},
+		
+			subscribeDurable(
+				handler: CSEHandler,
+				options: DurableOptions,
+				k: string,
+				sl = self.sl,
+				ms = self.ms,
+				rt = self.rt,
+			): () => void {
+				const key = `${rt}:${options.subscriberId}`;
+				const offset = self.durableOffsets.get(key) ?? options.fromOffset ?? 0;
+				const history = self.durableHistory.get(rt) ?? [];
+		
+				history.slice(offset).forEach(m => handler(m.p));
+		
+				return self.sub(
+					(p: unknown) => {
+						const h = self.durableHistory.get(rt) ?? [];
+						const nextOffset = h.length;
+		
+						self.durableOffsets.set(key, nextOffset);
+						handler(p);
+					},
+					k,
+					sl,
+					ms,
+					rt,
+				);
+			},
+		
+			getAllCheckpoints(): Record<string, number> {
+				return Object.fromEntries(self.durableOffsets);
+			},
+		
+			async setCheckpoint(
+				subscriberId: string,
+				offset: number,
+				k: string,
+				sl?: string,
+				ms?: string,
+				rt?: string,
+			): Promise<void> {
+				const key = `${rt}:${subscriberId}`;
+		
+				self.durableOffsets.set(key, offset);
+		
+				if (self.DEVTOOLS_ACTIVE) {
+					self.emitDevtoolsEvent(
+						"checkpoint_set",
+						rt,
+						ms || undefined,
+						undefined,
+						{ subscriberId, offset },
+					);
+				}
+			},
+		
+			async getCheckpoint(
+				subscriberId: string,
+				k: string,
+				sl?: string,
+				ms?: string,
+				rt?: string,
+			): Promise<number | null> {
+				const key = `${rt}:${ms}:${subscriberId}`;
+		
+				return self.durableOffsets.has(key)
+					? self.durableOffsets.get(key)!
+					: null;
+			},
+		}));
+		z.PRIORITY = this.ATOM.BIND("PRIORITY", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			queues: new Map<string, Array<{
+				priority: SIG_BUS_Priority;
+				weight: N;
+				seq: N;
+				item: A;
+				enqueuedAt: N;
+			}>>(),
+		
+			queueDefaults: new Map<string, SIG_BUS_Priority>(),
+			defaultPriority: "normal" as SIG_BUS_Priority,
+			seq: 0,
+		
+			setDefaultPriority(priority: SIG_BUS_Priority): void {
+				self.defaultPriority = priority;
+			},
+		
+			getDefaultPriority(): SIG_BUS_Priority {
+				return self.defaultPriority;
+			},
+		
+			setQueueDefault(queue: string, priority: SIG_BUS_Priority): void {
+				self.queueDefaults.set(queue, priority);
+			},
+		
+			getQueueDefault(queue: string): SIG_BUS_Priority {
+				return self.queueDefaults.get(queue) ?? self.defaultPriority;
+			},
+		
+			priorityWeight(p?: SIG_BUS_Priority): number {
+				return p === "high" ? 3 : p === "low" ? 1 : 2;
+			},
+		
+			enqueue(queue: string, item: A, priority?: SIG_BUS_Priority): N {
+				const p = priority ?? self.getQueueDefault(queue);
+				let q = self.queues.get(queue);
+		
+				if (!q) {
+					q = [];
+					self.queues.set(queue, q);
+				}
+		
+				const entry = {
+					priority: p,
+					weight: self.priorityWeight(p),
+					seq: self.seq++,
+					item,
+					enqueuedAt: Date.now(),
+				};
+		
+				q.push(entry);
+		
+				if (self.DEVTOOLS_ACTIVE) {
+					self.emitDevtoolsEvent("priority_enqueued", undefined, undefined, queue, {
+						priority: p,
+						depth: q.length,
+					});
+				}
+		
+				return entry.seq;
+			},
+		
+			/** Highest weight wins; FIFO within the same weight (low seq = older = first). */
+			dequeue(queue: string): A | undefined {
+				const q = self.queues.get(queue);
+				if (!q || !q.length) return undefined;
+		
+				let bestIdx = 0;
+		
+				for (let i = 1; i < q.length; i++) {
+					const a = q[i], b = q[bestIdx];
+		
+					if (a.weight > b.weight || (a.weight === b.weight && a.seq < b.seq)) {
+						bestIdx = i;
+					}
+				}
+		
+				const [entry] = q.splice(bestIdx, 1);
+		
+				if (self.DEVTOOLS_ACTIVE) {
+					self.emitDevtoolsEvent("priority_dequeued", undefined, undefined, queue, {
+						priority: entry.priority,
+						remaining: q.length,
+					});
+				}
+		
+				return entry.item;
+			},
+		
+			peek(queue: string): A | undefined {
+				const q = self.queues.get(queue);
+				if (!q || !q.length) return undefined;
+		
+				let bestIdx = 0;
+		
+				for (let i = 1; i < q.length; i++) {
+					const a = q[i], b = q[bestIdx];
+		
+					if (a.weight > b.weight || (a.weight === b.weight && a.seq < b.seq)) {
+						bestIdx = i;
+					}
+				}
+		
+				return q[bestIdx].item;
+			},
+		
+			getDepth(queue: string): number {
+				return (self.queues.get(queue) ?? []).length;
+			},
+		
+			listQueues(): string[] {
+				return [...self.queues.keys()];
+			},
+		
+			getDepths(): Record<string, number> {
+				const out: Record<string, number> = {};
+		
+				for (const [q, list] of self.queues) {
+					out[q] = list.length;
+				}
+		
+				return out;
+			},
+		
+			clearQueue(queue: string): void {
+				self.queues.delete(queue);
+			},
+		
+			purge(): void {
+				self.queues.clear();
+				self.queueDefaults.clear();
+			},
+		}));
+		z.SNAPSHOT = this.ATOM.BIND("SNAPSHOT", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			version: 0,
+			history: [] as SNAPSHOT_ENTRY<W>[],
+			historyMax: (config.historyMax ?? 128) as N,
+			undoStack: [] as SNAPSHOT_ENTRY<W>[],
+			redoStack: [] as SNAPSHOT_ENTRY<W>[],
+			waiters: new Set<(value: W) => void>(),
+		
+			/** Capture the current state. Call this from ATOM.write() after a successful write. */
+			capture(value: W, label?: S): SNAPSHOT_ENTRY<W> {
+				self.version++;
+		
+				const entry: SNAPSHOT_ENTRY<W> = {
+					version: self.version,
+					value,
+					ts: Date.now(),
+					label,
+				};
+		
+				self.history.push(entry);
+		
+				if (self.history.length > self.historyMax) {
+					self.history.splice(0, self.history.length - self.historyMax);
+				}
+		
+				self.redoStack.length = 0;
+		
+				for (const resolve of self.waiters) {
+					resolve(value);
+				}
+		
+				self.waiters.clear();
+		
+				return entry;
+			},
+		
+			/** Latest snapshot, or undefined if none. */
+			latest(): SNAPSHOT_ENTRY<W> | undefined {
+				return self.history[self.history.length - 1];
+			},
+		
+			/** Fetch a snapshot by exact version number. */
+			byVersion(v: N): SNAPSHOT_ENTRY<W> | undefined {
+				return self.history.find(e => e.version === v);
+			},
+		
+			/** Fetch the last N snapshots, oldest first. */
+			recent(n = 3): SNAPSHOT_ENTRY<W>[] {
+				return self.history.slice(-n);
+			},
+		
+			/** All snapshots since a timestamp. */
+			since(ts: N): SNAPSHOT_ENTRY<W>[] {
+				return self.history.filter(e => e.ts >= ts);
+			},
+		
+			count(): N {
+				return self.history.length;
+			},
+		
+			/** Wait for the next capture (first one if none exist yet). */
+			waitForNext(timeoutMs = 0): Promise<W> {
+				const latest = self.latest();
+		
+				if (latest) return Promise.resolve(latest.value);
+		
+				return new Promise<W>((resolve, reject) => {
+					const waiter = (v: W) => resolve(v);
+		
+					self.waiters.add(waiter);
+		
+					if (timeoutMs > 0) {
+						setTimeout(() => {
+							if (self.waiters.delete(waiter)) {
+								reject(new Error("ATOM snapshot wait timed out"));
+							}
+						}, timeoutMs);
+					}
+				});
+			},
+		
+			/** Move an entry from history into the undo stack (used by TIME_TRAVEL). */
+			pushUndo(entry: SNAPSHOT_ENTRY<W>): void {
+				self.undoStack.push(entry);
+		
+				if (self.undoStack.length > self.historyMax) {
+					self.undoStack.splice(0, self.undoStack.length - self.historyMax);
+				}
+			},
+		
+			/** Move an entry from history into the redo stack (used by TIME_TRAVEL). */
+			pushRedo(entry: SNAPSHOT_ENTRY<W>): void {
+				self.redoStack.push(entry);
+		
+				if (self.redoStack.length > self.historyMax) {
+					self.redoStack.splice(0, self.redoStack.length - self.historyMax);
+				}
+			},
+		
+			purge(): void {
+				self.history.length = 0;
+				self.undoStack.length = 0;
+				self.redoStack.length = 0;
+				self.waiters.clear();
+				self.version = 0;
+			},
+		}));
+		z.TAGS = this.ATOM.BIND("TAGS", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			tagSubs: new Map<string, Set<CSEHandler>>(),
+			tagsByChannel: new Map<string, Set<string>>(),
+		
+			// ── channel → tags ─────────────────────────────────────────────────────────────────────────
+			/** Declare the tags a channel carries. Replaces any previous tag set for that channel. */
+			tagChannel(channel: S, tags: S[]): void {
+				self.tagsByChannel.set(channel, new Set(tags));
+			},
+		
+			untagChannel(channel: S): B {
+				return self.tagsByChannel.delete(channel);
+			},
+		
+			getTagsForChannel(channel: S): S[] {
+				return [...(self.tagsByChannel.get(channel) ?? [])];
+			},
+		
+			/** All channels carrying at least one of the given tags. */
+			channelsByTags(tags: S[]): S[] {
+				const want = new Set(tags);
+				const out: S[] = [];
+		
+				for (const [ch, chTags] of self.tagsByChannel) {
+					for (const t of chTags) {
+						if (want.has(t)) {
+							out.push(ch);
+							break;
 						}
 					}
-			
-					return allDeleted;
 				}
-				fn.setMany=async<T = Record<S, A>>(entries: T): Promise<void>=> {
-					if (!entries || typeof entries !== "object") {
-						return;
-					}
-					// Batch all sets without triggering renders until the end
-					const entriesArray = Object.entries(entries);
-					for (let i = 0; i < entriesArray.length; i++) {
-						const [key, value] = entriesArray[i];
-						// Only trigger render on the last item to avoid multiple renders
-						const triggerRender = i === entriesArray.length - 1;
-						this.cell.set(key, value, triggerRender);
+		
+				return out;
+			},
+		
+			// ── subscriber side ─────────────────────────────────────────────────────────────────────────
+			subscribeByTag(tag: string, handler: CSEHandler): () => void {
+				const set = self.tagSubs.get(tag) ?? new Set<CSEHandler>();
+				set.add(handler);
+				self.tagSubs.set(tag, set);
+		
+				return () => set.delete(handler);
+			},
+		
+			unsubscribeByTag(tag: string, handler: CSEHandler): B {
+				return self.tagSubs.get(tag)?.delete(handler) ?? false;
+			},
+		
+			listTags(): string[] {
+				return [...self.tagSubs.keys()];
+			},
+		
+			// ── publish side ────────────────────────────────────────────────────────────────────────────
+			/** Fan a tagged message out to every handler subscribed to a tag the channel carries. */
+			publishByTag(msg: CSEMessage): N {
+				const tags = self.tagsByChannel.get(msg.r);
+				if (!tags || tags.size === 0) return 0;
+		
+				let delivered = 0;
+		
+				for (const tag of tags) {
+					const subs = self.tagSubs.get(tag);
+					if (!subs) continue;
+		
+					for (const handler of [...subs]) {
+						try {
+							handler(msg);
+							delivered++;
+						} catch (e) {
+							console.error(`[tags-NEUTRON] tag handler failed for "${tag}":`, e);
+						}
 					}
 				}
-				fn.getMany=async<T = A>(keys: S[], s?: S, m?: S, r?: S) =>{
-					if (!Array.isArray(keys) || keys.length === 0) {
-						return {};
-					}
-			
-					const result: Record<S, T | undefined> = {};
-			
-					const promises = keys.map(async (key) => {
-						const value = await this.cell<T>(key, s, m, r);
-						return { key, value };
+		
+				return delivered;
+			},
+		
+			getTagsByChannel(): Record<string, string[]> {
+				const out: Record<string, string[]> = {};
+		
+				for (const [ch, tags] of self.tagsByChannel) {
+					out[ch] = [...tags];
+				}
+		
+				return out;
+			},
+		
+			purge(): void {
+				self.tagSubs.clear();
+				self.tagsByChannel.clear();
+			},
+		}));
+		z.TIME_TRAVEL = this.ATOM.BIND("TIME_TRAVEL", ({ self, master, config, SNAPSHOT }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			snapshots: null as typeof SNAPSHOT | null,
+			version: 0,
+			historyIndex: -1,
+			undoStack: [] as SNAPSHOT_ENTRY<W>[],
+			initial: undefined as W | undefined,
+			_time_travel_reverting: false,
+			autoTimers: new Set<ReturnType<typeof setInterval>>(),
+		
+			/** Bind to the snapshot shard of the same cell. Call once after both shards are bound. */
+			attach(snapshots: typeof SNAPSHOT): void {
+				self.snapshots = snapshots;
+				self.version = snapshots.version;
+				self.historyIndex = snapshots.history.length - 1;
+				self.initial = snapshots.history[0]?.value;
+			},
+		
+			/** Write a value back to the cell and record it as a proper version (fires subs like a normal write). */
+			replay: (entry: SNAPSHOT_ENTRY<W>): void => {
+				self._time_travel_reverting = true;
+		
+				try {
+					self._writeThrough?.(
+						entry.value,
+						entry.label ? `time-travel:${entry.label}` : "time-travel",
+					);
+				} finally {
+					self._time_travel_reverting = false;
+				}
+			},
+		
+			/** Injected by ATOM when the shard is bound — how restores become real writes. */
+			_writeThrough: undefined as ((value: W, cause?: S) => void) | undefined,
+		
+			_current(): SNAPSHOT_ENTRY<W> | undefined {
+				return self.snapshots?.history[self.historyIndex];
+			},
+		
+			back(): B {
+				if (!self.snapshots || self.historyIndex <= 0) return false;
+		
+				self.historyIndex--;
+		
+				const entry = self._current();
+				if (!entry) return false;
+		
+				// The entry we stepped away from goes on redo.
+				const departed = self.snapshots.history[self.historyIndex + 1];
+				if (departed) self.snapshots.pushRedo(departed);
+		
+				self.replay(entry);
+				return true;
+			},
+		
+			forward(): B {
+				if (!self.snapshots) return false;
+		
+				const nextEntry = self.snapshots.history[self.historyIndex + 1];
+				if (!nextEntry) return false;
+		
+				self.historyIndex++;
+				self.replay(nextEntry);
+				return true;
+			},
+		
+			goto(version: N): B {
+				if (!self.snapshots) return false;
+		
+				const target = self.snapshots.byVersion(version);
+				if (!target) return false;
+		
+				const idx = self.snapshots.history.indexOf(target);
+				if (idx < 0) return false;
+		
+				const departed = self._current();
+				if (departed && idx < self.historyIndex) {
+					self.snapshots.pushRedo(departed);
+				}
+		
+				self.historyIndex = idx;
+				self.replay(target);
+				return true;
+			},
+		
+			auto_back(time = 2500): void {
+				const t = setInterval(() => {
+					if (!self.back()) clearInterval(t);
+				}, time);
+		
+				self.autoTimers.add(t);
+			},
+		
+			auto_forward(time = 2500): void {
+				const t = setInterval(() => {
+					if (!self.forward()) clearInterval(t);
+				}, time);
+		
+				self.autoTimers.add(t);
+			},
+		
+			/** Graft a foreign snapshot sequence onto this timeline (branch merge). */
+			graft(entries: SNAPSHOT_ENTRY<W>[]): N {
+				if (!self.snapshots) return 0;
+		
+				let grafted = 0;
+		
+				for (const e of entries) {
+					self.snapshots.history.push({
+						version: ++self.snapshots.version,
+						value: e.value,
+						ts: e.ts ?? Date.now(),
+						label: e.label ? `grafted:${e.label}` : "grafted",
 					});
-			
-					const results = await Promise.all(promises);
-			
-					for (const { key, value } of results) {
-						result[key] = value;
-					}
-			
-					return result;
+		
+					grafted++;
 				}
+		
+				self.historyIndex = self.snapshots.history.length - 1;
+				return grafted;
+			},
+		
+			/** Stop all auto walkers. */
+			stopAuto(): void {
+				for (const t of self.autoTimers) clearInterval(t);
+				self.autoTimers.clear();
+			},
+		
+			/** True while replay() is writing — ATOM.write() checks this to avoid re-capturing. */
+			get isReverting(): B {
+				return self._time_travel_reverting;
+			},
+		
+			purge(): void {
+				self.stopAuto();
+				self.snapshots = null;
+				self.undoStack.length = 0;
+				self.historyIndex = -1;
+			},
+		}));
+		z.TTL = this.ATOM.BIND("TTL", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			entries: new Map<S, TTL_ENTRY>(),
+			onExpire: [] as ((key: S, data?: A) => void)[],
+			defaultTtlMs: (config.defaultTtlMs ?? 0) as N,
+		
+			// ── write ──────────────────────────────────────────────────────────────────────────────────
+			set(key: S, data?: A, ttlMs?: N): TTL_ENTRY {
+				const ttl = ttlMs ?? self.defaultTtlMs;
+		
+				if (!ttl || ttl <= 0) {
+					throw new Error("[ttl-shard] no ttl provided and no defaultTtlMs configured");
+				}
+		
+				const entry: TTL_ENTRY = {
+					expiresAt: Date.now() + ttl,
+					data,
+				};
+		
+				self.entries.set(key, entry);
+				return entry;
+			},
+		
+			touch(key: S, ttlMs?: N): B {
+				const e = self.entries.get(key);
+				if (!e) return false;
+		
+				e.expiresAt = Date.now() + (ttlMs ?? self.defaultTtlMs);
+				return true;
+			},
+		
+			// ── read ───────────────────────────────────────────────────────────────────────────────────
+			/** Returns undefined if missing OR expired (and removes it lazily). */
+			get(key: S): A | undefined {
+				const e = self.entries.get(key);
+				if (!e) return undefined;
+		
+				if (Date.now() >= e.expiresAt) {
+					self.entries.delete(key);
+					return undefined;
+				}
+		
+				return e.data;
+			},
+		
+			has(key: S): B {
+				const e = self.entries.get(key);
+				return !!e && Date.now() < e.expiresAt;
+			},
+		
+			peek(key: S): A | undefined {
+				return self.entries.get(key)?.data;
+			},
+		
+			timeToLiveMs(key: S): N | null {
+				const e = self.entries.get(key);
+				if (!e) return null;
+		
+				return Math.max(0, e.expiresAt - Date.now());
+			},
+		
+			// ── delete ─────────────────────────────────────────────────────────────────────────────────
+			delete(key: S): B {
+				return self.entries.delete(key);
+			},
+		
+			// ── sweep ──────────────────────────────────────────────────────────────────────────────────
+			/** Removes expired entries, fires onExpire hooks. Returns count expired. */
+			sweep(): number {
+				const now = Date.now();
+				let n = 0;
+		
+				for (const [key, e] of [...self.entries]) {
+					if (now >= e.expiresAt) {
+						self.entries.delete(key);
+						n++;
+		
+						for (const fn of self.onExpire) {
+							try {
+								fn(key, e.data);
+							} catch (err) {
+								console.error(`[ttl-shard] onExpire failed for "${key}":`, err);
+							}
+						}
+					}
+				}
+		
+				return n;
+			},
+		
+			/** Sweep on a cadence. Owns its own timer — call stopSweeper() to cancel. */
+			_sweeper: null as ReturnType<typeof setInterval> | null,
+		
+			startSweeper(intervalMs = 30_000): void {
+				if (self._sweeper) return;
+				self._sweeper = setInterval(() => self.sweep(), intervalMs);
+			},
+		
+			stopSweeper(): void {
+				if (self._sweeper) {
+					clearInterval(self._sweeper);
+					self._sweeper = null;
+				}
+			},
+		
+			get size(): number {
+				return self.entries.size;
+			},
+		
+			listKeys(): S[] {
+				return [...self.entries.keys()];
+			},
+		
+			purge(): void {
+				self.stopSweeper();
+				self.entries.clear();
+				self.onExpire.length = 0;
+			},
+		}));
+		z.REACTIVE = this.ATOM.BIND("REACTIVE", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			records: new Map<S, RiftRecord<A>>(),
+			listeners: new Map<S, Set<StoreListener<A>>>(),
+		
+			get<T = A>(key: S): RiftRecord<T> | undefined {
+				return self.records.get(key) as RiftRecord<T> | undefined;
+			},
+		
+			set<T = A>(key: S, record: RiftRecord<T>): void {
+				self.records.set(key, record as RiftRecord<A>);
+		
+				const subs = self.listeners.get(key);
+		
+				if (subs) {
+					for (const l of [...subs]) {
+						try {
+							l(record as RiftRecord<A>);
+						} catch {
+							// one bad listener never kills the rest
+						}
+					}
+				}
+			},
+		
+			sub<T = A>(key: S, fn: StoreListener<T>): () => void {
+				let subs = self.listeners.get(key);
+		
+				if (!subs) {
+					subs = new Set();
+					self.listeners.set(key, subs);
+				}
+		
+				subs.add(fn as StoreListener<A>);
+		
+				return () => {
+					const s = self.listeners.get(key);
+					if (!s) return;
+		
+					s.delete(fn as StoreListener<A>);
+		
+					if (!s.size) self.listeners.delete(key);
+				};
+			},
+		
+			delete(key: S): void {
+				self.records.delete(key);
+				self.listeners.delete(key);
+			},
+		
+			clear(): void {
+				self.records.clear();
+				self.listeners.clear();
+			},
+		
+			get size(): N {
+				return self.records.size;
+			},
+		}));
+		z.SCHEMA = this.ATOM.BIND("SCHEMA", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			_schemas: new Map<string, CSESchema>(),
+		
+			setChannelSchema(schema: CSESchema, rt: string): void {
+				self._schemas.set(rt, schema);
+			},
+		
+			getChannelSchema(rt: string): CSESchema | undefined {
+				return self._schemas.get(rt);
+			},
+		
+			removeChannelSchema(rt: string): B {
+				const had = self._schemas.delete(rt);
+				return had;
+			},
+		
+			hasChannelSchema(rt: string): B {
+				return self._schemas.has(rt);
+			},
+		
+			listChannelSchemas(): string[] {
+				return [...self._schemas.keys()];
+			},
+		
+			getAllSchemas(): Record<string, CSESchema> {
+				return Object.fromEntries(self._schemas);
+			},
+		
+			/** Wildcard-aware lookup: exact channel wins, else longest matching prefix before `*`. */
+			resolveSchema(rt: string): CSESchema | undefined {
+				if (self._schemas.has(rt)) return self._schemas.get(rt);
+		
+				let best: CSESchema | undefined;
+				let bestLen = -1;
+		
+				for (const [pattern, schema] of self._schemas) {
+					const star = pattern.indexOf("*");
+					if (star === -1) continue;
+		
+					if (rt.startsWith(pattern.slice(0, star)) && star > bestLen) {
+						best = schema;
+						bestLen = star;
+					}
+				}
+		
+				return best;
+			},
+		
+			/**
+			 * Validate a message against its channel schema. No schema → pass (open channel).
+			 * Returns { ok, errors } — never throws.
+			 */
+			checkSchema(rt: S, msg: CSEMessage): { ok: B; errors: S[] } {
+				const schema = self.resolveSchema(rt) as A;
+				if (!schema) return { ok: true, errors: [] };
+		
+				const errors: S[] = [];
+				const payload = (msg.p ?? {}) as Record<S, A>;
+		
+				for (const [field, rule] of Object.entries(schema.fields ?? {}) as A) {
+					const v = payload[field];
+		
+					if (v === undefined || v === null) {
+						if (rule.required) errors.push(`missing required field "${field}"`);
+						continue;
+					}
+		
+					if (rule.type !== "any") {
+						const actual = typeof v;
+		
+						if (rule.type === "number" && actual !== "number") {
+							errors.push(`field "${field}" expected number, got ${actual}`);
+						} else if (rule.type === "string" && actual !== "string") {
+							errors.push(`field "${field}" expected string, got ${actual}`);
+						} else if (rule.type === "boolean" && actual !== "boolean") {
+							errors.push(`field "${field}" expected boolean, got ${actual}`);
+						}
+					}
+				}
+		
+				if (schema.validate) {
+					try {
+						const r = schema.validate(msg);
+		
+						if (r !== true && r !== undefined) {
+							errors.push(
+								typeof r === "string"
+									? r
+									: `validator rejected message on "${rt}"`,
+							);
+						}
+					} catch (e) {
+						errors.push(`validator threw: ${e}`);
+					}
+				}
+		
+				return { ok: errors.length === 0, errors };
+			},
+		
+			purge(): void {
+				self._schemas.clear();
+			},
+		}));
+		z.VALUES_REGISTRY = this.ATOM.BIND("VALUES_REGISTRY", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			instanceId: `instance_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+			hasWritten: false,
+			lastWriteSource: undefined as string | undefined,
+			lastWriteAt: undefined as number | undefined,
+			writeCount: 0,
+		
+			recordWrite(source = "write"): void {
+				self.hasWritten = true;
+				self.lastWriteSource = source;
+				self.lastWriteAt = Date.now();
+				self.writeCount++;
+			},
+		
+			reset(): void {
+				self.hasWritten = false;
+				self.lastWriteSource = undefined;
+				self.lastWriteAt = undefined;
+				self.writeCount = 0;
+			},
+		}));
+		z.CONCURRENCY = this.ATOM.BIND("CONCURRENCY", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			current: Math.min(
+				config.maxConcurrency ?? 64,
+				Math.max(
+					config.minConcurrency ?? 1,
+					config.initialConcurrency ?? Math.max(4, Math.floor((config.maxConcurrency ?? 64) / 4)),
+				),
+			) as N,
+		
+			min: (config.minConcurrency ?? 1) as N,
+			max: (config.maxConcurrency ?? 64) as N,
+			holders: new Set<symbol>(),
+			waiters: [] as Array<() => void>,
+			peak: 0 as N,
+		
+			get active(): N {
+				return self.holders.size;
+			},
+		
+			get concurrency(): N {
+				return self.current;
+			},
+		
+			get peakConcurrency(): N {
+				return self.peak;
+			},
+		
+			tryAcquire(): symbol | undefined {
+				if (self.holders.size >= self.current) return undefined;
+		
+				const h = Symbol("governor-slot");
+				self.holders.add(h);
+		
+				if (self.holders.size > self.peak) self.peak = self.holders.size;
+		
+				return h;
+			},
+		
+			async acquire(): Promise<symbol> {
+				const h = self.tryAcquire();
+				if (h) return h;
+		
+				return new Promise<symbol>(resolve =>
+					self.waiters.push(() => resolve(self.tryAcquire()!)),
+				);
+			},
+		
+			release(h: symbol): void {
+				self.holders.delete(h);
+		
+				const next = self.waiters.shift();
+				if (next) next();
+			},
+		
+			/** AIMD. Call from telemetry. */
+			evaluateResistance(signal: { latency: N; error: B; targetLatencyMs?: N }): void {
+				const target = signal.targetLatencyMs ?? 250;
+		
+				if (signal.error || signal.latency > target * 1.5) {
+					self.multiplicativeDecrease();
+				} else if (signal.latency < target * 0.7) {
+					self.additiveIncrease();
+				}
+			},
+		
+			additiveIncrease(): void {
+				if (self.current < self.max) self.resize(self.current + 1);
+			},
+		
+			multiplicativeDecrease(): void {
+				if (self.current > self.min) {
+					self.resize(Math.max(self.min, Math.floor(self.current * 0.5)));
+				}
+			},
+		
+			resize(n: N): void {
+				self.current = Math.max(self.min, Math.min(self.max, Math.floor(n)));
+		
+				if (self.current > self.peak) self.peak = self.current;
+		
+				// Wake waiters if capacity grew.
+				while (self.holders.size < self.current && self.waiters.length) {
+					self.waiters.shift()?.();
+				}
+			},
+		}));
+		z.CONTRACTS = this.ATOM.BIND("CONTRACTS", ({ self, master, config }: any) => ({
+			useCell: (() => {
+				const fn = () => {};
 				return fn;
-			})();
-			public state_setter(v: U, k: A = `_USECELL`, s: S = this.s, m: SU = this.m, r: SU = this.r) {
-				const existing = this.state.get(k, { s: s, m: m, r: r });
+			})(),
+			r: master.r,
+			m: master.m,
+			s: master.s,
+			k: config.k,
+			contracts: new Map<S, A>(),
+			_keyContracts: new Map() as Map<S, Set<S>>,
+			causal: [] as CONTRACT_VIOLATION[],
+			violations: [] as CONTRACT_VIOLATION[],
+			violationMax: 64,
+			_throwOnBlock: true as B,
+			add: (contract: A): (() => void) => {
+				self.contracts.set(contract.name, contract);
+				return () => self.contracts.delete(contract.name);
+			},
+			remove: (name: S): B => {
+				return self.contracts.delete(name);
+			},
+			get: (name: S): A | undefined => {
+				return self.contracts.get(name);
+			},
+			list: (): A[] => {
+				return [...self.contracts.values()];
+			},
+			bindKeyContracts: (keyContracts: Map<S, Set<S>>): void => {
+				self._keyContracts = keyContracts;
+			},
+			_record: (v: CONTRACT_VIOLATION, blocking: B): B => {
+				self.violations.push(v);
+				if (self.violations.length > self.violationMax) self.violations.splice(0, self.violations.length - self.violationMax);
+				if (blocking) throw new Error(`ATOM contract "${v.contract}" violated (${v.phase}): ${v.message}`);
+				console.warn(`ATOM contract "${v.contract}" violated (${v.phase}): ${v.message}`);
+				return false;
+			},
+			check: (value: A, phase: 'pre' | 'post'| 'invariant', snapshot?: Record<S, A>): B =>{
+				for (const c of self.contracts.values()) {
+					if (phase === 'pre' && c.precondition) {
+						try { if (!c.precondition(value)) return self._record({ contract: c.name, phase, value, message: 'precondition returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
+						catch (e) { return self._record({ contract: c.name, phase, value, message: `precondition threw: ${e}`, ts: Date.now() }, true); }
+					}
+					if (phase === 'post' && c.postcondition) {
+						try { if (!c.postcondition(value)) return self._record({ contract: c.name, phase, value, message: 'postcondition returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
+						catch (e) { return self._record({ contract: c.name, phase, value, message: `postcondition threw: ${e}`, ts: Date.now() }, true); }
+					}
+					if (phase === 'invariant' && c.invariant && snapshot) {
+						try { if (!c.invariant(snapshot)) return self._record({ contract: c.name, phase, value, message: 'invariant returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
+						catch (e) { return self._record({ contract: c.name, phase, value, message: `invariant threw: ${e}`, ts: Date.now() }, true); }
+					}
+				}
+				return true;
+			},
+			checkKey:(key: S, value: A, phase: 'pre' | 'post'): B =>{
+				for (const name of self._keyContracts.get(key) ?? []) {
+					const c = self.contracts.get(name);
+					if (!c) continue;
+					const check = phase === 'pre' ? c.precondition : c.postcondition;
+					if (!check) continue;
+					try {
+						if (!check(value)) return self._record({ contract: name, phase, value, message: `key contract failed for "${key}"`, ts: Date.now() }, !!c.block && self._throwOnBlock);
+					} catch (e) {
+						return self._record({ contract: name, phase, value, message: `key contract threw: ${e}`, ts: Date.now() }, true);
+					}
+				}
+				return true;
+			},
+			canWrite: (value: A): B=> { return self.check(value, 'pre'); },
+			didWrite:(value: A): B=> { return self.check(value, 'post'); },
+			listViolations:(): CONTRACT_VIOLATION[]=> { return [...self.violations]; },
+			clearViolations:(): void=> { self.violations.length = 0; },
+			purge:(): void=> { self.contracts.clear(); self.violations.length = 0; self._keyContracts.clear(); }
+		}))
+		z.COMPRESSION = this.ATOM.BIND("COMPRESSION", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+			compressionConfigs: [] as CompressionConfig[],
+		
+			getCompressionConfigs(): CompressionConfig[] {
+				return [...self.compressionConfigs];
+			},
+		
+			configureCompression(config: CompressionConfig): void {
+				self.compressionConfigs.push(config);
+			},
+		}));
+		z.DEADLETTER = this.ATOM.BIND("DEADLETTER", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			root_cell_key: config.root_cell_key as A,
+			deadLetters: [] as CSEMessage[],
+			maxDeadLetters: (config.maxDeadLetters ?? 1000) as N,
+			wire: config.wire as DEADLETTER_WIRE | undefined,
+		
+			/** Park a failed message. Oldest evicted when over max. */
+			record(msg: CSEMessage, reason?: S): void {
+				self.deadLetters.push({ ...msg, _ack: true } as CSEMessage);
+		
+				if (self.deadLetters.length > self.maxDeadLetters) {
+					self.deadLetters.shift();
+				}
+			},
+		
+			async listDeadLetters(
+				k?: S,
+				sl?: S,
+				ms?: S,
+				rt?: S,
+			): Promise<CSEMessage[]> {
+				if (!rt && !ms && !sl && !k) return [...self.deadLetters];
+		
+				return self.deadLetters.filter(
+					m =>
+						(!rt || m.rt === rt) &&
+						(!ms || m.ms === ms) &&
+						(!sl || m.sl === sl) &&
+						(!k || m.k === k),
+				);
+			},
+		
+			async requeueDeadLetter(id: S, ttl?: N): Promise<void> {
+				const idx = self.deadLetters.findIndex(m => m.id === id);
+				if (idx === -1) return;
+		
+				const msg = self.deadLetters.splice(idx, 1)[0];
+				msg.ttl = ttl ?? msg.ttl;
+		
+				await self.wire?.enqueue(msg);
+			},
+		
+			purgeDeadLetter(id: S): B {
+				const idx = self.deadLetters.findIndex(m => m.id === id);
+				if (idx === -1) return false;
+		
+				self.deadLetters.splice(idx, 1);
+				return true;
+			},
+		
+			count(): N {
+				return self.deadLetters.length;
+			},
+		
+			purge(): void {
+				self.deadLetters.length = 0;
+			},
+		}));
+		z.DESTRUCTION = this.ATOM.BIND("DESTRUCTION", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			beforeDestruct: [] as ((key: A) => void)[],
+			afterDestruct: [] as ((record: DESTRUCTION_RECORD) => void)[],
+			records: [] as DESTRUCTION_RECORD[],
+			destroyed: false as B,
+			blocked: false as B,
+		
+			// ── hooks ──────────────────────────────────────────────────────────────────────────────────
+			onBefore(fn: (key: A) => void): () => void {
+				self.beforeDestruct.push(fn);
+		
+				return () => {
+					self.beforeDestruct = self.beforeDestruct.filter(f => f !== fn);
+				};
+			},
+		
+			onAfter(fn: (record: DESTRUCTION_RECORD) => void): () => void {
+				self.afterDestruct.push(fn);
+		
+				return () => {
+					self.afterDestruct = self.afterDestruct.filter(f => f !== fn);
+				};
+			},
+		
+			/** Veto a pending destruction (e.g. in a beforeDestruct hook, or upfront). */
+			block(): void {
+				self.blocked = true;
+			},
+		
+			unblock(): void {
+				self.blocked = false;
+			},
+		
+			// ── the kill switch ────────────────────────────────────────────────────────────────────────
+			/**
+			 * Runs the full destruction sequence.
+			 * Returns the record on success, null when blocked or already destroyed.
+			 * `reviver` is a factory the record keeps so the cell can be rebuilt later.
+			 */
+			destroy(cause = "unknown", reviver?: () => A): DESTRUCTION_RECORD | null {
+				if (self.destroyed) return null;
+				if (self.blocked) return null;
+		
+				const record: DESTRUCTION_RECORD = {
+					key: self.root_cell,
+					cause,
+					at: Date.now(),
+					reviver,
+				};
+		
+				for (const fn of self.beforeDestruct) {
+					try {
+						fn(self.root_cell);
+					} catch (e) {
+						console.error("[destruction-shard] beforeDestruct hook failed:", e);
+					}
+				}
+		
+				self.destroyed = true;
+				self.records.push(record);
+		
+				for (const fn of self.afterDestruct) {
+					try {
+						fn(record);
+					} catch (e) {
+						console.error("[destruction-shard] afterDestruct hook failed:", e);
+					}
+				}
+		
+				return record;
+			},
+		
+			resurrect(): A | null {
+				if (!self.destroyed) return null;
+		
+				const last = self.records[self.records.length - 1];
+				self.destroyed = false;
+				self.blocked = false;
+		
+				return last?.reviver?.() ?? null;
+			},
+		
+			isDestroyed(): B {
+				return self.destroyed;
+			},
+		
+			clearRecords(): void {
+				self.records.length = 0;
+			},
+		
+			purge(): void {
+				self.beforeDestruct.length = 0;
+				self.afterDestruct.length = 0;
+				self.records.length = 0;
+			},
+		}));
+		type MODULE_PATH = S;
+		interface ERROR_EMISSION {
+			module: MODULE_PATH;
+			code: S;
+			message: S;
+			detail?: A;
+			ts: N;
+		}
+		class ORC_SHOUT {
+			c = {
+				emerald: { 10: "#002c22", 9: "#004f3b", 8: "#016630", 7: "#007a55", 6: "#009966", 5: "#00bc7d" },
+				blue: { 10: "", 9: "", 8: "", 7: "", 6: "", 5: "" },
+			};
+			t = {
+				deep: {
+					bg: "#020817",
+					txt: "#f8fafc",
+					size: 12,
+					title_size: 14,
+					title_txt: "#94a3b8",
+					payload_key: "#a4ed2c",
+					payload_value: "#f8fafc",
+					font: "monospace",
+					border: "2px solid #101727",
+					borderRadius: "6px",
+					padding: "8px 16px",
+					svg: "",
+				},
+				vintage: {
+					bg: "#001B29",
+					txt: "#e9e1ba",
+					size: 12,
+					title_size: 14,
+					title_txt: "#ada785",
+					payload_key: "#29c3a0",
+					payload_value: "#fafafa",
+					font: "monospace",
+					border: "2px solid #112932",
+					borderRadius: "6px",
+					padding: "8px 16px",
+					svg: "",
+				},
+				error: {
+					bg: "#09090B",
+					txt: "#e7000b",
+					size: 12,
+					title_size: 14,
+					title_txt: "#9f0712",
+					payload_key: "#a4ed2c",
+					payload_value: "#f8fafc",
+					font: "monospace",
+					border: "2px solid #e7000b",
+					borderRadius: "6px",
+					padding: "8px 16px",
+					svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
+				},
+				warn: {
+					bg: "#09090B",
+					txt: "#e17100",
+					size: 12,
+					title_size: 14,
+					title_txt: "#973c00",
+					payload_key: "#a4ed2c",
+					payload_value: "#f8fafc",
+					font: "monospace",
+					border: "2px solid #e17100",
+					borderRadius: "6px",
+					padding: "8px 16px",
+					svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e17100" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+				},
+				success: {
+					bg: "#09090B",
+					txt: "#009966",
+					size: 12,
+					title_size: 14,
+					title_txt: "#016630",
+					payload_key: "#a4ed2c",
+					payload_value: "#f8fafc",
+					font: "monospace",
+					border: "2px solid #009966",
+					borderRadius: "6px",
+					padding: "8px 16px",
+					svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009966" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/></svg>`,
+				},
+				info: {
+					bg: "#09090B",
+					txt: "#155dfc",
+					size: 12,
+					title_size: 14,
+					title_txt: "#193cb8",
+					payload_key: "#a4ed2c",
+					payload_value: "#f8fafc",
+					font: "monospace",
+					border: "2px solid #155dfc",
+					borderRadius: "6px",
+					padding: "8px 16px",
+					svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#155dfc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
+				},
+			};
+			log(msg: string | string[], p?: any, theme = this.t.deep) {
+				const isArray = Array.isArray(msg);
+				const title = isArray ? msg[0] : msg;
+				const paragraphs = isArray ? msg.slice(1) : [];
+
+				const containerStyle = `
+					background: ${theme.bg};
+					${theme.border ? `border: ${theme.border};` : ""}
+					${theme.borderRadius ? `border-radius: ${theme.borderRadius};` : ""}
+					${theme.padding ? `padding: ${theme.padding};` : ""}
+					font-family: ${theme.font};
+					display: block;
+					margin: 4px 0;
+				`;
+
+				const titleWithIcon = theme?.svg ? `${theme?.svg} ${title}` : title;
+				const titleStyle = `
+					color: ${theme.title_txt};
+					font-size: ${theme.title_size}px;
+					font-weight: bold;
+					font-family: ${theme.font};
+					display: flex;
+					align-items: center;
+					gap: 8px;
+				`;
+
+				const paragraphStyle = `
+					color: ${theme.txt};
+					font-size: ${theme.size}px;
+					font-family: ${theme.font};
+					margin-top: 4px;
+				`;
+
+				const keyStyle = `
+					color: ${theme.payload_key};
+					font-weight: bold;
+					font-family: ${theme.font};
+				`;
+				const valueStyle = `
+					color: ${theme.payload_value};
+					font-family: ${theme.font};
+				`;
+
+				let payloadStr = "";
+				if (p && typeof p === "object") {
+					const entries = Object.entries(p);
+					payloadStr = entries.map(([key, value]) => `%c${key}: %c${JSON.stringify(value, null, 2)}`).join("\n");
+				}
+
+				const logParts = [`%c${titleWithIcon}`, ...paragraphs.map((p) => `%c${p}`), payloadStr ? `\n${payloadStr}` : ""].filter(Boolean).join("\n");
+
+				const styles = [containerStyle + titleStyle, ...paragraphs.map(() => paragraphStyle), ...(payloadStr ? [keyStyle, valueStyle] : [])];
+
+				console.log(logParts, ...styles);
+			}
+		}
+		const os = new ORC_SHOUT()
+		z.ERROR = this.ATOM.BIND("ERROR", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			/** History lives here regardless of emission — history is cheap, display is gated. */
+			error_history: [] as ERROR_EMISSION[],
+			HISTORY_CAP: 512,
+		
+			// ── runtime-editable controls ─────────────────────────────────────────────────────────────
+			/** Master kill-switch. false → nothing emits, history still accrues. */
+			ENABLED: true as B,
+		
+			/** Emission only in dev mode unless this is explicitly flipped on. */
+			ENABLE_IN_PRODUCTION: false as B,
+		
+			/**
+			 * Surgical control. null = every module emits.
+			 * Record<string, boolean> = only listed modules emit, with true/false overriding.
+			 */
+			SURGICAL_LOGS: (config.surgical ?? null) as Record<MODULE_PATH, B> | null,
+		
+			/** Theme passed through to the LOGGER. Default = the error theme. */
+			theme: (os.t),
+		
+			/** "TERMINAL" | "FILE" — pipes through the LOGGER's configured sink. */
+			PIPE_TO_FILE_OR_TERMINAL: "TERMINAL" as "TERMINAL" | "FILE",
+		
+			/** Set at wiring time by the platform; falls back to plain console when absent. */
+			logger: os.log,
+		
+			// ── the single emission point ─────────────────────────────────────────────────────────────
+			/** Every error-producing call site in every shard funnels through here. */
+			emit(module: MODULE_PATH, code: S, message: S, detail?: A): ERROR_EMISSION {
+				const entry: ERROR_EMISSION = { module, code, message, detail, ts: Date.now() };
+		
+				self.error_history.push(entry);
+		
+				if (self.error_history.length > self.HISTORY_CAP) {
+					self.error_history.splice(0, self.error_history.length - self.HISTORY_CAP);
+				}
+		
+				if (self.shouldEmit(module)) {
+					const title = `[${String(self.root_cell_key)}] ${module} · ${code}`;
+		
+					if (self.logger) {
+						self.logger.theme = self.theme;
+						self.logger.drop_log([title, message], detail);
+					} else if (self.shouldEmit(module)) {
+						console.error(`${title}\n  ${message}`, detail ?? "");
+					}
+				}
+		
+				return entry;
+			},
+		
+			/** Surgical gate: master switch → dev/production → per-module toggle. */
+			shouldEmit(module: MODULE_PATH): B {
+				if (!self.ENABLED) return false;
+				if (self.ENABLE_IN_PRODUCTION === false && root.state.get("DEV_MODE") !== true) return false;
+				if (self.SURGICAL_LOGS === null) return true;
+		
+				// exact match wins, then longest-prefix match (section-level control)
+				if (module in self.SURGICAL_LOGS) return self.SURGICAL_LOGS[module];
+		
+				let best: S | null = null;
+		
+				for (const prefix of Object.keys(self.SURGICAL_LOGS)) {
+					if (module.startsWith(prefix + ".") && (best === null || prefix.length > best.length)) {
+						best = prefix;
+					}
+				}
+		
+				return best !== null ? self.SURGICAL_LOGS[best] : false;
+			},
+		
+			// ── convenience emitters used by the call sites below ────────────────────────────────────
+			sealed(detail?: A) {
+				return self.emit("GATE", "GATE_SEALED", "CELL IS SEALED — CHANGE SEALED TO FALSE TO RESUME WRITES", detail);
+			},
+		
+			frozen(detail?: A) {
+				return self.emit("GATE", "GATE_FROZEN", "CELL IS FROZEN — VIEWABLE BUT NOT EDITABLE", detail);
+			},
+		
+			asleep(detail?: A) {
+				return self.emit("GATE", "GATE_ASLEEP", "CELL IS ASLEEP — WILL NOT BE AVAILABLE UNTIL ITS CONFIGURED WAKE TIME", detail);
+			},
+		
+			shardNotFound(name: S, detail?: A) {
+				return self.emit("REGISTRY", "SHARD_NOT_FOUND", `NO SHARD LABELED "${name}" RELATIVE TO THIS CELL — REVIEW YOUR CONTRACT`, detail);
+			},
+		
+			contractViolation(contract: S, detail?: A) {
+				return self.emit("CONTRACTS", "CONTRACT_VIOLATION", `CONTRACT VIOLATION: ${contract}`, detail);
+			},
+		
+			schemaViolation(topic: S, detail?: A) {
+				return self.emit("SCHEMA", "SCHEMA_VIOLATION", `SCHEMA VIOLATION ON TOPIC "${topic}"`, detail);
+			},
+		
+			permissionDenied(ch: S, detail?: A) {
+				return self.emit("PERMISSIONS", "PERMISSION_DENIED", `PERMISSION DENIED ON CHANNEL "${ch}"`, detail);
+			},
+		
+			/** Flip an entire section or a single module. */
+			setSection(path: MODULE_PATH, on: B): void {
+				(self.SURGICAL_LOGS ??= {})[path] = on;
+			},
+		
+			clearSurgical(): void {
+				self.SURGICAL_LOGS = null;
+			},
+		
+			// ── diagnostics ───────────────────────────────────────────────────────────────────────────
+			recent(limit = 20): ERROR_EMISSION[] {
+				return self.error_history.slice(-limit);
+			},
+		
+			byModule(module: MODULE_PATH): ERROR_EMISSION[] {
+				return self.error_history.filter(e => e.module === module);
+			},
+		
+			byCode(code: S): ERROR_EMISSION[] {
+				return self.error_history.filter(e => e.code === code);
+			},
+		
+			purge(): void {
+				self.error_history.length = 0;
+			},
+		}));
+		type EVENT_LISTENER = (payload?: A) => void;
+		z.EVENT = this.ATOM.BIND("EVENT", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			events: new Map<S, Set<EVENT_LISTENER>>(),
+			wildcard: new Set<(event: S, payload?: A) => void>(),
+		
+			on(event: S, fn: EVENT_LISTENER): () => void {
+				const set = self.events.get(event) ?? new Set<EVENT_LISTENER>();
+				set.add(fn);
+				self.events.set(event, set);
+		
+				return () => set.delete(fn);
+			},
+		
+			once(event: S, fn: EVENT_LISTENER): () => void {
+				const off = self.on(event, (p: A) => {
+					off();
+					fn(p);
+				});
+		
+				return off;
+			},
+		
+			onAny(fn: (event: S, payload?: A) => void): () => void {
+				self.wildcard.add(fn);
+				return () => self.wildcard.delete(fn);
+			},
+		
+			off(event: S, fn?: EVENT_LISTENER): void {
+				if (!fn) self.events.delete(event);
+				else self.events.get(event)?.delete(fn);
+			},
+		
+			emit(event: S, payload?: A): number {
+				let delivered = 0;
+		
+				for (const fn of self.wildcard) {
+					try {
+						fn(event, payload);
+						delivered++;
+					} catch (e) {
+						console.error(`[event-shard] wildcard listener failed for "${event}":`, e);
+					}
+				}
+		
+				for (const fn of [...(self.events.get(event) ?? [])]) {
+					try {
+						fn(payload);
+						delivered++;
+					} catch (e) {
+						console.error(`[event-shard] listener failed for "${event}":`, e);
+					}
+				}
+		
+				return delivered;
+			},
+		
+			async emitAsync(event: S, payload?: A): Promise<number> {
+				let delivered = 0;
+		
+				for (const fn of self.wildcard) {
+					try {
+						await fn(event, payload);
+						delivered++;
+					} catch (e) {
+						console.error(`[event-shard] wildcard listener failed for "${event}":`, e);
+					}
+				}
+		
+				for (const fn of [...(self.events.get(event) ?? [])]) {
+					try {
+						await fn(payload);
+						delivered++;
+					} catch (e) {
+						console.error(`[event-shard] listener failed for "${event}":`, e);
+					}
+				}
+		
+				return delivered;
+			},
+		
+			listenerCount(event?: S): number {
+				if (event) return self.events.get(event)?.size ?? 0;
+		
+				let n = self.wildcard.size;
+		
+				for (const set of self.events.values()) {
+					n += set.size;
+				}
+		
+				return n;
+			},
+		
+			eventNames(): S[] {
+				return [...self.events.keys()];
+			},
+		
+			purge(): void {
+				self.events.clear();
+				self.wildcard.clear();
+			},
+		}));
+		z.EXTERNAL_SUBSCRIPTION = this.ATOM.BIND("EXTERNAL_SUBSCRIPTION", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			externalSubscribers: new Set<LISTENER<W>>(),
+		
+			subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
+				self.externalSubscribers.add(listener);
+		
+				return () => {
+					self.externalSubscribers.delete(listener);
+				};
+			},
+		
+			notify(change: CHANGE<W>): void {
+				for (const listener of self.externalSubscribers) {
+					try {
+						listener(change);
+					} catch (error) {
+						console.error(`[soul-shard] listener failed for "${String(change.key)}":`, error);
+					}
+				}
+			},
+		
+			get size(): number {
+				return self.externalSubscribers.size;
+			},
+		
+			purge(): void {
+				self.externalSubscribers.clear();
+			},
+		}));
+		z.GATE = this.ATOM.BIND("GATE", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			sealed: (config.sealed ?? false) as B,
+			frozen: (config.frozen ?? false) as B,
+			sleep: config.sleep as N | undefined,
+		
+			get asleep(): B {
+				return self.sleep !== undefined && Date.now() < self.sleep;
+			},
+		
+			seal(): V {
+				self.sealed = true;
+			},
+		
+			unseal(): V {
+				self.sealed = false;
+			},
+		
+			freeze(): V {
+				self.frozen = true;
+			},
+		
+			unfreeze(): V {
+				self.frozen = false;
+			},
+		
+			sleepUntil(timestamp: N): V {
+				self.sleep = timestamp;
+			},
+		
+			wake(): V {
+				self.sleep = undefined;
+			},
+		
+			canRead(): B {
+				return !self.asleep;
+			},
+		
+			canWrite(): B {
+				return !self.sealed && !self.frozen && !self.asleep;
+			},
+		}));
+		z.GLOBAL_SUBSCRIPTION = this.ATOM.BIND("GLOBAL_SUBSCRIPTION", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			globalListeners: new Set<LISTENER<W>>(),
+		
+			subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
+				self.globalListeners.add(listener);
+		
+				return () => {
+					self.globalListeners.delete(listener);
+				};
+			},
+		
+			notify(change: CHANGE<W>): void {
+				for (const listener of self.globalListeners) {
+					try {
+						listener(change);
+					} catch (error) {
+						console.error(`[soul-ELECTRON] listener failed for "${String(change.key)}":`, error);
+					}
+				}
+			},
+		
+			get size(): number {
+				return self.globalListeners.size;
+			},
+		
+			purge(): void {
+				self.globalListeners.clear();
+			},
+		}));
+		z.HOOK = this.ATOM.BIND("HOOK", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			hooks: new Map<S, A>(),
+			factories: new Map<S, () => A>(),
+		
+			/** Register a hook factory. The factory runs once, lazily, on first read. */
+			register(name: S, factory: () => A): void {
+				self.factories.set(name, factory);
+				// if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('hook_registered', undefined, undefined, undefined, { name });
+			},
+		
+			/** Read the hook's value, computing it on first access. */
+			use(name: S): A {
+				const existing = self.hooks.get(name);
+				if (existing) return existing.value;
+		
+				const factory = self.factories.get(name);
+				if (!factory) throw new Error(`[hook-ELECTRON] no hook registered as "${name}"`);
+		
+				const value = factory();
+				self.hooks.set(name, { value, registeredAt: Date.now() });
+		
+				// if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('hook_computed', undefined, undefined, undefined, { name });
+		
+				return value;
+			},
+		
+			isComputed(name: S): B {
+				return self.hooks.has(name);
+			},
+		
+			/** Drop the memoized value; the next use() re-runs the factory. Returns whether an entry existed. */
+			reset(name: S): B {
+				const entry = self.hooks.get(name);
+				if (!entry) return false;
+		
+				self.hooks.delete(name);
+		
+				try {
+					entry.teardown?.();
+				} catch (e) {
+					console.error(`[hook-ELECTRON] teardown failed for "${name}":`, e);
+				}
+		
+				return true;
+			},
+		
+			/** Drop the factory and the value. The hook is gone until re-registered. */
+			unregister(name: S): void {
+				self.reset(name);
+				self.factories.delete(name);
+			},
+		
+			list(): S[] {
+				return [...self.factories.keys()];
+			},
+		
+			purge(): void {
+				for (const entry of self.hooks.values()) {
+					try {
+						entry.teardown?.();
+					} catch (e) {
+						console.error("[hook-ELECTRON] teardown failed during purge:", e);
+					}
+				}
+		
+				self.hooks.clear();
+				self.factories.clear();
+			},
+		}));
+		z.HTTP_TRANSPORT = this.ATOM.BIND("HTTP_TRANSPORT", ({ self, master, config }: A) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			token: config.token as string,
+			timeoutMs: (config.timeoutMs ?? 10_000) as N,
+			backoffMs: (config.backoffMs ?? 100) as N,
+			maxBackoffMs: (config.maxBackoffMs ?? 5_000) as N,
+			maxAttempts: (config.maxAttempts ?? 3) as N,
+			codec: BINARY_CODEC as typeof BINARY_CODEC,
+			onError: (config.onError ?? (() => {})) as (err: U) => void,
+		
+			/** Inbound dispatcher — set at attach(). Receives decoded envelopes. */
+			dispatch: null as ((env: HttpEnvelope) => P<U> | U) | NU,
+		
+			// ── OUTBOUND: send an envelope to another IP ─────────────────────────────
+			async send(
+				endpoint: string,
+				env: HttpEnvelope,
+			): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+				const envelope: Required<Pick<HttpEnvelope, "ts" | "id">> & HttpEnvelope = {
+					ts: Date.now(),
+					id: seqId(),
+					...env,
+				};
+		
+				const body = self.codec.encode_msg(envelope);
+		
+				let attempt = 0;
+				let lastErr: unknown = null;
+		
+				while (attempt < self.maxAttempts) {
+					attempt++;
+		
+					try {
+						const res = await fetch(endpoint, {
+							method: "POST",
+							headers: {
+								"content-type": "application/octet-stream",
+								authorization: `Bearer ${self.token}`,
+							},
+							body: body as unknown as BodyInit,
+							signal: AbortSignal.timeout(self.timeoutMs),
+						});
+		
+						if (!res.ok) {
+							lastErr = new Error(`[http-transport] endpoint ${endpoint} responded ${res.status}`);
+		
+							// 4xx = caller's fault, retrying will not help. Stop now.
+							if (res.status >= 400 && res.status < 500) break;
+							// 5xx / network: retry with backoff
+						} else {
+							const raw = new Uint8Array(await res.arrayBuffer());
+							const decoded = self.codec.decode_msg(raw);
+		
+							if (decoded === null) {
+								lastErr = new Error(`[http-transport] endpoint ${endpoint} returned undecodable ack`);
+							} else {
+								return decoded as { ok: boolean; result?: unknown; error?: string };
+							}
+						}
+					} catch (err) {
+						lastErr = err;
+						// network-level failure: retry with backoff
+					}
+		
+					if (attempt < self.maxAttempts) {
+						await new Promise(r =>
+							setTimeout(
+								r,
+								Math.min(self.backoffMs * 2 ** (attempt - 1), self.maxBackoffMs),
+							),
+						);
+					}
+				}
+		
+				self.onError(lastErr);
+		
+				return {
+					ok: false,
+					error: lastErr instanceof Error ? lastErr.message : String(lastErr),
+				};
+			},
+		
+			// ── INBOUND: accept POSTs from the wire ──────────────────────────────────
+			/**
+			 * Wire this into any runtime's http server. `handler` must:
+			 *   • match on the path (transport does not route — the host decides)
+			 *   • read the full request body into a Uint8Array
+			 *   • call this.receive(bytes) and send back the returned ack frame
+			 * Node: http.createServer((req, res) => { if (transport.matches(req)) { ... res.end(ack) } })
+			 * Bun: Bun.serve({ fetch: (req) => transport.matchesBun(req) ? new Response(ack) : undefined })
+			 * Deno: same shape as Bun via req.arrayBuffer()
+			 */
+			attach(dispatch: (env: HttpEnvelope) => Promise<unknown> | unknown): void {
+				self.dispatch = dispatch;
+			},
+		
+			/** Path/content-type matcher for host servers. */
+			matches(pathname: string, method: string): boolean {
+				return method === "POST" && pathname === "/bus";
+			},
+		
+			/**
+			 * The one method a host server calls: bytes in → ack bytes out.
+			 * Auth is checked BEFORE dispatch. Dispatch happens inside try/catch —
+			 * a throwing handler becomes an error frame, never a crash.
+			 */
+			async receive(bytes: Uint8Array, authHeader: string | null): Promise<Uint8Array> {
+				const ack = (ok: boolean, result?: unknown, error?: string): Uint8Array =>
+					self.codec.encode_msg({ ok, result, error });
+		
+				if (authHeader !== `Bearer ${self.token}`) {
+					return ack(false, undefined, "unauthorized");
+				}
+		
+				const env = self.codec.decode_msg(bytes);
+		
+				if (env === null || typeof env !== "object") {
+					return ack(false, undefined, "undecodable envelope");
+				}
+		
+				const e = env as Partial<HttpEnvelope>;
+		
+				if (
+					typeof e.r !== "string" ||
+					typeof e.m !== "string" ||
+					typeof e.s !== "string" ||
+					typeof e.k !== "string"
+				) {
+					return ack(false, undefined, "malformed envelope: rt/ms/sl/key required");
+				}
+		
+				if (!self.dispatch) {
+					return ack(false, undefined, "no dispatcher attached");
+				}
+		
+				try {
+					const result = await self.dispatch(env as HttpEnvelope);
+					return ack(true, result);
+				} catch (err) {
+					return ack(
+						false,
+						undefined,
+						err instanceof Error ? err.message : String(err),
+					);
+				}
+			},
+		}));
+		z.GLOBAL_SUBSCRIPTION = this.ATOM.BIND("GLOBAL_SUBSCRIPTION", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			globalListeners: new Set<LISTENER<W>>(),
+		
+			subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
+				self.globalListeners.add(listener);
+		
+				return () => {
+					self.globalListeners.delete(listener);
+				};
+			},
+		
+			notify(change: CHANGE<W>): void {
+				for (const listener of self.globalListeners) {
+					try {
+						listener(change);
+					} catch (error) {
+						console.error(`[soul-ELECTRON] listener failed for "${String(change.key)}":`, error);
+					}
+				}
+			},
+		
+			get size(): number {
+				return self.globalListeners.size;
+			},
+		
+			purge(): void {
+				self.globalListeners.clear();
+			},
+		}));
+		z.METRICS = this.ATOM.BIND("METRICS", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+		
+			adapters: {
+				metrics: new Map<string, {
+					id: string;
+					total: number;
+					failures: number;
+					totalLatency: number;
+					disabled: boolean;
+					lastWindow: number;
+					lastCount: number;
+				}>(),
+			},
+		
+			seen: new Set<string>(),
+		
+			getSeenCount(): number {
+				return self.seen.size;
+			},
+		
+			getMessageCount(rt: string): number {
+				return self.messageCount.get(rt) ?? 0;
+			},
+		
+			messageCount: new Map<string, number>(),
+		
+			getAdapterMetrics(): AdapterMetrics[] {
+				const now = Date.now();
+				const out: AdapterMetrics[] = [];
+		
+				for (const m of self.adapterMetrics.values()) {
+					const windowSec = Math.max(1, (now - m.lastWindow) / 1000);
+					const throughput = m.lastCount / windowSec;
+					const failureRate = m.total === 0 ? 0 : m.failures / m.total;
+					const latencyMs = m.total === 0 ? 0 : m.totalLatency / m.total;
+		
+					out.push({
+						id: m.id,
+						latencyMs,
+						failureRate,
+						throughputPerSec: throughput,
+						healthy: !m.disabled && failureRate < 0.5,
+						disabled: m.disabled,
+					});
+		
+					m.lastWindow = now;
+					m.lastCount = 0;
+				}
+		
+				return out;
+			},
+		
+			_queueMetrics: {
+				totalEnqueued: 0,
+				totalDropped: 0,
+				totalProcessed: 0,
+				peakSize: 0,
+				currentSize: 0,
+			},
+		}));
+		z.SUBSCRIPTION = this.ATOM.BIND("SUBSCRIPTION", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			listeners: new Set<LISTENER<W>>(),
+		
+			subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
+				self.listeners.add(listener);
+		
+				return () => {
+					self.listeners.delete(listener);
+				};
+			},
+		
+			notify(change: CHANGE<W>): void {
+				for (const listener of self.listeners) {
+					try {
+						listener(change);
+					} catch (error) {
+						console.error(`[soul-ELECTRON] listener failed for "${String(change.key)}":`, error);
+					}
+				}
+			},
+		
+			get size(): number {
+				return self.listeners.size;
+			},
+		
+			purge(): void {
+				self.listeners.clear();
+			},
+		}));
+		z.WAITER = this.ATOM.BIND("WAITER", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+		
+			waiters: new Set<{
+				resolve: (value: A) => void;
+				reject: (reason?: A) => void;
+			}>(),
+		
+			wait<T = A>(timeout?: number): Promise<T> {
+				return new Promise<T>((resolve, reject) => {
+					const waiter = {
+						resolve: resolve as (value: A) => void,
+						reject,
+					};
+		
+					self.waiters.add(waiter);
+		
+					if (timeout !== undefined && timeout > 0) {
+						const timer = setTimeout(() => {
+							if (self.waiters.delete(waiter)) {
+								reject(new Error("SOUL_ELECTRON wait timed out"));
+							}
+						}, timeout);
+		
+						const originalResolve = waiter.resolve;
+						waiter.resolve = value => {
+							clearTimeout(timer);
+							originalResolve(value);
+						};
+		
+						const originalReject = waiter.reject;
+						waiter.reject = reason => {
+							clearTimeout(timer);
+							originalReject(reason);
+						};
+					}
+				});
+			},
+		
+			resolve<T = A>(value: T): number {
+				const waiters = [...self.waiters];
+				self.waiters.clear();
+		
+				for (const waiter of waiters) {
+					waiter.resolve(value as A);
+				}
+		
+				return waiters.length;
+			},
+		
+			reject(reason: A): number {
+				const waiters = [...self.waiters];
+				self.waiters.clear();
+		
+				for (const waiter of waiters) {
+					waiter.reject(reason);
+				}
+		
+				return waiters.length;
+			},
+		
+			purge(): void {
+				self.reject(new Error("SOUL_ELECTRON waiter ELECTRON destroyed"));
+			},
+		}));
+		z.SESSION = this.ATOM.BIND("SESSION", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			_cse_token: (config.cse_token ?? null) as S | null,
+			_sessionId: null as S | null,
+			_sessionToken: null as S | null,
+			_session_started_at: null as N | null,
+			_session_expires_at: null as N | null,
+			_auth_vized: false as B,
+			_auth_initialized: false as B,
+			_sessionTtlMs: (config.sessionTtlMs ?? 1000 * 60 * 60 * 12) as N,
+		
+			// ── crypto ─────────────────────────────────────────────────────────────────────────────────
+			computeHmacSha256(secret: S, data: S): S {
+				if (BUS_CRYPTO) {
+					const key = BUS_CRYPTO.to_utf8_bytes(secret);
+					const mac = BUS_CRYPTO.hash_hmac(key, data);
+					return BUS_CRYPTO.to_hex(BUS_CRYPTO.from_base64(mac));
+				}
+		
+				return "";
+			},
+		
+			// ── lifecycle ──────────────────────────────────────────────────────────────────────────────
+			/**
+			 * Stand the session up. Reads CSE_TOKEN from .env when no token was injected.
+			 * No token anywhere? The session still runs, but UNAUTHORIZED (matches the bus's stance).
+			 */
+			async initAuth(): Promise<void> {
+				if (self._auth_initialized) return;
+		
+				if (!self._cse_token && typeof process !== "undefined") {
+					try {
+					//   if (dotenv) dotenv.config();
+					} catch {
+						// env loader optional
+					}
+		
+					const sk = (typeof process !== "undefined" && process.env?.CSE_TOKEN) || null;
+					if (sk && sk.length >= 5) self._cse_token = sk;
+				}
+		
+				self._newSession();
+				self._auth_initialized = true;
+			},
+		
+			_newSession(): void {
+				const now = Date.now();
+		
+				if (self._cse_token && BUS_CRYPTO) {
+					self._sessionId = BUS_CRYPTO.to_hex(BUS_CRYPTO.random_bytes(16));
+					self._sessionToken = self.computeHmacSha256(self._cse_token, self._sessionId);
+				} else {
+					// degraded mode: still unique, just not cryptographically bound
+					self._sessionId = `sess_${now}_${Math.random().toString(36).slice(2)}`;
+					self._sessionToken = null;
+				}
+		
+				self._session_started_at = now;
+				self._session_expires_at = now + self._sessionTtlMs;
+				self._auth_vized = !!self._sessionToken;
+			},
+		
+			/** Rotate the session id + token. Anything wrapped before is invalid after this. */
+			renew(): void {
+				self._newSession();
+			},
+		
+			/** Force-expire. secureUnwrap() will reject everything until renew() or initAuth(). */
+			expire(): void {
+				self._session_expires_at = Date.now() - 1;
+				self._auth_vized = false;
+			},
+		
+			isValid(): B {
+				return self._session_expires_at !== null && Date.now() < self._session_expires_at;
+			},
+		
+			get expired(): B {
+				return !self.isValid();
+			},
+		
+			get isSecure(): B {
+				return self._cse_token !== null && self._sessionToken !== null;
+			},
+		
+			// ── wrap / unwrap ──────────────────────────────────────────────────────────────────────────
+			/** Wrap a payload with the cell's session identity. */
+			secureWrap(p: A) {
+				return {
+					sessionId: self._sessionId,
+					token: self._sessionToken,
+					ts: Date.now(),
+					p,
+				};
+			},
+		
+			/** Unwrap + verify. Tampered, stale, or foreign session → null. */
+			async secureUnwrap(msg: A): Promise<A | null> {
+				if (!msg?.sessionId || !msg?.token) return null;
+				if (msg.sessionId !== self._sessionId) return null; // not our session
+				if (!self.isValid()) return null; // our session but expired
+		
+				const expected = await self.computeHmacSha256(
+					self._cse_token ?? "",
+					msg.sessionId,
+				);
+		
+				if (self._sessionToken && msg.token !== expected) return null;
+		
+				return msg.p;
+			},
+		
+			purge(): void {
+				self._sessionId = null;
+				self._sessionToken = null;
+				self._session_started_at = null;
+				self._session_expires_at = null;
+				self._auth_vized = false;
+				self._auth_initialized = false;
+			},
+		}));
+		z.ROUTE = this.ATOM.BIND("ROUTE", ({ self, master, config }: any) => ({
+			k: config.k ?? "__SIGNALS__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			routeRules: [] as RouteRule[],
+		
+			toRegex(pattern: S): RegExp {
+				return new RegExp(
+					"^" +
+						pattern
+							.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+							.replace(/\*\*/g, ".*")
+							.replace(/\*/g, "[^.]+") +
+						"$",
+				);
+			},
+		
+			addRouteRule(rule: RouteRule): void {
+				self.routeRules.push(rule);
+		
+				if (self.DEVTOOLS_ACTIVE) {
+					self.emitDevtoolsEvent("route_added", undefined, undefined, undefined, {
+						name: rule.name,
+					});
+				}
+			},
+		
+			removeRouteRule(name: S): void {
+				self.routeRules = self.routeRules.filter(r => r.name !== name);
+		
+				if (self.DEVTOOLS_ACTIVE) {
+					self.emitDevtoolsEvent("route_removed", undefined, undefined, undefined, { name });
+				}
+			},
+		
+			listRouteRules(): RouteRule[] {
+				return [...self.routeRules];
+			},
+		
+			/** First matching enabled rule wins. Returns the rewritten target(s); adapter defaults to same_boundary. */
+			resolve(rt: S, ms: S, sl: S, k: S): RouteTarget[] {
+				for (const rule of self.routeRules) {
+					if (rule.enabled === false) continue;
+					if (!self.toRegex(rule.match).test(rt)) continue;
+		
+					const target: RouteTarget = {
+						adapter: rule.adapter ?? "same_boundary",
+						rt: rule.target?.rt ?? rt,
+						ms: rule.target?.ms ?? ms,
+						sl: rule.target?.sl ?? sl,
+						k: rule.target?.k ?? k,
+					   // priority: rule.priority,
+					};
+		
+					if (self.DEVTOOLS_ACTIVE) {
+						self.emitDevtoolsEvent("route_resolved", rt, ms, undefined, {
+							rule: rule.name,
+							adapter: target.adapter,
+						});
+					}
+		
+					return [target];
+				}
+		
+				// no rule: the identity target — same address, same boundary (PATCH 4's fallback)
+				return [{ adapter: "same_boundary", rt, ms, sl, k }];
+			},
+		
+			purge(): void {
+				self.routeRules.length = 0;
+			},
+		}));
+		z.RIFTS_ACCESS = this.ATOM.BIND("RIFTS_ACCESS", ({ self, master, config }: any) => ({
+			k: config.k ?? "__MODULE_ATOM__",
+			s: config.s ?? "SAURON_SLAVE_REG",
+			m: config.m ?? "SAURON_MASTER_REG",
+			r: config.r ?? "THE_WIZARD_ROOT_REG",
+		
+			initial: config.options?.module_type === "class_fn_pool" || !config.options?.module_type ? { ...config.initial } : config.initial,
+			module: config.options?.module_type === "class_fn_pool" || !config.options?.module_type ? { ...config.initial } : config.initial,
+			module_type: config.options?.module_type ?? "class_fn_pool",
+			version: 0,
+			sealed: false,
+			frozen: (config.options?.module_type ?? "class_fn_pool") === "class_fn_pool"        ? false        : config.options?.frozen ?? true,
+			hasWritten: false,
+			persisted: false,
+			listeners: new Set<(change: Change<A>) => void>(),
+			waiters: new Set<(value: A) => void>(),
+			undoStack: undefined as HistoryEntry[] | undefined,
+			conflict: config.options?.conflict as ConflictPolicy | undefined,
+			historyIndex: 0,
+			history: config.options?.history ? [{ k: 0, value: config.initial, timestamp: Date.now(), source: "initial", }] : undefined,
+			historyMax: config.options?.history ? Math.max(1, config.options.history.max ?? 50) : 50,
+			lifecycle: config.options?.lifecycle as SignalLifecycle | undefined,
+			async: undefined as AsyncSignalState | undefined,
+			metrics: undefined as Metrics | undefined,
+			conflictStrategy: config.options?.conflictStrategy as        "latest" | "fail" | "accumulate" | undefined,
+			schema: config.options?.schema as SignalSchema | undefined,
+			contracts: new Map<string, AtomContract<A>>(),
+			causal: [] as CausalEntry[],
+			lastWriteSource: undefined as string | undefined,
+			batches: new Set<SignalKey>(),
+			batchQueue: new Map<SignalKey, unknown>(),
+			batchOpts: new Map<SignalKey, { triggerRender?: boolean }>(),
+		
+			triggerRender: true,
+			boundary: "same-app" as Boundary,
+			read<T = A>(): T { return self.module;    },
+			peek<T = A>(): T { return self.module;    },
+			write<T = A>( incoming: any | ((prev: T) => T), options: AtomWriteOptions = {}, ): T {
+				if (self.frozen) return self.peek();
+				const prev = self.module;
+				const resolved = incoming;
+				const next = self.module_type === "class_fn_pool" ? resolved ? { ...prev, ...resolved } : prev : resolved;
+				self.module = next;
+				self.hasWritten = true;
+				self.version += 1;
+				self.lastWriteSource = options.source ?? "write";
+				self.assertContracts(next, prev);
+		
+				for (const l of self.listeners) { try { l(next); } catch (e) {} }
+				root.bus.send(next,self.k,self.s, self.m, self.r, );
+		 
+				for (const w of self.waiters) { try { w(next); } catch (e) {} }
+				if (options.recordHistory !== false) { self.recordHistory(prev, next, self.lastWriteSource); }
+				self.recordCausal(next, self.lastWriteSource, options.cause);
+				self.waiters.clear();
+		
+				self.notifyListeners({
+					key: self.key,
+					previous: prev,
+					current: next,
+					version: self.version,
+					timestamp: Date.now(),
+					source: self.lastWriteSource,
+				});
+		
+				return next;
+			},
+			register<T = A>(name: string, val: any): T { return self.write((prev: A) => ({ ...prev, [name]: val }));    },
+			unregister<T = A>(name: string): T {
+				return self.write((prev: A) => {
+					const { [name]: _gone, ...rest } = prev;
+					return rest;
+				});
+			},
+			slot(name: string): any { return self.module[name]; },
+			on(listener: RiftListener<any>): void { self.listeners.add(listener); listener(self.module); },
+			waitFor<T = A>(): Promise<T> { return new Promise(resolve => { self.waiters.add(resolve); });    },
+			async waitForSlot(name: string, timeoutMs = 0): Promise<any> {
+				const existing = self.module[name];
 				if (existing !== undefined) return existing;
-				const t = typeof v === "function" ? v() : v;
-				this.state.set(k, t, { triggerRender: true, s: s, m: m, r: r });
-				return t;
-			} 
+		
+				if (!timeoutMs) {
+					const next = await self.waitFor();
+					return (next as Record<string, any>)[name];
+				}
+		
+				return Promise.race([
+					self.waitFor().then(next => (next as Record<string, any>)[name]),
+					new Promise((_, reject) =>
+						setTimeout(
+							() => reject(
+								new Error(`[ModuleAtom] waitForSlot("${name}") timed out after ${timeoutMs}ms`),
+							),
+							timeoutMs,
+						),
+					),
+				]);
+			},
+			inspect<T = A>(): T { return { ...self.module }; },
+			setSchema(schema?: SignalSchema) { self.schema = schema; return self; },
+			setLifecycle<T = A>(lifecycle?: SignalLifecycle<T>) { self.lifecycle = lifecycle; return self; },
+			setConflict( conflict?: ConflictPolicy, strategy?: "latest" | "fail" | "accumulate", ) {
+				self.conflict = conflict;
+				self.conflictStrategy = strategy;
+				return self;
+			},
+			setFrozen(): void { self.frozen = true; },
+			setUnfrozen(): void { self.frozen = false; },
+			setSealed(): void { self.sealed = true; },
+			setUnsealed(): void { self.sealed = false; },
+			setBoundary() {},
+			validate<T = A>(next: T): T {
+				if (!self.schema) return next;
+				return this._.validateSchema(self.schema, next);
+			},
+		
+			assertContracts<T = A>(next: T, previous: T): void {
+				for (const contract of self.contracts.values()) {
+					let valid = false;
+		
+					try {
+						valid = contract.postcondition(next, previous);
+					} catch (error) {
+						console.error(
+							`[Sauron] contract "${contract.name}" threw for "${String(self.key)}":`,
+							error,
+						);
+					}
+		
+					if (valid) continue;
+		
+					const message =
+						`[Sauron] contract "${contract.name}" violated ` +
+						`on write to "${String(self.key)}"`;
+		
+					if (contract.block) {
+						throw new Error(message);
+					}
+		
+					console.error(message);
+				}
+			},
+		
+			recordHistory<T = A>(previous: T, next: T, source?: string): void {
+				if (!self.history) return;
+		
+				self.history.splice(self.historyIndex + 1);
+		
+				const last = self.history[self.history.length - 1];
+		
+				self.history.push({
+					k: (last?.k ?? -1) + 1,
+					prev: previous,
+					value: next,
+					next,
+					timestamp: Date.now(),
+					source,
+					undone: false,
+				});
+		
+				while (self.history.length > self.historyMax) {
+					self.history.shift();
+				}
+		
+				self.historyIndex = self.history.length - 1;
+			},
+		
+			getHistory<T = A>(): readonly AtomHistoryEntry<T>[] {
+				return self.history ?? [];
+			},
+		
+			timeTravel<T = A>(steps = 1): T | undefined {
+				if (!self.history?.length || steps <= 0) return undefined;
+		
+				const idx = Math.max(
+					0,
+					Math.min(self.history.length - 1, self.historyIndex + steps),
+				);
+		
+				if (idx === self.historyIndex) return undefined;
+		
+				self.historyIndex = idx;
+				return self.replayHistory("time-travel");
+			},
+		
+			back<T = A>(steps = 1): T | undefined {
+				return self.timeTravel(-Math.abs(steps));
+			},
+		
+			forward<T = A>(steps = 1): T | undefined {
+				return self.timeTravel(Math.abs(steps));
+			},
+		
+			goto<T = A>(sequence: number): T | undefined {
+				if (!self.history?.length) return undefined;
+		
+				const idx = self.history.findIndex(entry => entry.k === sequence);
+				if (idx < 0 || idx === self.historyIndex) return undefined;
+		
+				self.historyIndex = idx;
+				return self.replayHistory("time-travel.goto");
+			},
+		
+			replayHistory<T = A>(source: string): T {
+				const entry = self.history![self.historyIndex];
+		
+				return self.write(entry.value as T, {
+					source,
+					cause: "time-travel",
+					triggerRender: true,
+					recordHistory: false,
+				});
+			},
+		
+			recordCausal<T = A>(value: T, source?: string, cause?: string): void {
+				self.causal.push({
+					value,
+					source,
+					cause,
+					timestamp: Date.now(),
+				} as CausalEntry);
+		
+				if (self.causal.length > 100) {
+					self.causal.shift();
+				}
+			},
+		
+			recordMetrics(): void {
+				if (!self.metrics) return;
+		
+				self.metrics.writeCount += 1;
+				self.metrics.lastWrite = Date.now();
+			},
+		
+			notifyListeners<T = A>(change: Change<T>): void {
+				const listeners = self._listeners.get(self.key);
+				if (!listeners) return;
+		
+				for (const listener of listeners) {
+					try {
+						listener(change);
+					} catch (error) {
+						console.error(
+							`[Sauron:SIGNAL_CELL:${String(self.key)}] listener failed:`,
+							error,
+						);
+					}
+				}
+			},
+		
+			resolveWaiters<T = A>(value: T): void {
+				const waiting = self._waiters.get(self.key);
+				if (!waiting) return;
+		
+				self._waiters.delete(self.key);
+		
+				for (const resolve of waiting) {
+					try {
+						resolve(value);
+					} catch (error) {
+						console.error(
+							`[Sauron:SIGNAL_CELL:${String(self.key)}] waiter failed:`,
+							error,
+						);
+					}
+				}
+			},
+		
+			notifyExternalSubscribers(): void {
+				const subscribers = self._externalSubscribers.get(self.key);
+				if (!subscribers) return;
+		
+				for (const callback of subscribers) {
+					try {
+						callback();
+					} catch (error) {
+						console.error(
+							`[Sauron:SIGNAL_CELL:${String(self.key)}] external subscriber failed:`,
+							error,
+						);
+					}
+				}
+			},
+		}));
+		return z
+	})(); 
+	public contracts = (() => {
+		const z = () => {}
+		z.DEFAULT = this.ATOM.CONTRACT(() => ({ atom: "VERTEX" }))
+		z.vertexContract = this.ATOM.CONTRACT(() => ({
+			atom: "VERTEX",
+			value: { count: 0 },
+			bindables: { conflict: this.ATOMS.CONFLICT, ttl: this.ATOMS.TTL },
+		}));
+		z.atomMasterContract = this.ATOM.CONTRACT(() => ({
+			atom: "ATOM",
+			value: 0,
+			bindables: { ttl: this.ATOMS.TTL },
+		}));
+		z.moduleContract = this.ATOM.CONTRACT(() => ({
+			atom: "MODULE",
+			value: [],
+			bindables: { conflict: this.ATOMS.CONFLICT },
+		}));
+		return z
+	})(); 
+	public atoms_def = new (class DEFINITION {
+		public MASTER_ATOM_KEYS = ["ATOM", "MODULE", "CLOUD", "SAURON", "DRS", "MSG_Q", "SLAB",  "S_CLASS", "SPREADSHEET",  "VERTEX"] as const;
+		public MQ = {
+			RETRY: this.DEFINE_ATOM_KIND("retry"),
+			ACK: this.DEFINE_ATOM_KIND("ack"),
+			DEADLINE: this.DEFINE_ATOM_KIND("deadline"),
+			DEDUPE: this.DEFINE_ATOM_KIND("dedupe"),
+			DEPTH: this.DEFINE_ATOM_KIND("depth"),
+			WILDCARD: this.DEFINE_ATOM_KIND("wildcard"),
+			REPLY: this.DEFINE_ATOM_KIND("reply"),
+			WINDOW: this.DEFINE_ATOM_KIND("window"),
+			RESUME: this.DEFINE_ATOM_KIND("resume"),
+			CREDIT: this.DEFINE_ATOM_KIND("credit"),
+			CORRELATION: this.DEFINE_ATOM_KIND("correlation"),
+			SEND: this.DEFINE_ATOM_KIND("send"),
+			SUB: this.DEFINE_ATOM_KIND("send"),
+			STREAM: this.DEFINE_ATOM_KIND("send"),
+			HANDLER: this.DEFINE_ATOM_KIND("send"),
+			DUPLEX: this.DEFINE_ATOM_KIND("send"),
+			DRS: this.DEFINE_ATOM_KIND("send"),
+			ANTIMSGQUEUE: this.DEFINE_ATOM_KIND("send"),
+		} as const;
+		public ELECTRONS = {
+			AW_SET: this.DEFINE_ATOM_KIND("adapter"),
+			CASUAL_CURSOR: this.DEFINE_ATOM_KIND("adapter"),
+			DELTA_STORE: this.DEFINE_ATOM_KIND("adapter"),
+			G_SET: this.DEFINE_ATOM_KIND("adapter"),
+			VERSION_VECTOR: this.DEFINE_ATOM_KIND("adapter"),
+			CIRCUIT_BREAKER: this.DEFINE_ATOM_KIND("adapter"),
+			CQRS: this.DEFINE_ATOM_KIND("adapter"),
+			RAFT: this.DEFINE_ATOM_KIND("adapter"),
+			YJS: this.DEFINE_ATOM_KIND("adapter"),
+			DIFFPATCH: this.DEFINE_ATOM_KIND("adapter"),
+			HYBRID_LOGICAL_CLOCK: this.DEFINE_ATOM_KIND("adapter"),
+			LWW: this.DEFINE_ATOM_KIND("adapter"),
+			LWW_ELEMENTAL: this.DEFINE_ATOM_KIND("adapter"),
+			MV: this.DEFINE_ATOM_KIND("adapter"),
+			OPTIMISTIC: this.DEFINE_ATOM_KIND("adapter"),
+			OR: this.DEFINE_ATOM_KIND("adapter"),
+			PN: this.DEFINE_ATOM_KIND("adapter"),
+			REVERSE_HEARTBEAT_MGR: this.DEFINE_ATOM_KIND("adapter"),
+			SEMAPHORE: this.DEFINE_ATOM_KIND("adapter"),
+			TOMBSTONE_COMPACTOR: this.DEFINE_ATOM_KIND("adapter"),
+			YIMIR: this.DEFINE_ATOM_KIND("adapter"),
+			HYBRID_LOGICAL_CLOCK_CRDT: this.DEFINE_ATOM_KIND("adapter"),
+			ADAPTER: this.DEFINE_ATOM_KIND("adapter"),
+			BEAM_CODEC: this.DEFINE_ATOM_KIND("beam_codec"),
+			BINARY: this.DEFINE_ATOM_KIND("binary"),
+			BYTE_CODE_VM: this.DEFINE_ATOM_KIND("byte_code_vm"),
+			CHANNEL: this.DEFINE_ATOM_KIND("channel"),
+			CHANNELS: this.DEFINE_ATOM_KIND("channels"),
+			CONCURRENCY: this.DEFINE_ATOM_KIND("concurrency"),
+			DEADLETTER: this.DEFINE_ATOM_KIND("deadletter"),
+			DESTRUCTION: this.DEFINE_ATOM_KIND("destruction"),
+			ERROR: this.DEFINE_ATOM_KIND("error"),
+			EVENT: this.DEFINE_ATOM_KIND("event"),
+			EXTERNAL_SUBSCRIPTION: this.DEFINE_ATOM_KIND("exterenal_sub"),
+			GATE: this.DEFINE_ATOM_KIND("gate"),
+			GLOBAL_SUBSCRIPTION: this.DEFINE_ATOM_KIND("global_sub"),
+			GOVERNOR: this.DEFINE_ATOM_KIND("GOVERNOR"),
+			HOOK: this.DEFINE_ATOM_KIND("hook"),
+			HTTP_TRANSPORT: this.DEFINE_ATOM_KIND("http_transport"),
+			INJECTION_CODEC: this.DEFINE_ATOM_KIND("injection"),
+			METRICS: this.DEFINE_ATOM_KIND("metrics"),
+			MIDDLEWARE: this.DEFINE_ATOM_KIND("middlleware"),
+			RIFTS_ACCESS: this.DEFINE_ATOM_KIND("rifts"),
+			REACTIVE: this.DEFINE_ATOM_KIND("reactive"),
+			ROUTE: this.DEFINE_ATOM_KIND("route"),
+			RUN_ON: this.DEFINE_ATOM_KIND("run_on"),
+			SEALED_ERROR: this.DEFINE_ATOM_KIND("sealed_error"),
+			SESSION: this.DEFINE_ATOM_KIND("session"),
+			SHELL: this.DEFINE_ATOM_KIND("reshelltry"),
+			SIGNAL: this.DEFINE_ATOM_KIND("signal"),
+			SOA_QUAD_TIERED_REGISTRY: this.DEFINE_ATOM_KIND("soa_registry"),
+			SUBSCRIPTION: this.DEFINE_ATOM_KIND("subscription"),
+			TRANSFORM: this.DEFINE_ATOM_KIND("transform"),
+			WAITER: this.DEFINE_ATOM_KIND("waiter"),
+			CONTRACTS: this.DEFINE_ATOM_KIND("contract"),
+			SCHEMA: this.DEFINE_ATOM_KIND("schema"),
+			VALUES_REGISTRY: this.DEFINE_ATOM_KIND("values_reg"),
+			COMPRESSION: this.DEFINE_ATOM_KIND("compression"),
+			CONFLICT: this.DEFINE_ATOM_KIND("conflict"),
+			CONTEXT: this.DEFINE_ATOM_KIND("context"),
+			ENCRYPTION: this.DEFINE_ATOM_KIND("encryption"),
+			GROUPS: this.DEFINE_ATOM_KIND("groups"),
+			HISTORY: this.DEFINE_ATOM_KIND("history"),
+			META: this.DEFINE_ATOM_KIND("meta"),
+			OFFSEC: this.DEFINE_ATOM_KIND("offsec"),
+			PERMISSIONS: this.DEFINE_ATOM_KIND("permissions"),
+			PERSISTENCE: this.DEFINE_ATOM_KIND("persistence"),
+			PRIORITY: this.DEFINE_ATOM_KIND("priority"),
+			SNAPSHOT: this.DEFINE_ATOM_KIND("snapshot"),
+			TAGS: this.DEFINE_ATOM_KIND("tags"),
+			TIME_TRAVEL: this.DEFINE_ATOM_KIND("time_travel"),
+			TTL: this.DEFINE_ATOM_KIND("ttl"),
+		} as const;
+		public DEFINE_ATOM_KIND(name: string): symbol {
+			return Symbol(name);
+		}
+		public PARTICLE_KEYS = {
+			...this.ELECTRONS,
+			...this.MQ,
+		} as const;
+	})();
 
-			/** public get_root2(c: S, r: S) {
-			 let root;
-			 switch (c) {
-				 case "#SIGNAL_CELLS": { root = this.#SIGNAL_CELLS.get(r); break; }
-				 case "globalThis": { (globalThis as A)[r]; break; }
-			 }
-			 if (!root) {
-				 root = new M2<A, M2<A, M2<A, A>>>();
-				 switch (c) {
-					 case "#SIGNAL_CELLS": { root = this.#SIGNAL_CELLS.set(r, root); break; }
-					 case "globalThis": { (globalThis as A)[r] = root; break; }
-				 }
-			 }
-			 return root;
-		 }
-		 public map<K = A, V = A>(s = this.s, m = this.m, r = this.r, c = "gt"): M2<K, V> | K | V {
-			 const root = this.get_root(c, r);
-			 let masterMap = root.get(m);
-			 if (!masterMap) { masterMap = new M2<A, M2<A, A>>(); root.set(m, masterMap); }
-			 let slaveMap = masterMap.get(s);
-			 if (!slaveMap) { slaveMap = new M2<K, V>(); masterMap.set(s, slaveMap); }
-			 return slaveMap;
-		 } */
-	})(this);
-	public maul_ngin = new (class DARTH_MAUL_ENGINE {// DISRUPTOR SIGNALS ENGINE
-		public maul:  SIGNALS["maul"]
+	public signals_raptor_ngin = new (class DARTH_MAUL_ENGINE {// DISRUPTOR SIGNALS ENGINE
+		public signals_raptor:  SIGNALS["signals_raptor"]
 		public root: DEATH_STAR
 		public signals: SIGNALS
 		//                                                                                                                    CONSTANTS
@@ -1740,7 +6887,7 @@ class SIGNALS {
 		// #endregion
 		constructor(s: SIGNALS, capacity = 1 << 18) {
 			this.root = s.root;
-			this.maul = s.maul;
+			this.signals_raptor = s.signals_raptor;
 			this.signals = s;
 			this.capacity = capacity;
 	
@@ -2690,14 +7837,14 @@ class SIGNALS {
 			return this.rKind[pid] === RKind.EFFECT_SCOPE;
 		}
 	})(this);
-	public maul = new (class DARTH_MAUL {// SIGNALS && ATOMS SOLUTION
+	public signals_raptor = new (class DARTH_MAUL {// SIGNALS && ATOMS SOLUTION
 		//                                                                                                                    CONSTANTS
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		public root: DEATH_STAR;
 		public hub: DEATH_STAR;
 		public signals: SIGNALS
 		public state: RAVEN
-		public DARTH_MAUL_ENGINE: SIGNALS["maul_ngin"]
+		public DARTH_MAUL_ENGINE: SIGNALS["signals_raptor_ngin"]
 	
 		public r: S = "this.r";
 		public m: S = "this.m";
@@ -2712,17 +7859,7 @@ class SIGNALS {
 		UU = [this.m, this.r];
 		private total_cache_size = 5000;
 		public activeTracer: Map<SignalKey, SIGNAL_CELL> | null = null;
-		constructor(s: 	SIGNALS, capacity = 1 << 20) { 
-			this.root = s.root;
-			this.hub = s.root;
-			this.state = s.root.state;
-			this.r = s.root.r;
-			this.m = s.root.m;
-			this.s = s.root.s;
-			this.k = s.root.k;
-			this.signals = s
-			this.DARTH_MAUL_ENGINE = s.maul_ngin;
-		}
+		// capacity = 1 << 20
 		// #endregion
 		//                                                                                                                         MAPS
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -2760,3982 +7897,13 @@ class SIGNALS {
 			return metaMap;
 		}
 		// #endregion
-		//                                                                                                                ATOMS
+		//                                                                                                                        ATOMS
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public ATOM = (() => {
-			function mergeInto<T extends object>(target: T, source: object): T {
-				Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
-				return target;
-			}
-			function resolveFactory(raw: any): any {
-				return typeof raw === "function" ? raw : () => raw;
-			}
-			const NINJA_STUB_BRAND = "__is_atom_stub__";
-			function makeStub(trace?: any): any {
-				return new Proxy(() => makeStub(trace), {
-					get: (_t, prop) => (prop === NINJA_STUB_BRAND ? true : makeStub(trace)),
-					apply: () => makeStub(trace),
-				});
-			}
-			function withTypoGuard<T extends Record<string, any>>(result: T, label: string): T {
-				return new Proxy(result, {
-					get(target, prop, receiver) {
-						if (typeof prop === "symbol" || prop in target) return Reflect.get(target, prop, receiver);
-						throw new Error(`\n[${label} Typo Error] Property "${String(prop)}" does not exist on this ${label} definition.\n  -> Available definitions: [ ${Object.keys(target).join(", ")} ]\n`);
-					},
-				});
-			}
-			// ============================================================================
-			//  ONE CELL PER MASTER INSTANCE — the platform primitives, nothing else.
-			//      const { selfProxy, liveTarget } = createLiveSelf(instanceId)
-			//      Object.assign(liveTarget, pass)
-			//      const [o, o$] = root.DISRUPTOR.useCell.obj(liveTarget, label, category)
-			//      o$.merge(result)
-			//  liveTarget IS the cell value: the mailbox seeds the store with it and
-			//  setLive sends that same object, so self and the cell are one object with
-			//  one write path. Namespaces are one level: liveTarget.<name>.
-			// ============================================================================
-			function createLiveSelf(instanceId: string) {
-				const liveTarget: any = {};
-				const selfProxy = new Proxy(liveTarget, {
-					get: (t, k: any) => t[k],
-					set: (t, k: any, v: any) => { t[k] = v; this.hub.root.state.state.set(`${instanceId}:${k}`, v); return true; },
-				});
-				return { selfProxy, liveTarget };
-			}
-			function nsSelf(liveTarget: any, name: string, publish: () => void, useCell: () => any) {
-				const rec = () => (liveTarget[name] ??= {});
-				return new Proxy({}, {
-					get(_t, key: any) {
-						if (typeof key !== "string" || key === "then") return undefined;
-						if (key === "useCell") return useCell;
-						if (key in rec()) return rec()[key];
-						if (key in liveTarget) {
-							if (liveTarget[key]?._isNamespace) throw new Error(`[isolation] "${name}" cannot reach namespace "${key}"`);
-							return liveTarget[key];
-						}
-						return undefined;
-					},
-					set(_t, key: any, value: any) {
-						if (typeof key !== "string") return false;
-						rec()[key] = value;
-						publish();
-						return true;
-					},
-					has(_t, key: any) { return typeof key === "string" && (key in rec() || key in liveTarget); },
-				});
-			}
-			// The atom's useCell: [own record, merge into own record].
-			function cellHandle(record: () => any, publish: () => void) {
-				const merge = (patch: any) => {
-					const p = typeof patch === "function" ? patch(record()) : patch;
-					if (p && typeof p === "object") Object.assign(record(), p);
-					publish();
-				};
-				const h: any = [record(), merge];
-				h.get = (key?: string) => (key === undefined ? record() : record()[key]);
-				h.set = (key: any, value?: any) => {
-					if (typeof key === "string") merge({ [key]: value });
-					else if (key && typeof key === "object") merge(key);
-					return h;
-				};
-				return h;
-			}
-			function requiredBindables() {
-				return { gate: SIGNALS["maul"]["ATOMS"]["GATE"], subscription: SIGNALS["maul"]["ATOMS"]["SUBSCRIPTION"], context:SIGNALS["maul"]["ATOMS"]["CONTEXT"]  };
-			}
-			function withoutKeys(obj: any, keys: string[]) {
-				const desc: any = Object.getOwnPropertyDescriptors(obj);
-				for (const k of keys) delete desc[k];
-				return desc;
-			}
-			function createMaster(kind: string, config: any) {
-				const kindFactory = resolveFactory(this.signals.signals.state.get(kind));
-				if (!kindFactory) throw new TypeError(`Unknown master atom: ${kind}`);
-			
-				const instanceId = `${kind}:${this.root.REGISTRY._sid()}`;
-				const { selfProxy, liveTarget } = createLiveSelf(instanceId);
-				const names = new Set<string>();
-				const refreshers: Record<string, () => void> = {};
-				let o$: any;
-			
-				const publish = () => {
-					if (!o$) return; // still seeding: the first merge publishes the whole record
-					for (const f of Object.values(refreshers)) f();
-					o$.merge({});
-					for (const n of names) liveTarget[n]._version = liveTarget._version;
-				};
-			
-				const bind = (name: string, factory: any, cfg: any) => {
-					if (name in liveTarget && !names.has(name)) throw new Error(`[COLLISION] bound atom "${name}" collides with master field "${name}"`);
-					names.add(name);
-					liveTarget[name] = Object.assign(liveTarget[name] ?? {}, { _isNamespace: true });
-					const useCell = () => cellHandle(() => liveTarget[name], publish);
-					const self = nsSelf(liveTarget, name, publish, useCell);
-					const ctx: any = { self, useCell, channel: (l: any) => this.signals.signals.state.subscribe(instanceId, l), master: selfProxy, config: cfg, k: root.k, s: root.s, m: root.m, r: root.r };
-					const out = factory(ctx);
-					Object.defineProperties(liveTarget[name], withoutKeys(out, ["bindables", "refresh"]));
-					if (typeof out.refresh === "function") refreshers[name] = out.refresh;
-				};
-			
-				const view = (name: string) => {
-					const rec = liveTarget[name];
-					return new Proxy(rec, {
-						get: (t, k: any) => (typeof t[k] === "function" ? t[k].bind(rec) : t[k]),
-						set: (t, k: any, v: any) => { t[k] = v; publish(); return true; },
-					});
-				};
-			
-				const masterCtx = (cfg: any) => {
-					const ctx: any = { self: selfProxy, useCell: () => cellHandle(() => liveTarget, publish), channel: (l: any) => this.root.signals.signals.state.subscribe(instanceId, l), config: cfg, master: selfProxy, k: root.k, s: root.s, m: root.m, r: root.r };
-					for (const name of names) ctx[name] = view(name);
-					return ctx;
-				};
-			
-				// seed: config lives at the root, same level as the namespaces
-				for (const [key, v] of Object.entries(config)) {
-					if (key === "_version") throw new Error(`[COLLISION] "_version" is reserved by the cell`);
-					liveTarget[key] = v;
-				}
-			
-				// open the cell on the seeded object — this IS the resource from here on
-				const [cell, handle] = this.root.bus.drs.useCell.obj(liveTarget, instanceId, kind);
-				o$ = handle;
-			
-				// 1. required bound atoms first — the master reads gate.sealed on read()
-				for (const [name, factory] of Object.entries(requiredBindables())) bind(name, factory, config);
-			
-				// 2. probe for the master's own bindables list, then build those too
-				const probe = kindFactory(masterCtx(config));
-				for (const [name, factory] of Object.entries((probe as any).bindables ?? {})) bind(name, resolveFactory(factory), config);
-			
-				// 3. re-run the factory now that every namespace exists (live views)
-				const built = kindFactory(masterCtx(config));
-			
-				// 4. the master's own fields into the root
-				const masterFields = withoutKeys(built, ["bindables", "value"]);
-				for (const key of Object.keys(masterFields)) {
-					if (key === "_version") throw new Error(`[COLLISION] "_version" is reserved by the cell`);
-					if (names.has(key)) throw new Error(`[COLLISION] master field "${key}" collides with bound atom "${key}"`);
-				}
-				Object.defineProperties(liveTarget, masterFields);
-			
-				// 5. the public surface: flat master ops + one handle per namespace
-				const api: any = { atom: kind };
-				for (const name of names) api[name] = view(name);
-				for (const fn of ["read", "write", "subscribe", "waitFor"]) if (fn in liveTarget) api[fn] = liveTarget[fn];
-				for (const key of Object.keys(masterFields)) {
-					if (key in api) continue;
-					if (typeof liveTarget[key] === "function") { api[key] = liveTarget[key]; continue; }
-					Object.defineProperty(api, key, { enumerable: true, get: () => liveTarget[key] });
-				}
-				api.version = () => cell._version;
-			
-				publish(); // build is one publish: every namespace refreshes together
-				return withTypoGuard(api, instanceId.split(":")[1]);
-			}
-			const z = () => {}
-			z.MASTER = (name: string, arg: any)=>{ const f = resolveFactory(arg); this.root.state.state.set(name, f); return f; }
-			z.BIND=(name: string, arg: any)=> { const f = resolveFactory(arg); this.root.state.state.set(name, f); return f; }
-			z.BINDABLE=(factory: any)=> { return factory; }
-			z.CONTRACT=(arg1: any, arg2?: any): any =>{
-				const id = `${this.root.REGISTRY._sid()}`;
-				const categoryName = typeof arg1 === "string" ? arg1 : `ATOM_CONTRACT${id}`;
-				const rawConfig = typeof arg1 === "string" ? arg2 : arg1;
-				if (rawConfig === undefined || rawConfig === null) throw new Error("Self is required");
-				const factory = resolveFactory(rawConfig);
-				const pass = factory({});
-				const kind = pass.atom ?? "ATOM";
-				// atomContract(7) and atomContract({ value: 7 }) both mean the same thing
-				const contract = ((config: any = {}) => {
-					const normalized = config && typeof config === "object" ? config : { value: config };
-					return createMaster(kind, normalized);
-				}) as any;
-				Object.assign(contract, pass);
-				this.root.signals.signals.state.set(categoryName, contract);
-				return contract;
-			}
-			return z
-		})(); 
-		public MASTERS = (() => {
-			const z = () => {}
-			z.SAURON = this.ATOM.MASTER("SAURON", <T = A>({ self, master, config }: A) => ({}));
-			z.MSG_Q = this.ATOM.MASTER("MSG_Q", <T = A>({ self, master, config }: A) => ({}));
-			z.SLAB = this.ATOM.MASTER("SLAB", <T = A>({ self, master, config }: A) => ({}));
-			z.DRS = this.ATOM.MASTER("DRS", <X = A>({ self, master, config }: A) => ({}));
-			z.SUB = this.ATOM.MASTER("SUB", <T = A>({ self, master, config }: A) => ({}));
-			z.STREAM = this.ATOM.MASTER("STREAM", <T = A>({ self, master, config }: A) => ({}));
-			z.SPREADSHEET = this.ATOM.MASTER("SPREADSHEET", <T = A>({ self, master, config }: A) => ({}));
-			z.SEND = this.ATOM.MASTER("SEND", <T = A>({ self, master, config }: A) => ({}));
-			z.CLOUD = this.ATOM.MASTER("CLOUD", <T = A>({ self, master, config }: A) => ({}));
-			z.DUPLEX = this.ATOM.MASTER("DUPLEX", <T = A>({ self, master, config }: A) => ({}));
-			z.MODULE = this.ATOM.MASTER("MODULE", <T = A>({ self, master, config }: A) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-				pipeline: 'A' ,
-				send(message: A, signal?: A) { 	},
-				dispatch(hook: A, ctx: A, terminal: () => V) { },
-				deliver(ctx: A){ },
-			}));
-			z.MODULE_STORAGE = this.ATOM.MASTER("MODULE_STORAGE_PROTON", <T = A>({ self, master, config }: A) => ({}));
-			z.S_CLASS = this.ATOM.MASTER("S_CLASS", <T = A>({ self, master, config }: A) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-				pipeline: 'A' ,
-				send(message: A, signal?: A) { 	},
-				dispatch(hook: A, ctx: A, terminal: () => V) { },
-				deliver(ctx: A){ },
-			}));
-			z.S_CLASS_STORAGE = this.ATOM.MASTER("S_CLASS_STORAGE_PROTON", <T = A>({ self, master, config }: A) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-				pipeline: 'A' ,
-				send(message: A, signal?: A) { 	},
-				dispatch(hook: A, ctx: A, terminal: () => V) { },
-				deliver(ctx: A){ },
-			}));
-			z.ATOM = this.ATOM.MASTER('ATOM',<T = A>({ self, config, gate, subscription, SEALED_ERROR, conflict }: A) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-				value: config.value as U,
-				read() {
-					const r = self.value;
-					if (r !== null) { if (gate?.sealed || gate?.frozen) throw new SEALED_ERROR.log(self.k); }
-					return self.value;
-				},
-				write(next: U) {
-					if (gate?.sealed || gate?.frozen) return false;
-					const current = self.value;
-					if (Object.is(current, next)) return false;
-					const decision = conflict.check({
-					  current,
-					  incoming: next,
-					  previous: self.previous ?? current,
-					});
-					if (!decision.accepted) {  return false; }
-					const resolved = decision.value;
-					if (Object.is(current, resolved)) return false;
-					self.useCell().set("value", resolved);
-					return true;
-				  },
-				subscribe(listener: LISTENER<A>): UNSUBSCRIBE { return subscription.subscribe(listener); },
-				waitFor() {},
-			}));
-			z.VERTEX = this.ATOM.MASTER("VERTEX", <T = A>({ self,config, gate, subscription, SEALED_ERROR }: A) => ({
-				value: config.value as U,
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-				pid: 1,
-				slabRegistry: new Map<number, Uint8Array>(),
-				...(() => {
-					const capacity = (() => {
-						const need = (value: U): N =>
-							Array.isArray(value) ? value.length + 1 :
-							value instanceof Map || value instanceof Set ? value.size + 1 : 2;
-			
-						const size = need(self.value);
-			
-						return size > 8192 ? 64 :
-							size <= 64 ? 64 :
-							size <= 128 ? 128 :
-							size <= 256 ? 256 :
-							size <= 1024 ? 1024 : 8192;
-					})();
-			
-					const lane = new Int32Array(config.capacity ?? capacity).fill(-1);
-					const ops = new Uint8Array(config.capacity ?? capacity);
-					const posX = new Float32Array(config.capacity ?? capacity);
-					const posY = new Float32Array(config.capacity ?? capacity);
-					const val = new Int32Array(config.capacity ?? capacity);
-					const freePids = new Int32Array(config.capacity ?? capacity);
-			
-					let freeHead = 0;
-					let freeTail = 0;
-					let laneLen = 0;
-					let nextId = 0;
-			
-					const ids = new Map<S, N>();
-					const names: S[] = [];
-					const pids = new Map<S, N>();
-					const addresses = new Map<N, [N, N, N, N]>();
-					const listener: Array<ListenerFn | UD> = [];
-					const pidToHash = new Uint32Array(config.capacity ?? capacity);
-					const channelMap = new Int32Array(config.capacity ?? capacity);
-					const subChannelMap = new Int32Array(config.capacity ?? capacity);
-					const tripChannelMap = new Int32Array(config.capacity ?? capacity);
-					const dirtyPids = new Int32Array(config.capacity ?? capacity);
-			
-					for (let i = 1; i < lane.length; i++) {
-						freePids[freeTail++] = i;
-					}
-			
-					lane[0] = TRACER_PID;
-					val[TRACER_PID] = 0;
-					ops[TRACER_PID] = OP.NONE;
-					laneLen = 1;
-			
-					return {
-						capacity: lane.length,
-						lane,
-						ops,
-						posX,
-						posY,
-						val,
-						freePids,
-						freeHead,
-						freeTail,
-						laneLen,
-						ids,
-						names,
-						pids,
-						addresses,
-						nextId,
-						listener,
-						pidToHash,
-						nextAllocatedPid: 1,
-						channelMap,
-						subChannelMap,
-						tripChannelMap,
-						dirtyPids,
-					};
-				})(),
-				need(value: U): N {        return Array.isArray(value) ? value.length + 1 : value instanceof Map || value instanceof Set ? value.size + 1 : 2;    },
-				BINARY_CODEC: new BINARY_CODEC(),
-				...(() => {
-					const codec = new BINARY_CODEC();
-			
-					return {
-						codec,
-						encodeToSlab(pid: N, value: A): N {
-							if (typeof value === "number") {
-								self.slabRegistry.delete(pid);
-								return value;
-							}
-			
-							const bytes = codec.encode_msg(value);
-							self.slabRegistry.set(pid, bytes);
-							return bytes.byteLength;
-						},
-			
-						clearSlab(pid: N): void {
-							self.slabRegistry.delete(pid);
-						},
-			
-						hasSlab(pid: N): B {
-							return self.slabRegistry.has(pid);
-						},
-			
-						readSlabValue<T>(pid: N): T | NU {
-							const bytes = self.slabRegistry.get(pid);
-							return bytes ? codec.decode_msg(bytes) as T : null;
-						},
-					};
-				})(),
-				...(() => {
-					const codec = self.BINARY_CODEC;
-					const x = self.posX;
-					const y = self.posY;
-					const pid = self.pid;
-			
-					const initialize = () => {
-						const value = self.value;
-						const v = codec.encode_msg(value);
-						const position = self.getPosition(pid);
-			
-						if (self.need(value) > 8192) {
-							self.encodeToSlab(pid, v);
-							x[pid] = position.x;
-							y[pid] = position.y;
-							self.ops[pid] = OP.WRITE;
-							self.lane[self.laneLen++] = pid;
-						} else {
-							const vb = codec.encode_msg(v);
-							self.edit(position.x, position.y, vb, pid);
-						}
-					};
-			
-					return { initialize };
-				})(),
-				check_size_and_edit(value: A): V {
-					const v = self.BINARY_CODEC.encode_msg(value);
-					const { x, y } = self.getPosition(self.pid);
-			
-					if (self.need(value) > 8192) {
-						self.encodeToSlab(self.pid, v);
-						self.posX[self.pid] = x;
-						self.posY[self.pid] = y;
-						self.ops[self.pid] = OP.EDIT;
-						self.lane[self.laneLen++] = self.pid;
-					} else {
-						self.create(x, y, v, self.pid);
-					}
-				},
-				getX(pid: N): N { return self.posX[pid]; },
-				getY(pid: N): N { return self.posY[pid]; },
-				getPosition(pid: N): { x: N; y: N } { return { x: self.posX[pid], y: self.posY[pid] }; },
-				create(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.WRITE; self.lane[self.laneLen++] = pid; },
-				edit(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.EDIT; },
-				subscribeValue(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SUB; },
-				readValue(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.READ; },
-				effect(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.EFFECT; },
-				delete(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DELETE; },
-				compact(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.COMPACT; },
-				none(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.NONE; },
-				send(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SEND; },
-				sub(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.SUB; },
-				duplex(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DUPLEX; },
-				stream(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.STREAM; },
-				drc(x: N, y: N, v: U8 | N, pid: Pid): V { self.posX[pid] = x; self.posY[pid] = y; self.val[pid] = v; self.ops[pid] = OP.DRC; },
-				reclaimPid(pid: N): V { self.posX[pid] = 0; self.posY[pid] = 0; self.val[pid] = 0; self.ops[pid] = OP.NONE; self.freePids[self.freeTail] = pid; self.freeTail = (self.freeTail + 1) % self.capacity; },
-				pass(): void {
-					const len = self.laneLen;
-					let writeIdx = 0;
-					let i = 0;
-					const unrolledLimit = len - (len % 4);
-			
-					for (; i < unrolledLimit; i += 4) {
-						let pid = self.lane[i];
-			
-						if (pid === TRACER_PID) {
-							self.val[TRACER_PID]++;
-							self.lane[writeIdx++] = pid;
-						} else if (self.ops[pid] === OP.DELETE) {
-							self.reclaimPid(pid);
-						} else {
-							self.ops[pid] = OP.NONE;
-							self.lane[writeIdx++] = pid;
-						}
-			
-						pid = self.lane[i + 1];
-			
-						if (pid === TRACER_PID) {
-							self.val[TRACER_PID]++;
-							self.lane[writeIdx++] = pid;
-						} else if (self.ops[pid] === OP.DELETE) {
-							self.reclaimPid(pid);
-						} else {
-							self.ops[pid] = OP.NONE;
-							self.lane[writeIdx++] = pid;
-						}
-			
-						pid = self.lane[i + 2];
-			
-						if (pid === TRACER_PID) {
-							self.val[TRACER_PID]++;
-							self.lane[writeIdx++] = pid;
-						} else if (self.ops[pid] === OP.DELETE) {
-							self.reclaimPid(pid);
-						} else {
-							self.ops[pid] = OP.NONE;
-							self.lane[writeIdx++] = pid;
-						}
-			
-						pid = self.lane[i + 3];
-			
-						if (pid === TRACER_PID) {
-							self.val[TRACER_PID]++;
-							self.lane[writeIdx++] = pid;
-						} else if (self.ops[pid] === OP.DELETE) {
-							self.reclaimPid(pid);
-						} else {
-							self.ops[pid] = OP.NONE;
-							self.lane[writeIdx++] = pid;
-						}
-					}
-			
-					for (; i < len; i++) {
-						const pid = self.lane[i];
-			
-						if (pid === TRACER_PID) {
-							self.val[TRACER_PID]++;
-							self.lane[writeIdx++] = pid;
-						} else if (self.ops[pid] === OP.DELETE) {
-							self.reclaimPid(pid);
-						} else {
-							self.ops[pid] = OP.NONE;
-							self.lane[writeIdx++] = pid;
-						}
-					}
-			
-					self.laneLen = writeIdx;
-				},
-				get tick(): N { return self.val[TRACER_PID]; },
-				get length(): N { return self.laneLen; },
-				getLoadFactor(): N {
-					const activeCount = Math.max(0, self.laneLen - 1);
-					return activeCount / (self.capacity - 1);
-				},
-				read() {
-					const r = self.registry;
-					if (r !== null) {  if (gate !== undefined && gate.sealed)  throw new SEALED_ERROR.log(self.key);  }
-					return self.value;
-				},
-				write(next: A): B {
-					const r = self.registry;
-					if (r === null) { self.value = next; return true; }
-			
-					if (gate !== undefined && (gate.sealed || gate.frozen)) return false;
-					const previous = self.value;
-					if (Object.is(previous, next)) return false;
-					self.value = next;
-			 
-					if (subscription !== undefined)  subscription.notify({ key: self.key, previous, current: next });
-					return true;
-				},
-				subscribe(listener: LISTENER<A>): UNSUBSCRIBE {return subscription.subscribe(listener); },
-				waitFor() {},
-			})); 
-			return z
-		})(); 
-		public ATOMS = (() => {
-			const z = () => {}
-			z.LIFECYCLE = this.ATOM.BIND("ADAPTER", ({ self, master, config }: any) => ({}));
-			z.ASYNC = this.ATOM.BIND("ADAPTER", ({ self, master, config }: any) => ({}));
-			z.ADAPTER = this.ATOM.BIND("ADAPTER", ({ self, master, config }: any) => ({}));
-			z.AW_SET = this.ATOM.BIND("AW_SET", ({ self, master, config }: any) => ({}));
-			z.CASUAL_CURSOR = this.ATOM.BIND("CASUAL_CURSOR", ({ self, master, config }: any) => ({}));
-			z.DELTA_STORE = this.ATOM.BIND("DELTA_STORE", ({ self, master, config }: any) => ({}));
-			z.G_SET = this.ATOM.BIND("G_SET", ({ self, master, config }: any) => ({}));
-			z.VERSION_VECTOR = this.ATOM.BIND("VERSION_VECTOR", ({ self, master, config }: any) => ({}));
-			z.CIRCUIT_BREAKER = this.ATOM.BIND("CIRCUIT_BREAKER", ({ self, master, config }: any) => ({}));
-			z.CQRS = this.ATOM.BIND("CQRS", ({ self, master, config }: any) => ({}));
-			z.RAFT = this.ATOM.BIND("RAFT", ({ self, master, config }: any) => ({}));
-			z.YJS = this.ATOM.BIND("YJS", ({ self, master, config }: any) => ({}));
-			z.DIFFPATCH = this.ATOM.BIND("DIFFPATCH", ({ self, master, config }: any) => ({}));
-			z.HYBRID_LOGICAL_CLOCK = this.ATOM.BIND("HYBRID_LOGICAL_CLOCK", ({ self, master, config }: any) => ({}));
-			z.LWW = this.ATOM.BIND("LWW", ({ self, master, config }: any) => ({}));
-			z.LWW_ELEMENTAL = this.ATOM.BIND("LWW_ELEMENTAL", ({ self, master, config }: any) => ({}));
-			z.MV = this.ATOM.BIND("MV", ({ self, master, config }: any) => ({}));
-			z.OPTIMISTIC = this.ATOM.BIND("OPTIMISTIC", ({ self, master, config }: any) => ({}));
-			z.OR = this.ATOM.BIND("OR", ({ self, master, config }: any) => ({}));
-			z.PN = this.ATOM.BIND("PN", ({ self, master, config }: any) => ({}));
-			z.REVERSE_HEARTBEAT_MGR = this.ATOM.BIND("REVERSE_HEARTBEAT_MGR", ({ self, master, config }: any) => ({}));
-			z.SEMAPHORE = this.ATOM.BIND("SEMAPHORE", ({ self, master, config }: any) => ({}));
-			z.TOMBSTONE_COMPACTOR = this.ATOM.BIND("TOMBSTONE_COMPACTOR", ({ self, master, config }: any) => ({}));
-			z.YIMIR = this.ATOM.BIND("YIMIR", ({ self, master, config }: any) => ({}));
-			z.HYBRID_LOGICAL_CLOCK_CRDT = this.ATOM.BIND("HYBRID_LOGICAL_CLOCK_CRDT", ({ self, master, config }: any) => ({}));
-			z.SOA_QUAD_TIERED_REGISTRY = this.ATOM.BIND("SOA_QUAD_TIERED_REGISTRY", ({ self, master, config }: any) => ({}));
-			z.BINARY = this.ATOM.BIND("BINARY", ({ self, master, config }: any) => ({}));
-			z.SIGNAL = this.ATOM.BIND("SIGNAL", ({ self, master, config }: any) => ({}));
-			z.GOVERNOR = this.ATOM.BIND("GOVERNOR", ({ self, master, config }: any) => ({}));
-			z.BYTE_CODE_VM = this.ATOM.BIND("BYTE_CODE_VM", ({ self, master, config }: any) => ({}));
-			z.CHANNEL = this.ATOM.BIND("CHANNEL", ({ self, master, config }: any) => ({}));
-			z.CHANNELS = this.ATOM.BIND("CHANNELS", ({ self, master, config }: any) => ({}));
-			z.MIDDLEWARE = this.ATOM.BIND("MIDDLEWARE", ({ self, master, config }: any) => ({}));
-			z.BEAM_CODEC = this.ATOM.BIND("BEAM_CODEC", ({ self, master, config }: any) => ({}));
-			z.GOVERNER = this.ATOM.BIND("GOVERNER", ({ self, master, config }: any) => ({}));
-			z.INJECTION_CODEC = this.ATOM.BIND("INJECTION_CODEC", ({ self, master, config }: any) => ({}));
-			z.RUN_ON = this.ATOM.BIND("RUN_ON", ({ self, master, config }: any) => ({}));
-			z.SEALED_ERROR = this.ATOM.BIND("SEALED_ERROR", ({ self, master, config }: any) => ({}));
-			z.SHELL = this.ATOM.BIND("SHELL", ({ self, master, config }: any) => ({}));
-			z.TRANSFORM = this.ATOM.BIND("TRANSFORM", ({ self, master, config }: any) => ({}));
-			z.CONFLICT = this.ATOM.BIND("CONFLICT", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				conflictStrategy: (config.conflictStrategy ?? "latest") as "latest" | "fail" | "accumulate",
-				conflict: config.conflict,
-			
-				resolve<T>(current: T, incoming: T): T {
-					switch (self.conflictStrategy) {
-						case "fail":
-							throw new Error("SOUL_NEUTRON conflict: concurrent values cannot be merged");
-			
-						case "accumulate":
-							if (typeof current === "number" && typeof incoming === "number") return (current + incoming) as T;
-							if (Array.isArray(current) && Array.isArray(incoming)) return [...current, ...incoming] as T;
-							if (typeof current === "string" && typeof incoming === "string") return (current + incoming) as T;
-							throw new TypeError("SOUL_NEUTRON accumulate conflict requires matching number, string, or array values");
-			
-						case "latest":
-						default:
-							return incoming;
-					}
-				},
-			}));
-			z.CONTEXT = this.ATOM.BIND("CONTEXT", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				store: new Map<S, A>(),
-			
-				set(key: S, value: A): void {
-					self.store.set(key, value);
-					// if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('context_set', undefined, undefined, undefined, { key });
-				},
-			
-				get(key: S): A | undefined {
-					return self.store.get(key);
-				},
-			
-				/** Read with a fallback — context lookups always expect a default. */
-				getOr(key: S, fallback: A): A {
-					return self.store.has(key) ? self.store.get(key) as A : fallback;
-				},
-			
-				has(key: S): B {
-					return self.store.has(key);
-				},
-			
-				delete(key: S): B {
-					return self.store.delete(key);
-				},
-			
-				keys(): S[] {
-					return [...self.store.keys()];
-				},
-			
-				/** Full snapshot, for hand-off / persistence / diagnostics. */
-				snapshot(): Record<S, A> {
-					return Object.fromEntries(self.store);
-				},
-			
-				/** Restore from a snapshot. Replaces the store wholesale. */
-				restore(snap: Record<S, A>): void {
-					self.store = new Map(Object.entries(snap));
-				},
-			
-				/** Merge a partial snapshot over the current store (existing keys win unless overwrite). */
-				merge(snap: Record<S, A>, overwrite = false): void {
-					for (const [k, v] of Object.entries(snap)) {
-						if (!overwrite && self.store.has(k)) continue;
-						self.store.set(k, v);
-					}
-				},
-			
-				/** Scoped read: return a sub-object of the store whose keys start with the prefix. */
-				scoped(prefix: S): Record<S, A> {
-					const out: Record<S, A> = {};
-					for (const [k, v] of self.store) {
-						if (k.startsWith(prefix)) out[k] = v;
-					}
-					return out;
-				},
-			
-				purge(): void {
-					self.store.clear();
-				},
-			}));
-			z.ENCRYPTION = this.ATOM.BIND("ENCRYPTION", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				encryptionConfigs: [] as EncryptionConfig[],
-			
-				getEncryptionConfigs(): EncryptionConfig[] {
-					return [...self.encryptionConfigs];
-				},
-			
-				configureEncryption(config: EncryptionConfig): void {
-					self.encryptionConfigs.push(config);
-				},
-			}));
-			z.GROUPS = this.ATOM.BIND("GROUPS", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				groups: new Map<string, {
-					channels: Set<string>;
-					enabled: boolean;
-					middleware: ((msg: CSEMessage) => boolean | void)[];
-				}>(),
-			
-				createGroup(name: string, channels: string[] = [], options?: GroupOptions): void {
-					self.groups.set(name, {
-						channels: new Set(channels),
-						enabled: options?.enabled ?? true,
-						middleware: options?.middleware ? [options.middleware] : [],
-					});
-				},
-			
-				deleteGroup(name: string): void {
-					self.groups.delete(name);
-				},
-			
-				enableGroup(name: string): void {
-					const g = self.groups.get(name);
-					if (!g) return;
-					g.enabled = true;
-				},
-			
-				disableGroup(name: string): void {
-					const g = self.groups.get(name);
-					if (!g) return;
-					g.enabled = false;
-				},
-			
-				addToGroup(name: string, rt: string): void {
-					const g = self.groups.get(name);
-					if (!g) return;
-					g.channels.add(rt);
-				},
-			
-				removeFromGroup(name: string, rt: string): void {
-					const g = self.groups.get(name);
-					if (!g) return;
-					g.channels.delete(rt);
-				},
-			
-				async groupBroadcast(
-					name: string,
-					p: any,
-					sl = self.sl,
-					ms = self.ms,
-					rt = self.rt,
-					ttl?: number,
-				): Promise<void> {
-					const g = self.groups.get(name);
-					if (!g || !g.enabled) return;
-			
-					await Promise.all(
-						[...g.channels].map(ch => self.broadcast(p, ch, sl, ms, rt, ttl)),
-					);
-				},
-			
-				groupUse(name: string, fn: (msg: CSEMessage) => boolean | void): void {
-					const g = self.groups.get(name);
-					if (!g) return;
-					g.middleware.push(fn);
-				},
-			
-				getAllGroups(): Record<string, {
-					channels: string[];
-					enabled: boolean;
-					middlewareCount: number;
-				}> {
-					const out: Record<string, {
-						channels: string[];
-						enabled: boolean;
-						middlewareCount: number;
-					}> = {};
-			
-					for (const [name, g] of self.groups) {
-						out[name] = {
-							channels: [...g.channels],
-							enabled: g.enabled,
-							middlewareCount: g.middleware.length,
-						};
-					}
-			
-					return out;
-				},
-			}));
-			z.HISTORY = this.ATOM.BIND("HISTORY", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				history: new Map<string, CSEMessage[]>(),
-				defaultLimit: 128,
-				limits: new Map<string, number>(),
-			
-				/** Append one message. Returns the entry so callers can thread it onward. */
-				record(rt: string, msg: CSEMessage): CSEMessage {
-					let list = self.history.get(rt);
-					if (!list) {
-						list = [];
-						self.history.set(rt, list);
-					}
-			
-					list.push(msg);
-			
-					const limit = self.limits.get(rt) ?? self.defaultLimit;
-					if (list.length > limit) list.splice(0, list.length - limit);
-			
-					return msg;
-				},
-			
-				setChannelLimit(rt: string, limit: number): void {
-					self.limits.set(rt, limit);
-			
-					const list = self.history.get(rt);
-					if (list && list.length > limit) {
-						list.splice(0, list.length - limit);
-					}
-				},
-			
-				getChannelLimit(rt: string): number {
-					return self.limits.get(rt) ?? self.defaultLimit;
-				},
-			
-				getRecentHistory(rt: string, limit = 3): CSEMessage[] {
-					return (self.history.get(rt) ?? []).slice(-limit);
-				},
-			
-				getChannelHistory(rt: string): CSEMessage[] {
-					return [...(self.history.get(rt) ?? [])];
-				},
-			
-				getAllHistoryChannels(): string[] {
-					return [...self.history.keys()];
-				},
-			
-				getChannelDepth(rt: string): number {
-					return (self.history.get(rt) ?? []).length;
-				},
-			
-				getHistorySizes(): Record<string, number> {
-					const out: Record<string, number> = {};
-					for (const [ch, list] of self.history) out[ch] = list.length;
-					return out;
-				},
-			
-				clearChannel(rt: string): void {
-					self.history.delete(rt);
-				},
-			
-				purge(): void {
-					self.history.clear();
-					self.limits.clear();
-				},
-			}));
-			z.META = this.ATOM.BIND("META", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				// ── your blob, organized ───────────────────────────────────────────────────────────────────
-				_batches: new Set<string | symbol>(),
-				_batchQueue: new Map<string | symbol, A>(),
-				_batchOpts: new Map<string | symbol, { triggerRender?: B }>(),
-				_globalListeners: new Set<(key: S | symbol, value: A) => void>(),
-				_global_subscribers: new Map<S, Set<() => void>>(),
-				_sys: new Map<S, SysEntry>(),
-				_sealed: new Set<S>(),
-				_frozen: new Set<S>(),
-				_keyContracts: new Map<S, Set<S>>(),
-				_conflicts: new Map<S, ConflictPolicy>(),
-				_conflictStrategies: new Map<S, "latest" | "fail" | "accumulate">(),
-				_causal: new Map<S, CausalEntry[]>(),
-				_scopes: new Map<S, SignalScope>(),
-				_msgHandlers: new Map<S, Set<(p: A) => void>>(),
-				_lastWriteSource: new Map<S, S>(),
-				_mainMap: new Map<A, S>(),
-				_tupleCache: new Map<S, S>(),
-				_weakMap: new WeakMap<object, S>(),
-				_boundaries: new WeakMap<object, S>(),
-			
-				// ── sys entries ────────────────────────────────────────────────────────────────────────────
-				/** Register or update a system entry for this cell. */
-				setSys(name: S, entry: Partial<SysEntry> & { value?: A, source?:A }): SysEntry {
-					const prev = self._sys.get(name);
-					const next: SysEntry = {
-						name,
-						value: entry.value ?? prev?.value,
-						ts: Date.now(),
-						revision: (prev?.revision ?? 0) + 1,
-						source: entry.source ?? "meta",
-					} as A;
-					self._sys.set(name, next);
-					return next;
-				},
-			
-				getSys(name: S): SysEntry | null {
-					return self._sys.get(name) ?? null;
-				},
-			
-				deleteSys(name: S): B {
-					return self._sys.delete(name);
-				},
-			
-				listSys(): S[] {
-					return [...self._sys.keys()];
-				},
-			
-				// ── causal log ─────────────────────────────────────────────────────────────────────────────
-				/** Append a causal entry. Keep it cheap — callers pass what they know. */
-				recordCausal(key: S, cause: S, value?: A): void {
-					const list = self._causal.get(key) ?? [];
-					list.push({ cause, value, ts: Date.now() });
-			
-					// hard cap so long-lived cells don't balloon
-					if (list.length > 256) list.splice(0, list.length - 256);
-			
-					self._causal.set(key, list);
-				},
-			
-				getCausal(key: S): CausalEntry[] {
-					return self._causal.get(key) ?? [];
-				},
-			
-				clearCausal(key?: S): void {
-					if (key) self._causal.delete(key);
-					else self._causal.clear();
-				},
-			
-				// ── last write provenance ──────────────────────────────────────────────────────────────────
-				noteWrite(key: S, source: S): void {
-					self._lastWriteSource.set(key, source);
-				},
-			
-				whoWrote(key: S): S | null {
-					return self._lastWriteSource.get(key) ?? null;
-				},
-			
-				// ── msg handlers ───────────────────────────────────────────────────────────────────────────
-				addMsgHandler(key: S, fn: (p: A) => void): () => void {
-					const set = self._msgHandlers.get(key) ?? new Set();
-					set.add(fn);
-					self._msgHandlers.set(key, set);
-					return () => set.delete(fn);
-				},
-			
-				emitMsg(key: S, p: A): void {
-					for (const fn of self._msgHandlers.get(key) ?? []) {
-						try {
-							fn(p);
-						} catch (e) {
-							console.error(`[meta-shard] msg handler failed for "${key}":`, e);
-						}
-					}
-				},
-			
-				// ── global listeners ───────────────────────────────────────────────────────────────────────
-				onGlobal(fn: (key: S | symbol, value: A) => void): () => void {
-					self._globalListeners.add(fn);
-					return () => self._globalListeners.delete(fn);
-				},
-			
-				emitGlobal(key: S | symbol, value: A): void {
-					for (const fn of self._globalListeners) {
-						try {
-							fn(key, value);
-						} catch (e) {
-							console.error("[meta-shard] global listener failed:", e);
-						}
-					}
-				},
-			
-				// ── inspect / purge ────────────────────────────────────────────────────────────────────────
-				inspect(): Record<S, A> {
-					return {
-						sys: Object.fromEntries(self._sys),
-						causalKeys: [...self._causal.keys()],
-						sealed: [...self._sealed],
-						frozen: [...self._frozen],
-						lastWriteSource: Object.fromEntries(self._lastWriteSource),
-						msgHandlerKeys: [...self._msgHandlers.keys()],
-						globalListenerCount: self._globalListeners.size,
-					};
-				},
-			
-				purge(): void {
-					for (const map of [
-						self._batchQueue,
-						self._batchOpts,
-						self._global_subscribers,
-						self._sys,
-						self._keyContracts,
-						self._conflicts,
-						self._conflictStrategies,
-						self._causal,
-						self._scopes,
-						self._msgHandlers,
-						self._lastWriteSource,
-						self._mainMap,
-						self._tupleCache,
-					] as Map<A, A>[]) {
-						map.clear();
-					}
-			
-					self._batches.clear();
-					self._sealed.clear();
-					self._frozen.clear();
-					self._globalListeners.clear();
-					self._weakMap = new WeakMap();
-					self._boundaries = new WeakMap();
-				},
-			}));
-			z.OFFSEC = this.ATOM.BIND("OFFSEC", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				secrets: new Set<A>(),
-				audit: [] as OFFSEC_AUDIT_ENTRY[],
-				maxAudit: (config.maxAudit ?? 500) as N,
-			
-				// ── secret marking ─────────────────────────────────────────────────────────────────────────
-				/** Mark a value (token, key, credential) as secret. Reference equality by default. */
-				markSecret(value: A): void {
-					self.secrets.add(value);
-				},
-			
-				isSecret(value: A): B {
-					return self.secrets.has(value);
-				},
-			
-				clearSecret(value: A): B {
-					return self.secrets.delete(value);
-				},
-			
-				/**
-				 * Deep-scan a message for marked secrets; replace with '[REDACTED]' before the message
-				 * leaves the boundary. Mutates nothing — returns a copy when a hit occurs.
-				 */
-				scrub<T>(payload: T): { clean: T; redacted: N } {
-					let redacted = 0;
-					const seen = new Set<object>();
-			
-					const walk = (v: unknown): unknown => {
-						if (self.secrets.has(v as A)) {
-							redacted++;
-							return "[REDACTED]";
-						}
-			
-						if (v === null || typeof v !== "object") return v;
-						if (seen.has(v as object)) return "[CYCLIC]";
-			
-						seen.add(v as object);
-			
-						if (Array.isArray(v)) return v.map(walk);
-			
-						const out: Record<S, unknown> = {};
-						for (const [k, val] of Object.entries(v as Record<S, unknown>)) {
-							out[k] = walk(val);
-						}
-			
-						return out;
-					};
-			
-					const clean = walk(payload) as T;
-			
-					if (redacted) {
-						self.audit.push({
-							at: Date.now(),
-							what: `scrubbed ${redacted} secret(s)`,
-						});
-			
-						if (self.audit.length > self.maxAudit) self.audit.shift();
-					}
-			
-					return { clean, redacted };
-				},
-			
-				listAudit(): OFFSEC_AUDIT_ENTRY[] {
-					return [...self.audit];
-				},
-			
-				purge(): void {
-					self.secrets.clear();
-					self.audit.length = 0;
-				},
-			}));
-			z.PERMISSIONS = this.ATOM.BIND("PERMISSIONS", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				permissions: new Map<string, ChannelPermissions>(),
-			
-				setPermissions(rt: string, perms: ChannelPermissions): void {
-					self.permissions.set(rt, perms);
-				},
-			
-				getPermissions(rt: string): ChannelPermissions | undefined {
-					return self.permissions.get(rt);
-				},
-			
-				removePermissions(rt: string): B {
-					return self.permissions.delete(rt);
-				},
-			
-				hasPermissions(rt: string): B {
-					return self.permissions.has(rt);
-				},
-			
-				getAllPermissions(): Record<string, ChannelPermissions> {
-					return Object.fromEntries(self.permissions);
-				},
-			
-				listProtectedChannels(): string[] {
-					return [...self.permissions.keys()];
-				},
-			
-				/** Wildcard-aware lookup: exact wins, else longest matching prefix before `*`. */
-				resolvePermissions(rt: string): ChannelPermissions | undefined {
-					if (self.permissions.has(rt)) return self.permissions.get(rt);
-			
-					let best: ChannelPermissions | undefined;
-					let bestLen = -1;
-			
-					for (const [pattern, perms] of self.permissions) {
-						const star = pattern.indexOf("*");
-						if (star === -1) continue;
-			
-						if (rt.startsWith(pattern.slice(0, star)) && star > bestLen) {
-							best = perms;
-							bestLen = star;
-						}
-					}
-			
-					return best;
-				},
-			
-				/** Check one capability. No permission set → allowed (open channel). */
-				check(
-					rt: string,
-					action: "read" | "write" | "send" | "subscribe" | "admin",
-					role?: S,
-				): B {
-					const perms = self.resolvePermissions(rt);
-					if (!perms) return true;
-			
-					if (role && perms.roles && perms.roles.length && !perms.roles.includes(role)) {
-						return false;
-					}
-			
-					if (action === "read") return perms.read;
-					if (action === "write") return perms.write;
-			
-					return perms[action] ?? perms.write;
-				},
-			
-				purge(): void {
-					self.permissions.clear();
-				},
-			}));
-			z.PERSISTENCE = this.ATOM.BIND("PERSISTENCE", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				durableOffsets: new Map<string, number>(),
-				persisted: config.persisted as B | undefined,
-				durableHistory: new Map<string, CSEMessage[]>(),
-			
-				getDurableHistorySizes(): Record<string, number> {
-					const out: Record<string, number> = {};
-			
-					for (const [ch, hist] of self.durableHistory) {
-						out[ch] = hist.length;
-					}
-			
-					return out;
-				},
-			
-				async replay(options: ReplayOptions, handler: CSEHandler): Promise<void> {
-					const history = self.durableHistory.get(options.rt) ?? [];
-					let slice = history;
-			
-					if (options.fromOffset !== undefined) {
-						slice = slice.slice(options.fromOffset);
-					}
-			
-					if (options.toOffset !== undefined) {
-						slice = slice.slice(0, options.toOffset);
-					}
-			
-					if (options.fromTimestamp !== undefined) {
-						slice = slice.filter(m => m.ts !== undefined && m.ts >= options.fromTimestamp!);
-					}
-			
-					if (options.toTimestamp !== undefined) {
-						slice = slice.filter(m => m.ts !== undefined && m.ts <= options.toTimestamp!);
-					}
-			
-					for (const m of slice) {
-						handler(m.p);
-					}
-				},
-			
-				subscribeDurable(
-					handler: CSEHandler,
-					options: DurableOptions,
-					k: string,
-					sl = self.sl,
-					ms = self.ms,
-					rt = self.rt,
-				): () => void {
-					const key = `${rt}:${options.subscriberId}`;
-					const offset = self.durableOffsets.get(key) ?? options.fromOffset ?? 0;
-					const history = self.durableHistory.get(rt) ?? [];
-			
-					history.slice(offset).forEach(m => handler(m.p));
-			
-					return self.sub(
-						(p: unknown) => {
-							const h = self.durableHistory.get(rt) ?? [];
-							const nextOffset = h.length;
-			
-							self.durableOffsets.set(key, nextOffset);
-							handler(p);
-						},
-						k,
-						sl,
-						ms,
-						rt,
-					);
-				},
-			
-				getAllCheckpoints(): Record<string, number> {
-					return Object.fromEntries(self.durableOffsets);
-				},
-			
-				async setCheckpoint(
-					subscriberId: string,
-					offset: number,
-					k: string,
-					sl?: string,
-					ms?: string,
-					rt?: string,
-				): Promise<void> {
-					const key = `${rt}:${subscriberId}`;
-			
-					self.durableOffsets.set(key, offset);
-			
-					if (self.DEVTOOLS_ACTIVE) {
-						self.emitDevtoolsEvent(
-							"checkpoint_set",
-							rt,
-							ms || undefined,
-							undefined,
-							{ subscriberId, offset },
-						);
-					}
-				},
-			
-				async getCheckpoint(
-					subscriberId: string,
-					k: string,
-					sl?: string,
-					ms?: string,
-					rt?: string,
-				): Promise<number | null> {
-					const key = `${rt}:${ms}:${subscriberId}`;
-			
-					return self.durableOffsets.has(key)
-						? self.durableOffsets.get(key)!
-						: null;
-				},
-			}));
-			z.PRIORITY = this.ATOM.BIND("PRIORITY", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				queues: new Map<string, Array<{
-					priority: SIG_BUS_Priority;
-					weight: N;
-					seq: N;
-					item: A;
-					enqueuedAt: N;
-				}>>(),
-			
-				queueDefaults: new Map<string, SIG_BUS_Priority>(),
-				defaultPriority: "normal" as SIG_BUS_Priority,
-				seq: 0,
-			
-				setDefaultPriority(priority: SIG_BUS_Priority): void {
-					self.defaultPriority = priority;
-				},
-			
-				getDefaultPriority(): SIG_BUS_Priority {
-					return self.defaultPriority;
-				},
-			
-				setQueueDefault(queue: string, priority: SIG_BUS_Priority): void {
-					self.queueDefaults.set(queue, priority);
-				},
-			
-				getQueueDefault(queue: string): SIG_BUS_Priority {
-					return self.queueDefaults.get(queue) ?? self.defaultPriority;
-				},
-			
-				priorityWeight(p?: SIG_BUS_Priority): number {
-					return p === "high" ? 3 : p === "low" ? 1 : 2;
-				},
-			
-				enqueue(queue: string, item: A, priority?: SIG_BUS_Priority): N {
-					const p = priority ?? self.getQueueDefault(queue);
-					let q = self.queues.get(queue);
-			
-					if (!q) {
-						q = [];
-						self.queues.set(queue, q);
-					}
-			
-					const entry = {
-						priority: p,
-						weight: self.priorityWeight(p),
-						seq: self.seq++,
-						item,
-						enqueuedAt: Date.now(),
-					};
-			
-					q.push(entry);
-			
-					if (self.DEVTOOLS_ACTIVE) {
-						self.emitDevtoolsEvent("priority_enqueued", undefined, undefined, queue, {
-							priority: p,
-							depth: q.length,
-						});
-					}
-			
-					return entry.seq;
-				},
-			
-				/** Highest weight wins; FIFO within the same weight (low seq = older = first). */
-				dequeue(queue: string): A | undefined {
-					const q = self.queues.get(queue);
-					if (!q || !q.length) return undefined;
-			
-					let bestIdx = 0;
-			
-					for (let i = 1; i < q.length; i++) {
-						const a = q[i], b = q[bestIdx];
-			
-						if (a.weight > b.weight || (a.weight === b.weight && a.seq < b.seq)) {
-							bestIdx = i;
-						}
-					}
-			
-					const [entry] = q.splice(bestIdx, 1);
-			
-					if (self.DEVTOOLS_ACTIVE) {
-						self.emitDevtoolsEvent("priority_dequeued", undefined, undefined, queue, {
-							priority: entry.priority,
-							remaining: q.length,
-						});
-					}
-			
-					return entry.item;
-				},
-			
-				peek(queue: string): A | undefined {
-					const q = self.queues.get(queue);
-					if (!q || !q.length) return undefined;
-			
-					let bestIdx = 0;
-			
-					for (let i = 1; i < q.length; i++) {
-						const a = q[i], b = q[bestIdx];
-			
-						if (a.weight > b.weight || (a.weight === b.weight && a.seq < b.seq)) {
-							bestIdx = i;
-						}
-					}
-			
-					return q[bestIdx].item;
-				},
-			
-				getDepth(queue: string): number {
-					return (self.queues.get(queue) ?? []).length;
-				},
-			
-				listQueues(): string[] {
-					return [...self.queues.keys()];
-				},
-			
-				getDepths(): Record<string, number> {
-					const out: Record<string, number> = {};
-			
-					for (const [q, list] of self.queues) {
-						out[q] = list.length;
-					}
-			
-					return out;
-				},
-			
-				clearQueue(queue: string): void {
-					self.queues.delete(queue);
-				},
-			
-				purge(): void {
-					self.queues.clear();
-					self.queueDefaults.clear();
-				},
-			}));
-			z.SNAPSHOT = this.ATOM.BIND("SNAPSHOT", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				version: 0,
-				history: [] as SNAPSHOT_ENTRY<W>[],
-				historyMax: (config.historyMax ?? 128) as N,
-				undoStack: [] as SNAPSHOT_ENTRY<W>[],
-				redoStack: [] as SNAPSHOT_ENTRY<W>[],
-				waiters: new Set<(value: W) => void>(),
-			
-				/** Capture the current state. Call this from ATOM.write() after a successful write. */
-				capture(value: W, label?: S): SNAPSHOT_ENTRY<W> {
-					self.version++;
-			
-					const entry: SNAPSHOT_ENTRY<W> = {
-						version: self.version,
-						value,
-						ts: Date.now(),
-						label,
-					};
-			
-					self.history.push(entry);
-			
-					if (self.history.length > self.historyMax) {
-						self.history.splice(0, self.history.length - self.historyMax);
-					}
-			
-					self.redoStack.length = 0;
-			
-					for (const resolve of self.waiters) {
-						resolve(value);
-					}
-			
-					self.waiters.clear();
-			
-					return entry;
-				},
-			
-				/** Latest snapshot, or undefined if none. */
-				latest(): SNAPSHOT_ENTRY<W> | undefined {
-					return self.history[self.history.length - 1];
-				},
-			
-				/** Fetch a snapshot by exact version number. */
-				byVersion(v: N): SNAPSHOT_ENTRY<W> | undefined {
-					return self.history.find(e => e.version === v);
-				},
-			
-				/** Fetch the last N snapshots, oldest first. */
-				recent(n = 3): SNAPSHOT_ENTRY<W>[] {
-					return self.history.slice(-n);
-				},
-			
-				/** All snapshots since a timestamp. */
-				since(ts: N): SNAPSHOT_ENTRY<W>[] {
-					return self.history.filter(e => e.ts >= ts);
-				},
-			
-				count(): N {
-					return self.history.length;
-				},
-			
-				/** Wait for the next capture (first one if none exist yet). */
-				waitForNext(timeoutMs = 0): Promise<W> {
-					const latest = self.latest();
-			
-					if (latest) return Promise.resolve(latest.value);
-			
-					return new Promise<W>((resolve, reject) => {
-						const waiter = (v: W) => resolve(v);
-			
-						self.waiters.add(waiter);
-			
-						if (timeoutMs > 0) {
-							setTimeout(() => {
-								if (self.waiters.delete(waiter)) {
-									reject(new Error("ATOM snapshot wait timed out"));
-								}
-							}, timeoutMs);
-						}
-					});
-				},
-			
-				/** Move an entry from history into the undo stack (used by TIME_TRAVEL). */
-				pushUndo(entry: SNAPSHOT_ENTRY<W>): void {
-					self.undoStack.push(entry);
-			
-					if (self.undoStack.length > self.historyMax) {
-						self.undoStack.splice(0, self.undoStack.length - self.historyMax);
-					}
-				},
-			
-				/** Move an entry from history into the redo stack (used by TIME_TRAVEL). */
-				pushRedo(entry: SNAPSHOT_ENTRY<W>): void {
-					self.redoStack.push(entry);
-			
-					if (self.redoStack.length > self.historyMax) {
-						self.redoStack.splice(0, self.redoStack.length - self.historyMax);
-					}
-				},
-			
-				purge(): void {
-					self.history.length = 0;
-					self.undoStack.length = 0;
-					self.redoStack.length = 0;
-					self.waiters.clear();
-					self.version = 0;
-				},
-			}));
-			z.TAGS = this.ATOM.BIND("TAGS", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				tagSubs: new Map<string, Set<CSEHandler>>(),
-				tagsByChannel: new Map<string, Set<string>>(),
-			
-				// ── channel → tags ─────────────────────────────────────────────────────────────────────────
-				/** Declare the tags a channel carries. Replaces any previous tag set for that channel. */
-				tagChannel(channel: S, tags: S[]): void {
-					self.tagsByChannel.set(channel, new Set(tags));
-				},
-			
-				untagChannel(channel: S): B {
-					return self.tagsByChannel.delete(channel);
-				},
-			
-				getTagsForChannel(channel: S): S[] {
-					return [...(self.tagsByChannel.get(channel) ?? [])];
-				},
-			
-				/** All channels carrying at least one of the given tags. */
-				channelsByTags(tags: S[]): S[] {
-					const want = new Set(tags);
-					const out: S[] = [];
-			
-					for (const [ch, chTags] of self.tagsByChannel) {
-						for (const t of chTags) {
-							if (want.has(t)) {
-								out.push(ch);
-								break;
-							}
-						}
-					}
-			
-					return out;
-				},
-			
-				// ── subscriber side ─────────────────────────────────────────────────────────────────────────
-				subscribeByTag(tag: string, handler: CSEHandler): () => void {
-					const set = self.tagSubs.get(tag) ?? new Set<CSEHandler>();
-					set.add(handler);
-					self.tagSubs.set(tag, set);
-			
-					return () => set.delete(handler);
-				},
-			
-				unsubscribeByTag(tag: string, handler: CSEHandler): B {
-					return self.tagSubs.get(tag)?.delete(handler) ?? false;
-				},
-			
-				listTags(): string[] {
-					return [...self.tagSubs.keys()];
-				},
-			
-				// ── publish side ────────────────────────────────────────────────────────────────────────────
-				/** Fan a tagged message out to every handler subscribed to a tag the channel carries. */
-				publishByTag(msg: CSEMessage): N {
-					const tags = self.tagsByChannel.get(msg.r);
-					if (!tags || tags.size === 0) return 0;
-			
-					let delivered = 0;
-			
-					for (const tag of tags) {
-						const subs = self.tagSubs.get(tag);
-						if (!subs) continue;
-			
-						for (const handler of [...subs]) {
-							try {
-								handler(msg);
-								delivered++;
-							} catch (e) {
-								console.error(`[tags-NEUTRON] tag handler failed for "${tag}":`, e);
-							}
-						}
-					}
-			
-					return delivered;
-				},
-			
-				getTagsByChannel(): Record<string, string[]> {
-					const out: Record<string, string[]> = {};
-			
-					for (const [ch, tags] of self.tagsByChannel) {
-						out[ch] = [...tags];
-					}
-			
-					return out;
-				},
-			
-				purge(): void {
-					self.tagSubs.clear();
-					self.tagsByChannel.clear();
-				},
-			}));
-			z.TIME_TRAVEL = this.ATOM.BIND("TIME_TRAVEL", ({ self, master, config, SNAPSHOT }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				snapshots: null as typeof SNAPSHOT | null,
-				version: 0,
-				historyIndex: -1,
-				undoStack: [] as SNAPSHOT_ENTRY<W>[],
-				initial: undefined as W | undefined,
-				_time_travel_reverting: false,
-				autoTimers: new Set<ReturnType<typeof setInterval>>(),
-			
-				/** Bind to the snapshot shard of the same cell. Call once after both shards are bound. */
-				attach(snapshots: typeof SNAPSHOT): void {
-					self.snapshots = snapshots;
-					self.version = snapshots.version;
-					self.historyIndex = snapshots.history.length - 1;
-					self.initial = snapshots.history[0]?.value;
-				},
-			
-				/** Write a value back to the cell and record it as a proper version (fires subs like a normal write). */
-				replay: (entry: SNAPSHOT_ENTRY<W>): void => {
-					self._time_travel_reverting = true;
-			
-					try {
-						self._writeThrough?.(
-							entry.value,
-							entry.label ? `time-travel:${entry.label}` : "time-travel",
-						);
-					} finally {
-						self._time_travel_reverting = false;
-					}
-				},
-			
-				/** Injected by ATOM when the shard is bound — how restores become real writes. */
-				_writeThrough: undefined as ((value: W, cause?: S) => void) | undefined,
-			
-				_current(): SNAPSHOT_ENTRY<W> | undefined {
-					return self.snapshots?.history[self.historyIndex];
-				},
-			
-				back(): B {
-					if (!self.snapshots || self.historyIndex <= 0) return false;
-			
-					self.historyIndex--;
-			
-					const entry = self._current();
-					if (!entry) return false;
-			
-					// The entry we stepped away from goes on redo.
-					const departed = self.snapshots.history[self.historyIndex + 1];
-					if (departed) self.snapshots.pushRedo(departed);
-			
-					self.replay(entry);
-					return true;
-				},
-			
-				forward(): B {
-					if (!self.snapshots) return false;
-			
-					const nextEntry = self.snapshots.history[self.historyIndex + 1];
-					if (!nextEntry) return false;
-			
-					self.historyIndex++;
-					self.replay(nextEntry);
-					return true;
-				},
-			
-				goto(version: N): B {
-					if (!self.snapshots) return false;
-			
-					const target = self.snapshots.byVersion(version);
-					if (!target) return false;
-			
-					const idx = self.snapshots.history.indexOf(target);
-					if (idx < 0) return false;
-			
-					const departed = self._current();
-					if (departed && idx < self.historyIndex) {
-						self.snapshots.pushRedo(departed);
-					}
-			
-					self.historyIndex = idx;
-					self.replay(target);
-					return true;
-				},
-			
-				auto_back(time = 2500): void {
-					const t = setInterval(() => {
-						if (!self.back()) clearInterval(t);
-					}, time);
-			
-					self.autoTimers.add(t);
-				},
-			
-				auto_forward(time = 2500): void {
-					const t = setInterval(() => {
-						if (!self.forward()) clearInterval(t);
-					}, time);
-			
-					self.autoTimers.add(t);
-				},
-			
-				/** Graft a foreign snapshot sequence onto this timeline (branch merge). */
-				graft(entries: SNAPSHOT_ENTRY<W>[]): N {
-					if (!self.snapshots) return 0;
-			
-					let grafted = 0;
-			
-					for (const e of entries) {
-						self.snapshots.history.push({
-							version: ++self.snapshots.version,
-							value: e.value,
-							ts: e.ts ?? Date.now(),
-							label: e.label ? `grafted:${e.label}` : "grafted",
-						});
-			
-						grafted++;
-					}
-			
-					self.historyIndex = self.snapshots.history.length - 1;
-					return grafted;
-				},
-			
-				/** Stop all auto walkers. */
-				stopAuto(): void {
-					for (const t of self.autoTimers) clearInterval(t);
-					self.autoTimers.clear();
-				},
-			
-				/** True while replay() is writing — ATOM.write() checks this to avoid re-capturing. */
-				get isReverting(): B {
-					return self._time_travel_reverting;
-				},
-			
-				purge(): void {
-					self.stopAuto();
-					self.snapshots = null;
-					self.undoStack.length = 0;
-					self.historyIndex = -1;
-				},
-			}));
-			z.TTL = this.ATOM.BIND("TTL", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				entries: new Map<S, TTL_ENTRY>(),
-				onExpire: [] as ((key: S, data?: A) => void)[],
-				defaultTtlMs: (config.defaultTtlMs ?? 0) as N,
-			
-				// ── write ──────────────────────────────────────────────────────────────────────────────────
-				set(key: S, data?: A, ttlMs?: N): TTL_ENTRY {
-					const ttl = ttlMs ?? self.defaultTtlMs;
-			
-					if (!ttl || ttl <= 0) {
-						throw new Error("[ttl-shard] no ttl provided and no defaultTtlMs configured");
-					}
-			
-					const entry: TTL_ENTRY = {
-						expiresAt: Date.now() + ttl,
-						data,
-					};
-			
-					self.entries.set(key, entry);
-					return entry;
-				},
-			
-				touch(key: S, ttlMs?: N): B {
-					const e = self.entries.get(key);
-					if (!e) return false;
-			
-					e.expiresAt = Date.now() + (ttlMs ?? self.defaultTtlMs);
-					return true;
-				},
-			
-				// ── read ───────────────────────────────────────────────────────────────────────────────────
-				/** Returns undefined if missing OR expired (and removes it lazily). */
-				get(key: S): A | undefined {
-					const e = self.entries.get(key);
-					if (!e) return undefined;
-			
-					if (Date.now() >= e.expiresAt) {
-						self.entries.delete(key);
-						return undefined;
-					}
-			
-					return e.data;
-				},
-			
-				has(key: S): B {
-					const e = self.entries.get(key);
-					return !!e && Date.now() < e.expiresAt;
-				},
-			
-				peek(key: S): A | undefined {
-					return self.entries.get(key)?.data;
-				},
-			
-				timeToLiveMs(key: S): N | null {
-					const e = self.entries.get(key);
-					if (!e) return null;
-			
-					return Math.max(0, e.expiresAt - Date.now());
-				},
-			
-				// ── delete ─────────────────────────────────────────────────────────────────────────────────
-				delete(key: S): B {
-					return self.entries.delete(key);
-				},
-			
-				// ── sweep ──────────────────────────────────────────────────────────────────────────────────
-				/** Removes expired entries, fires onExpire hooks. Returns count expired. */
-				sweep(): number {
-					const now = Date.now();
-					let n = 0;
-			
-					for (const [key, e] of [...self.entries]) {
-						if (now >= e.expiresAt) {
-							self.entries.delete(key);
-							n++;
-			
-							for (const fn of self.onExpire) {
-								try {
-									fn(key, e.data);
-								} catch (err) {
-									console.error(`[ttl-shard] onExpire failed for "${key}":`, err);
-								}
-							}
-						}
-					}
-			
-					return n;
-				},
-			
-				/** Sweep on a cadence. Owns its own timer — call stopSweeper() to cancel. */
-				_sweeper: null as ReturnType<typeof setInterval> | null,
-			
-				startSweeper(intervalMs = 30_000): void {
-					if (self._sweeper) return;
-					self._sweeper = setInterval(() => self.sweep(), intervalMs);
-				},
-			
-				stopSweeper(): void {
-					if (self._sweeper) {
-						clearInterval(self._sweeper);
-						self._sweeper = null;
-					}
-				},
-			
-				get size(): number {
-					return self.entries.size;
-				},
-			
-				listKeys(): S[] {
-					return [...self.entries.keys()];
-				},
-			
-				purge(): void {
-					self.stopSweeper();
-					self.entries.clear();
-					self.onExpire.length = 0;
-				},
-			}));
-			z.REACTIVE = this.ATOM.BIND("REACTIVE", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				records: new Map<S, RiftRecord<A>>(),
-				listeners: new Map<S, Set<StoreListener<A>>>(),
-			
-				get<T = A>(key: S): RiftRecord<T> | undefined {
-					return self.records.get(key) as RiftRecord<T> | undefined;
-				},
-			
-				set<T = A>(key: S, record: RiftRecord<T>): void {
-					self.records.set(key, record as RiftRecord<A>);
-			
-					const subs = self.listeners.get(key);
-			
-					if (subs) {
-						for (const l of [...subs]) {
-							try {
-								l(record as RiftRecord<A>);
-							} catch {
-								// one bad listener never kills the rest
-							}
-						}
-					}
-				},
-			
-				sub<T = A>(key: S, fn: StoreListener<T>): () => void {
-					let subs = self.listeners.get(key);
-			
-					if (!subs) {
-						subs = new Set();
-						self.listeners.set(key, subs);
-					}
-			
-					subs.add(fn as StoreListener<A>);
-			
-					return () => {
-						const s = self.listeners.get(key);
-						if (!s) return;
-			
-						s.delete(fn as StoreListener<A>);
-			
-						if (!s.size) self.listeners.delete(key);
-					};
-				},
-			
-				delete(key: S): void {
-					self.records.delete(key);
-					self.listeners.delete(key);
-				},
-			
-				clear(): void {
-					self.records.clear();
-					self.listeners.clear();
-				},
-			
-				get size(): N {
-					return self.records.size;
-				},
-			}));
-			z.SCHEMA = this.ATOM.BIND("SCHEMA", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				_schemas: new Map<string, CSESchema>(),
-			
-				setChannelSchema(schema: CSESchema, rt: string): void {
-					self._schemas.set(rt, schema);
-				},
-			
-				getChannelSchema(rt: string): CSESchema | undefined {
-					return self._schemas.get(rt);
-				},
-			
-				removeChannelSchema(rt: string): B {
-					const had = self._schemas.delete(rt);
-					return had;
-				},
-			
-				hasChannelSchema(rt: string): B {
-					return self._schemas.has(rt);
-				},
-			
-				listChannelSchemas(): string[] {
-					return [...self._schemas.keys()];
-				},
-			
-				getAllSchemas(): Record<string, CSESchema> {
-					return Object.fromEntries(self._schemas);
-				},
-			
-				/** Wildcard-aware lookup: exact channel wins, else longest matching prefix before `*`. */
-				resolveSchema(rt: string): CSESchema | undefined {
-					if (self._schemas.has(rt)) return self._schemas.get(rt);
-			
-					let best: CSESchema | undefined;
-					let bestLen = -1;
-			
-					for (const [pattern, schema] of self._schemas) {
-						const star = pattern.indexOf("*");
-						if (star === -1) continue;
-			
-						if (rt.startsWith(pattern.slice(0, star)) && star > bestLen) {
-							best = schema;
-							bestLen = star;
-						}
-					}
-			
-					return best;
-				},
-			
-				/**
-				 * Validate a message against its channel schema. No schema → pass (open channel).
-				 * Returns { ok, errors } — never throws.
-				 */
-				checkSchema(rt: S, msg: CSEMessage): { ok: B; errors: S[] } {
-					const schema = self.resolveSchema(rt) as A;
-					if (!schema) return { ok: true, errors: [] };
-			
-					const errors: S[] = [];
-					const payload = (msg.p ?? {}) as Record<S, A>;
-			
-					for (const [field, rule] of Object.entries(schema.fields ?? {}) as A) {
-						const v = payload[field];
-			
-						if (v === undefined || v === null) {
-							if (rule.required) errors.push(`missing required field "${field}"`);
-							continue;
-						}
-			
-						if (rule.type !== "any") {
-							const actual = typeof v;
-			
-							if (rule.type === "number" && actual !== "number") {
-								errors.push(`field "${field}" expected number, got ${actual}`);
-							} else if (rule.type === "string" && actual !== "string") {
-								errors.push(`field "${field}" expected string, got ${actual}`);
-							} else if (rule.type === "boolean" && actual !== "boolean") {
-								errors.push(`field "${field}" expected boolean, got ${actual}`);
-							}
-						}
-					}
-			
-					if (schema.validate) {
-						try {
-							const r = schema.validate(msg);
-			
-							if (r !== true && r !== undefined) {
-								errors.push(
-									typeof r === "string"
-										? r
-										: `validator rejected message on "${rt}"`,
-								);
-							}
-						} catch (e) {
-							errors.push(`validator threw: ${e}`);
-						}
-					}
-			
-					return { ok: errors.length === 0, errors };
-				},
-			
-				purge(): void {
-					self._schemas.clear();
-				},
-			}));
-			z.VALUES_REGISTRY = this.ATOM.BIND("VALUES_REGISTRY", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				instanceId: `instance_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-				hasWritten: false,
-				lastWriteSource: undefined as string | undefined,
-				lastWriteAt: undefined as number | undefined,
-				writeCount: 0,
-			
-				recordWrite(source = "write"): void {
-					self.hasWritten = true;
-					self.lastWriteSource = source;
-					self.lastWriteAt = Date.now();
-					self.writeCount++;
-				},
-			
-				reset(): void {
-					self.hasWritten = false;
-					self.lastWriteSource = undefined;
-					self.lastWriteAt = undefined;
-					self.writeCount = 0;
-				},
-			}));
-			z.CONCURRENCY = this.ATOM.BIND("CONCURRENCY", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				current: Math.min(
-					config.maxConcurrency ?? 64,
-					Math.max(
-						config.minConcurrency ?? 1,
-						config.initialConcurrency ?? Math.max(4, Math.floor((config.maxConcurrency ?? 64) / 4)),
-					),
-				) as N,
-			
-				min: (config.minConcurrency ?? 1) as N,
-				max: (config.maxConcurrency ?? 64) as N,
-				holders: new Set<symbol>(),
-				waiters: [] as Array<() => void>,
-				peak: 0 as N,
-			
-				get active(): N {
-					return self.holders.size;
-				},
-			
-				get concurrency(): N {
-					return self.current;
-				},
-			
-				get peakConcurrency(): N {
-					return self.peak;
-				},
-			
-				tryAcquire(): symbol | undefined {
-					if (self.holders.size >= self.current) return undefined;
-			
-					const h = Symbol("governor-slot");
-					self.holders.add(h);
-			
-					if (self.holders.size > self.peak) self.peak = self.holders.size;
-			
-					return h;
-				},
-			
-				async acquire(): Promise<symbol> {
-					const h = self.tryAcquire();
-					if (h) return h;
-			
-					return new Promise<symbol>(resolve =>
-						self.waiters.push(() => resolve(self.tryAcquire()!)),
-					);
-				},
-			
-				release(h: symbol): void {
-					self.holders.delete(h);
-			
-					const next = self.waiters.shift();
-					if (next) next();
-				},
-			
-				/** AIMD. Call from telemetry. */
-				evaluateResistance(signal: { latency: N; error: B; targetLatencyMs?: N }): void {
-					const target = signal.targetLatencyMs ?? 250;
-			
-					if (signal.error || signal.latency > target * 1.5) {
-						self.multiplicativeDecrease();
-					} else if (signal.latency < target * 0.7) {
-						self.additiveIncrease();
-					}
-				},
-			
-				additiveIncrease(): void {
-					if (self.current < self.max) self.resize(self.current + 1);
-				},
-			
-				multiplicativeDecrease(): void {
-					if (self.current > self.min) {
-						self.resize(Math.max(self.min, Math.floor(self.current * 0.5)));
-					}
-				},
-			
-				resize(n: N): void {
-					self.current = Math.max(self.min, Math.min(self.max, Math.floor(n)));
-			
-					if (self.current > self.peak) self.peak = self.current;
-			
-					// Wake waiters if capacity grew.
-					while (self.holders.size < self.current && self.waiters.length) {
-						self.waiters.shift()?.();
-					}
-				},
-			}));
-			z.CONTRACTS = this.ATOM.BIND("CONTRACTS", ({ self, master, config }: any) => ({
-				useCell: (() => {
-					const fn = () => {};
-					return fn;
-				})(),
-				r: master.r,
-				m: master.m,
-				s: master.s,
-				k: config.k,
-				contracts: new Map<S, A>(),
-				_keyContracts: new Map() as Map<S, Set<S>>,
-				causal: [] as CONTRACT_VIOLATION[],
-				violations: [] as CONTRACT_VIOLATION[],
-				violationMax: 64,
-				_throwOnBlock: true as B,
-				add: (contract: A): (() => void) => {
-					self.contracts.set(contract.name, contract);
-					return () => self.contracts.delete(contract.name);
-				},
-				remove: (name: S): B => {
-					return self.contracts.delete(name);
-				},
-				get: (name: S): A | undefined => {
-					return self.contracts.get(name);
-				},
-				list: (): A[] => {
-					return [...self.contracts.values()];
-				},
-				bindKeyContracts: (keyContracts: Map<S, Set<S>>): void => {
-					self._keyContracts = keyContracts;
-				},
-				_record: (v: CONTRACT_VIOLATION, blocking: B): B => {
-					self.violations.push(v);
-					if (self.violations.length > self.violationMax) self.violations.splice(0, self.violations.length - self.violationMax);
-					if (blocking) throw new Error(`ATOM contract "${v.contract}" violated (${v.phase}): ${v.message}`);
-					console.warn(`ATOM contract "${v.contract}" violated (${v.phase}): ${v.message}`);
-					return false;
-				},
-				check: (value: A, phase: 'pre' | 'post'| 'invariant', snapshot?: Record<S, A>): B =>{
-					for (const c of self.contracts.values()) {
-						if (phase === 'pre' && c.precondition) {
-							try { if (!c.precondition(value)) return self._record({ contract: c.name, phase, value, message: 'precondition returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
-							catch (e) { return self._record({ contract: c.name, phase, value, message: `precondition threw: ${e}`, ts: Date.now() }, true); }
-						}
-						if (phase === 'post' && c.postcondition) {
-							try { if (!c.postcondition(value)) return self._record({ contract: c.name, phase, value, message: 'postcondition returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
-							catch (e) { return self._record({ contract: c.name, phase, value, message: `postcondition threw: ${e}`, ts: Date.now() }, true); }
-						}
-						if (phase === 'invariant' && c.invariant && snapshot) {
-							try { if (!c.invariant(snapshot)) return self._record({ contract: c.name, phase, value, message: 'invariant returned false', ts: Date.now() }, !!c.block && self._throwOnBlock); }
-							catch (e) { return self._record({ contract: c.name, phase, value, message: `invariant threw: ${e}`, ts: Date.now() }, true); }
-						}
-					}
-					return true;
-				},
-				checkKey:(key: S, value: A, phase: 'pre' | 'post'): B =>{
-					for (const name of self._keyContracts.get(key) ?? []) {
-						const c = self.contracts.get(name);
-						if (!c) continue;
-						const check = phase === 'pre' ? c.precondition : c.postcondition;
-						if (!check) continue;
-						try {
-							if (!check(value)) return self._record({ contract: name, phase, value, message: `key contract failed for "${key}"`, ts: Date.now() }, !!c.block && self._throwOnBlock);
-						} catch (e) {
-							return self._record({ contract: name, phase, value, message: `key contract threw: ${e}`, ts: Date.now() }, true);
-						}
-					}
-					return true;
-				},
-				canWrite: (value: A): B=> { return self.check(value, 'pre'); },
-				didWrite:(value: A): B=> { return self.check(value, 'post'); },
-				listViolations:(): CONTRACT_VIOLATION[]=> { return [...self.violations]; },
-				clearViolations:(): void=> { self.violations.length = 0; },
-				purge:(): void=> { self.contracts.clear(); self.violations.length = 0; self._keyContracts.clear(); }
-			}))
-			z.COMPRESSION = this.ATOM.BIND("COMPRESSION", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-				compressionConfigs: [] as CompressionConfig[],
-			
-				getCompressionConfigs(): CompressionConfig[] {
-					return [...self.compressionConfigs];
-				},
-			
-				configureCompression(config: CompressionConfig): void {
-					self.compressionConfigs.push(config);
-				},
-			}));
-			z.DEADLETTER = this.ATOM.BIND("DEADLETTER", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				root_cell_key: config.root_cell_key as A,
-				deadLetters: [] as CSEMessage[],
-				maxDeadLetters: (config.maxDeadLetters ?? 1000) as N,
-				wire: config.wire as DEADLETTER_WIRE | undefined,
-			
-				/** Park a failed message. Oldest evicted when over max. */
-				record(msg: CSEMessage, reason?: S): void {
-					self.deadLetters.push({ ...msg, _ack: true } as CSEMessage);
-			
-					if (self.deadLetters.length > self.maxDeadLetters) {
-						self.deadLetters.shift();
-					}
-				},
-			
-				async listDeadLetters(
-					k?: S,
-					sl?: S,
-					ms?: S,
-					rt?: S,
-				): Promise<CSEMessage[]> {
-					if (!rt && !ms && !sl && !k) return [...self.deadLetters];
-			
-					return self.deadLetters.filter(
-						m =>
-							(!rt || m.rt === rt) &&
-							(!ms || m.ms === ms) &&
-							(!sl || m.sl === sl) &&
-							(!k || m.k === k),
-					);
-				},
-			
-				async requeueDeadLetter(id: S, ttl?: N): Promise<void> {
-					const idx = self.deadLetters.findIndex(m => m.id === id);
-					if (idx === -1) return;
-			
-					const msg = self.deadLetters.splice(idx, 1)[0];
-					msg.ttl = ttl ?? msg.ttl;
-			
-					await self.wire?.enqueue(msg);
-				},
-			
-				purgeDeadLetter(id: S): B {
-					const idx = self.deadLetters.findIndex(m => m.id === id);
-					if (idx === -1) return false;
-			
-					self.deadLetters.splice(idx, 1);
-					return true;
-				},
-			
-				count(): N {
-					return self.deadLetters.length;
-				},
-			
-				purge(): void {
-					self.deadLetters.length = 0;
-				},
-			}));
-			z.DESTRUCTION = this.ATOM.BIND("DESTRUCTION", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				beforeDestruct: [] as ((key: A) => void)[],
-				afterDestruct: [] as ((record: DESTRUCTION_RECORD) => void)[],
-				records: [] as DESTRUCTION_RECORD[],
-				destroyed: false as B,
-				blocked: false as B,
-			
-				// ── hooks ──────────────────────────────────────────────────────────────────────────────────
-				onBefore(fn: (key: A) => void): () => void {
-					self.beforeDestruct.push(fn);
-			
-					return () => {
-						self.beforeDestruct = self.beforeDestruct.filter(f => f !== fn);
-					};
-				},
-			
-				onAfter(fn: (record: DESTRUCTION_RECORD) => void): () => void {
-					self.afterDestruct.push(fn);
-			
-					return () => {
-						self.afterDestruct = self.afterDestruct.filter(f => f !== fn);
-					};
-				},
-			
-				/** Veto a pending destruction (e.g. in a beforeDestruct hook, or upfront). */
-				block(): void {
-					self.blocked = true;
-				},
-			
-				unblock(): void {
-					self.blocked = false;
-				},
-			
-				// ── the kill switch ────────────────────────────────────────────────────────────────────────
-				/**
-				 * Runs the full destruction sequence.
-				 * Returns the record on success, null when blocked or already destroyed.
-				 * `reviver` is a factory the record keeps so the cell can be rebuilt later.
-				 */
-				destroy(cause = "unknown", reviver?: () => A): DESTRUCTION_RECORD | null {
-					if (self.destroyed) return null;
-					if (self.blocked) return null;
-			
-					const record: DESTRUCTION_RECORD = {
-						key: self.root_cell,
-						cause,
-						at: Date.now(),
-						reviver,
-					};
-			
-					for (const fn of self.beforeDestruct) {
-						try {
-							fn(self.root_cell);
-						} catch (e) {
-							console.error("[destruction-shard] beforeDestruct hook failed:", e);
-						}
-					}
-			
-					self.destroyed = true;
-					self.records.push(record);
-			
-					for (const fn of self.afterDestruct) {
-						try {
-							fn(record);
-						} catch (e) {
-							console.error("[destruction-shard] afterDestruct hook failed:", e);
-						}
-					}
-			
-					return record;
-				},
-			
-				resurrect(): A | null {
-					if (!self.destroyed) return null;
-			
-					const last = self.records[self.records.length - 1];
-					self.destroyed = false;
-					self.blocked = false;
-			
-					return last?.reviver?.() ?? null;
-				},
-			
-				isDestroyed(): B {
-					return self.destroyed;
-				},
-			
-				clearRecords(): void {
-					self.records.length = 0;
-				},
-			
-				purge(): void {
-					self.beforeDestruct.length = 0;
-					self.afterDestruct.length = 0;
-					self.records.length = 0;
-				},
-			}));
-			type MODULE_PATH = S;
-			interface ERROR_EMISSION {
-				module: MODULE_PATH;
-				code: S;
-				message: S;
-				detail?: A;
-				ts: N;
-			}
-			class ORC_SHOUT {
-				c = {
-					emerald: { 10: "#002c22", 9: "#004f3b", 8: "#016630", 7: "#007a55", 6: "#009966", 5: "#00bc7d" },
-					blue: { 10: "", 9: "", 8: "", 7: "", 6: "", 5: "" },
-				};
-				t = {
-					deep: {
-						bg: "#020817",
-						txt: "#f8fafc",
-						size: 12,
-						title_size: 14,
-						title_txt: "#94a3b8",
-						payload_key: "#a4ed2c",
-						payload_value: "#f8fafc",
-						font: "monospace",
-						border: "2px solid #101727",
-						borderRadius: "6px",
-						padding: "8px 16px",
-						svg: "",
-					},
-					vintage: {
-						bg: "#001B29",
-						txt: "#e9e1ba",
-						size: 12,
-						title_size: 14,
-						title_txt: "#ada785",
-						payload_key: "#29c3a0",
-						payload_value: "#fafafa",
-						font: "monospace",
-						border: "2px solid #112932",
-						borderRadius: "6px",
-						padding: "8px 16px",
-						svg: "",
-					},
-					error: {
-						bg: "#09090B",
-						txt: "#e7000b",
-						size: 12,
-						title_size: 14,
-						title_txt: "#9f0712",
-						payload_key: "#a4ed2c",
-						payload_value: "#f8fafc",
-						font: "monospace",
-						border: "2px solid #e7000b",
-						borderRadius: "6px",
-						padding: "8px 16px",
-						svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
-					},
-					warn: {
-						bg: "#09090B",
-						txt: "#e17100",
-						size: 12,
-						title_size: 14,
-						title_txt: "#973c00",
-						payload_key: "#a4ed2c",
-						payload_value: "#f8fafc",
-						font: "monospace",
-						border: "2px solid #e17100",
-						borderRadius: "6px",
-						padding: "8px 16px",
-						svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e17100" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
-					},
-					success: {
-						bg: "#09090B",
-						txt: "#009966",
-						size: 12,
-						title_size: 14,
-						title_txt: "#016630",
-						payload_key: "#a4ed2c",
-						payload_value: "#f8fafc",
-						font: "monospace",
-						border: "2px solid #009966",
-						borderRadius: "6px",
-						padding: "8px 16px",
-						svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009966" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/></svg>`,
-					},
-					info: {
-						bg: "#09090B",
-						txt: "#155dfc",
-						size: 12,
-						title_size: 14,
-						title_txt: "#193cb8",
-						payload_key: "#a4ed2c",
-						payload_value: "#f8fafc",
-						font: "monospace",
-						border: "2px solid #155dfc",
-						borderRadius: "6px",
-						padding: "8px 16px",
-						svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#155dfc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
-					},
-				};
-				log(msg: string | string[], p?: any, theme = this.t.deep) {
-					const isArray = Array.isArray(msg);
-					const title = isArray ? msg[0] : msg;
-					const paragraphs = isArray ? msg.slice(1) : [];
 
-					const containerStyle = `
-						background: ${theme.bg};
-						${theme.border ? `border: ${theme.border};` : ""}
-						${theme.borderRadius ? `border-radius: ${theme.borderRadius};` : ""}
-						${theme.padding ? `padding: ${theme.padding};` : ""}
-						font-family: ${theme.font};
-						display: block;
-						margin: 4px 0;
-					`;
-
-					const titleWithIcon = theme?.svg ? `${theme?.svg} ${title}` : title;
-					const titleStyle = `
-						color: ${theme.title_txt};
-						font-size: ${theme.title_size}px;
-						font-weight: bold;
-						font-family: ${theme.font};
-						display: flex;
-						align-items: center;
-						gap: 8px;
-					`;
-
-					const paragraphStyle = `
-						color: ${theme.txt};
-						font-size: ${theme.size}px;
-						font-family: ${theme.font};
-						margin-top: 4px;
-					`;
-
-					const keyStyle = `
-						color: ${theme.payload_key};
-						font-weight: bold;
-						font-family: ${theme.font};
-					`;
-					const valueStyle = `
-						color: ${theme.payload_value};
-						font-family: ${theme.font};
-					`;
-
-					let payloadStr = "";
-					if (p && typeof p === "object") {
-						const entries = Object.entries(p);
-						payloadStr = entries.map(([key, value]) => `%c${key}: %c${JSON.stringify(value, null, 2)}`).join("\n");
-					}
-
-					const logParts = [`%c${titleWithIcon}`, ...paragraphs.map((p) => `%c${p}`), payloadStr ? `\n${payloadStr}` : ""].filter(Boolean).join("\n");
-
-					const styles = [containerStyle + titleStyle, ...paragraphs.map(() => paragraphStyle), ...(payloadStr ? [keyStyle, valueStyle] : [])];
-
-					console.log(logParts, ...styles);
-				}
-			}
-			const os = new ORC_SHOUT()
-			z.ERROR = this.ATOM.BIND("ERROR", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				/** History lives here regardless of emission — history is cheap, display is gated. */
-				error_history: [] as ERROR_EMISSION[],
-				HISTORY_CAP: 512,
-			
-				// ── runtime-editable controls ─────────────────────────────────────────────────────────────
-				/** Master kill-switch. false → nothing emits, history still accrues. */
-				ENABLED: true as B,
-			
-				/** Emission only in dev mode unless this is explicitly flipped on. */
-				ENABLE_IN_PRODUCTION: false as B,
-			
-				/**
-				 * Surgical control. null = every module emits.
-				 * Record<string, boolean> = only listed modules emit, with true/false overriding.
-				 */
-				SURGICAL_LOGS: (config.surgical ?? null) as Record<MODULE_PATH, B> | null,
-			
-				/** Theme passed through to the LOGGER. Default = the error theme. */
-				theme: (os.t),
-			
-				/** "TERMINAL" | "FILE" — pipes through the LOGGER's configured sink. */
-				PIPE_TO_FILE_OR_TERMINAL: "TERMINAL" as "TERMINAL" | "FILE",
-			
-				/** Set at wiring time by the platform; falls back to plain console when absent. */
-				logger: os.log,
-			
-				// ── the single emission point ─────────────────────────────────────────────────────────────
-				/** Every error-producing call site in every shard funnels through here. */
-				emit(module: MODULE_PATH, code: S, message: S, detail?: A): ERROR_EMISSION {
-					const entry: ERROR_EMISSION = { module, code, message, detail, ts: Date.now() };
-			
-					self.error_history.push(entry);
-			
-					if (self.error_history.length > self.HISTORY_CAP) {
-						self.error_history.splice(0, self.error_history.length - self.HISTORY_CAP);
-					}
-			
-					if (self.shouldEmit(module)) {
-						const title = `[${String(self.root_cell_key)}] ${module} · ${code}`;
-			
-						if (self.logger) {
-							self.logger.theme = self.theme;
-							self.logger.drop_log([title, message], detail);
-						} else if (self.shouldEmit(module)) {
-							console.error(`${title}\n  ${message}`, detail ?? "");
-						}
-					}
-			
-					return entry;
-				},
-			
-				/** Surgical gate: master switch → dev/production → per-module toggle. */
-				shouldEmit(module: MODULE_PATH): B {
-					if (!self.ENABLED) return false;
-					if (self.ENABLE_IN_PRODUCTION === false && root.state.get("DEV_MODE") !== true) return false;
-					if (self.SURGICAL_LOGS === null) return true;
-			
-					// exact match wins, then longest-prefix match (section-level control)
-					if (module in self.SURGICAL_LOGS) return self.SURGICAL_LOGS[module];
-			
-					let best: S | null = null;
-			
-					for (const prefix of Object.keys(self.SURGICAL_LOGS)) {
-						if (module.startsWith(prefix + ".") && (best === null || prefix.length > best.length)) {
-							best = prefix;
-						}
-					}
-			
-					return best !== null ? self.SURGICAL_LOGS[best] : false;
-				},
-			
-				// ── convenience emitters used by the call sites below ────────────────────────────────────
-				sealed(detail?: A) {
-					return self.emit("GATE", "GATE_SEALED", "CELL IS SEALED — CHANGE SEALED TO FALSE TO RESUME WRITES", detail);
-				},
-			
-				frozen(detail?: A) {
-					return self.emit("GATE", "GATE_FROZEN", "CELL IS FROZEN — VIEWABLE BUT NOT EDITABLE", detail);
-				},
-			
-				asleep(detail?: A) {
-					return self.emit("GATE", "GATE_ASLEEP", "CELL IS ASLEEP — WILL NOT BE AVAILABLE UNTIL ITS CONFIGURED WAKE TIME", detail);
-				},
-			
-				shardNotFound(name: S, detail?: A) {
-					return self.emit("REGISTRY", "SHARD_NOT_FOUND", `NO SHARD LABELED "${name}" RELATIVE TO THIS CELL — REVIEW YOUR CONTRACT`, detail);
-				},
-			
-				contractViolation(contract: S, detail?: A) {
-					return self.emit("CONTRACTS", "CONTRACT_VIOLATION", `CONTRACT VIOLATION: ${contract}`, detail);
-				},
-			
-				schemaViolation(topic: S, detail?: A) {
-					return self.emit("SCHEMA", "SCHEMA_VIOLATION", `SCHEMA VIOLATION ON TOPIC "${topic}"`, detail);
-				},
-			
-				permissionDenied(ch: S, detail?: A) {
-					return self.emit("PERMISSIONS", "PERMISSION_DENIED", `PERMISSION DENIED ON CHANNEL "${ch}"`, detail);
-				},
-			
-				/** Flip an entire section or a single module. */
-				setSection(path: MODULE_PATH, on: B): void {
-					(self.SURGICAL_LOGS ??= {})[path] = on;
-				},
-			
-				clearSurgical(): void {
-					self.SURGICAL_LOGS = null;
-				},
-			
-				// ── diagnostics ───────────────────────────────────────────────────────────────────────────
-				recent(limit = 20): ERROR_EMISSION[] {
-					return self.error_history.slice(-limit);
-				},
-			
-				byModule(module: MODULE_PATH): ERROR_EMISSION[] {
-					return self.error_history.filter(e => e.module === module);
-				},
-			
-				byCode(code: S): ERROR_EMISSION[] {
-					return self.error_history.filter(e => e.code === code);
-				},
-			
-				purge(): void {
-					self.error_history.length = 0;
-				},
-			}));
-			type EVENT_LISTENER = (payload?: A) => void;
-			z.EVENT = this.ATOM.BIND("EVENT", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				events: new Map<S, Set<EVENT_LISTENER>>(),
-				wildcard: new Set<(event: S, payload?: A) => void>(),
-			
-				on(event: S, fn: EVENT_LISTENER): () => void {
-					const set = self.events.get(event) ?? new Set<EVENT_LISTENER>();
-					set.add(fn);
-					self.events.set(event, set);
-			
-					return () => set.delete(fn);
-				},
-			
-				once(event: S, fn: EVENT_LISTENER): () => void {
-					const off = self.on(event, (p: A) => {
-						off();
-						fn(p);
-					});
-			
-					return off;
-				},
-			
-				onAny(fn: (event: S, payload?: A) => void): () => void {
-					self.wildcard.add(fn);
-					return () => self.wildcard.delete(fn);
-				},
-			
-				off(event: S, fn?: EVENT_LISTENER): void {
-					if (!fn) self.events.delete(event);
-					else self.events.get(event)?.delete(fn);
-				},
-			
-				emit(event: S, payload?: A): number {
-					let delivered = 0;
-			
-					for (const fn of self.wildcard) {
-						try {
-							fn(event, payload);
-							delivered++;
-						} catch (e) {
-							console.error(`[event-shard] wildcard listener failed for "${event}":`, e);
-						}
-					}
-			
-					for (const fn of [...(self.events.get(event) ?? [])]) {
-						try {
-							fn(payload);
-							delivered++;
-						} catch (e) {
-							console.error(`[event-shard] listener failed for "${event}":`, e);
-						}
-					}
-			
-					return delivered;
-				},
-			
-				async emitAsync(event: S, payload?: A): Promise<number> {
-					let delivered = 0;
-			
-					for (const fn of self.wildcard) {
-						try {
-							await fn(event, payload);
-							delivered++;
-						} catch (e) {
-							console.error(`[event-shard] wildcard listener failed for "${event}":`, e);
-						}
-					}
-			
-					for (const fn of [...(self.events.get(event) ?? [])]) {
-						try {
-							await fn(payload);
-							delivered++;
-						} catch (e) {
-							console.error(`[event-shard] listener failed for "${event}":`, e);
-						}
-					}
-			
-					return delivered;
-				},
-			
-				listenerCount(event?: S): number {
-					if (event) return self.events.get(event)?.size ?? 0;
-			
-					let n = self.wildcard.size;
-			
-					for (const set of self.events.values()) {
-						n += set.size;
-					}
-			
-					return n;
-				},
-			
-				eventNames(): S[] {
-					return [...self.events.keys()];
-				},
-			
-				purge(): void {
-					self.events.clear();
-					self.wildcard.clear();
-				},
-			}));
-			z.EXTERNAL_SUBSCRIPTION = this.ATOM.BIND("EXTERNAL_SUBSCRIPTION", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				externalSubscribers: new Set<LISTENER<W>>(),
-			
-				subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
-					self.externalSubscribers.add(listener);
-			
-					return () => {
-						self.externalSubscribers.delete(listener);
-					};
-				},
-			
-				notify(change: CHANGE<W>): void {
-					for (const listener of self.externalSubscribers) {
-						try {
-							listener(change);
-						} catch (error) {
-							console.error(`[soul-shard] listener failed for "${String(change.key)}":`, error);
-						}
-					}
-				},
-			
-				get size(): number {
-					return self.externalSubscribers.size;
-				},
-			
-				purge(): void {
-					self.externalSubscribers.clear();
-				},
-			}));
-			z.GATE = this.ATOM.BIND("GATE", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				sealed: (config.sealed ?? false) as B,
-				frozen: (config.frozen ?? false) as B,
-				sleep: config.sleep as N | undefined,
-			
-				get asleep(): B {
-					return self.sleep !== undefined && Date.now() < self.sleep;
-				},
-			
-				seal(): V {
-					self.sealed = true;
-				},
-			
-				unseal(): V {
-					self.sealed = false;
-				},
-			
-				freeze(): V {
-					self.frozen = true;
-				},
-			
-				unfreeze(): V {
-					self.frozen = false;
-				},
-			
-				sleepUntil(timestamp: N): V {
-					self.sleep = timestamp;
-				},
-			
-				wake(): V {
-					self.sleep = undefined;
-				},
-			
-				canRead(): B {
-					return !self.asleep;
-				},
-			
-				canWrite(): B {
-					return !self.sealed && !self.frozen && !self.asleep;
-				},
-			}));
-			z.GLOBAL_SUBSCRIPTION = this.ATOM.BIND("GLOBAL_SUBSCRIPTION", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				globalListeners: new Set<LISTENER<W>>(),
-			
-				subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
-					self.globalListeners.add(listener);
-			
-					return () => {
-						self.globalListeners.delete(listener);
-					};
-				},
-			
-				notify(change: CHANGE<W>): void {
-					for (const listener of self.globalListeners) {
-						try {
-							listener(change);
-						} catch (error) {
-							console.error(`[soul-ELECTRON] listener failed for "${String(change.key)}":`, error);
-						}
-					}
-				},
-			
-				get size(): number {
-					return self.globalListeners.size;
-				},
-			
-				purge(): void {
-					self.globalListeners.clear();
-				},
-			}));
-			z.HOOK = this.ATOM.BIND("HOOK", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				hooks: new Map<S, A>(),
-				factories: new Map<S, () => A>(),
-			
-				/** Register a hook factory. The factory runs once, lazily, on first read. */
-				register(name: S, factory: () => A): void {
-					self.factories.set(name, factory);
-					// if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('hook_registered', undefined, undefined, undefined, { name });
-				},
-			
-				/** Read the hook's value, computing it on first access. */
-				use(name: S): A {
-					const existing = self.hooks.get(name);
-					if (existing) return existing.value;
-			
-					const factory = self.factories.get(name);
-					if (!factory) throw new Error(`[hook-ELECTRON] no hook registered as "${name}"`);
-			
-					const value = factory();
-					self.hooks.set(name, { value, registeredAt: Date.now() });
-			
-					// if (self.DEVTOOLS_ACTIVE) self.emitDevtoolsEvent('hook_computed', undefined, undefined, undefined, { name });
-			
-					return value;
-				},
-			
-				isComputed(name: S): B {
-					return self.hooks.has(name);
-				},
-			
-				/** Drop the memoized value; the next use() re-runs the factory. Returns whether an entry existed. */
-				reset(name: S): B {
-					const entry = self.hooks.get(name);
-					if (!entry) return false;
-			
-					self.hooks.delete(name);
-			
-					try {
-						entry.teardown?.();
-					} catch (e) {
-						console.error(`[hook-ELECTRON] teardown failed for "${name}":`, e);
-					}
-			
-					return true;
-				},
-			
-				/** Drop the factory and the value. The hook is gone until re-registered. */
-				unregister(name: S): void {
-					self.reset(name);
-					self.factories.delete(name);
-				},
-			
-				list(): S[] {
-					return [...self.factories.keys()];
-				},
-			
-				purge(): void {
-					for (const entry of self.hooks.values()) {
-						try {
-							entry.teardown?.();
-						} catch (e) {
-							console.error("[hook-ELECTRON] teardown failed during purge:", e);
-						}
-					}
-			
-					self.hooks.clear();
-					self.factories.clear();
-				},
-			}));
-			z.HTTP_TRANSPORT = this.ATOM.BIND("HTTP_TRANSPORT", ({ self, master, config }: A) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				token: config.token as string,
-				timeoutMs: (config.timeoutMs ?? 10_000) as N,
-				backoffMs: (config.backoffMs ?? 100) as N,
-				maxBackoffMs: (config.maxBackoffMs ?? 5_000) as N,
-				maxAttempts: (config.maxAttempts ?? 3) as N,
-				codec: BINARY_CODEC as typeof BINARY_CODEC,
-				onError: (config.onError ?? (() => {})) as (err: U) => void,
-			
-				/** Inbound dispatcher — set at attach(). Receives decoded envelopes. */
-				dispatch: null as ((env: HttpEnvelope) => P<U> | U) | NU,
-			
-				// ── OUTBOUND: send an envelope to another IP ─────────────────────────────
-				async send(
-					endpoint: string,
-					env: HttpEnvelope,
-				): Promise<{ ok: boolean; result?: unknown; error?: string }> {
-					const envelope: Required<Pick<HttpEnvelope, "ts" | "id">> & HttpEnvelope = {
-						ts: Date.now(),
-						id: seqId(),
-						...env,
-					};
-			
-					const body = self.codec.encode_msg(envelope);
-			
-					let attempt = 0;
-					let lastErr: unknown = null;
-			
-					while (attempt < self.maxAttempts) {
-						attempt++;
-			
-						try {
-							const res = await fetch(endpoint, {
-								method: "POST",
-								headers: {
-									"content-type": "application/octet-stream",
-									authorization: `Bearer ${self.token}`,
-								},
-								body: body as unknown as BodyInit,
-								signal: AbortSignal.timeout(self.timeoutMs),
-							});
-			
-							if (!res.ok) {
-								lastErr = new Error(`[http-transport] endpoint ${endpoint} responded ${res.status}`);
-			
-								// 4xx = caller's fault, retrying will not help. Stop now.
-								if (res.status >= 400 && res.status < 500) break;
-								// 5xx / network: retry with backoff
-							} else {
-								const raw = new Uint8Array(await res.arrayBuffer());
-								const decoded = self.codec.decode_msg(raw);
-			
-								if (decoded === null) {
-									lastErr = new Error(`[http-transport] endpoint ${endpoint} returned undecodable ack`);
-								} else {
-									return decoded as { ok: boolean; result?: unknown; error?: string };
-								}
-							}
-						} catch (err) {
-							lastErr = err;
-							// network-level failure: retry with backoff
-						}
-			
-						if (attempt < self.maxAttempts) {
-							await new Promise(r =>
-								setTimeout(
-									r,
-									Math.min(self.backoffMs * 2 ** (attempt - 1), self.maxBackoffMs),
-								),
-							);
-						}
-					}
-			
-					self.onError(lastErr);
-			
-					return {
-						ok: false,
-						error: lastErr instanceof Error ? lastErr.message : String(lastErr),
-					};
-				},
-			
-				// ── INBOUND: accept POSTs from the wire ──────────────────────────────────
-				/**
-				 * Wire this into any runtime's http server. `handler` must:
-				 *   • match on the path (transport does not route — the host decides)
-				 *   • read the full request body into a Uint8Array
-				 *   • call this.receive(bytes) and send back the returned ack frame
-				 * Node: http.createServer((req, res) => { if (transport.matches(req)) { ... res.end(ack) } })
-				 * Bun: Bun.serve({ fetch: (req) => transport.matchesBun(req) ? new Response(ack) : undefined })
-				 * Deno: same shape as Bun via req.arrayBuffer()
-				 */
-				attach(dispatch: (env: HttpEnvelope) => Promise<unknown> | unknown): void {
-					self.dispatch = dispatch;
-				},
-			
-				/** Path/content-type matcher for host servers. */
-				matches(pathname: string, method: string): boolean {
-					return method === "POST" && pathname === "/bus";
-				},
-			
-				/**
-				 * The one method a host server calls: bytes in → ack bytes out.
-				 * Auth is checked BEFORE dispatch. Dispatch happens inside try/catch —
-				 * a throwing handler becomes an error frame, never a crash.
-				 */
-				async receive(bytes: Uint8Array, authHeader: string | null): Promise<Uint8Array> {
-					const ack = (ok: boolean, result?: unknown, error?: string): Uint8Array =>
-						self.codec.encode_msg({ ok, result, error });
-			
-					if (authHeader !== `Bearer ${self.token}`) {
-						return ack(false, undefined, "unauthorized");
-					}
-			
-					const env = self.codec.decode_msg(bytes);
-			
-					if (env === null || typeof env !== "object") {
-						return ack(false, undefined, "undecodable envelope");
-					}
-			
-					const e = env as Partial<HttpEnvelope>;
-			
-					if (
-						typeof e.r !== "string" ||
-						typeof e.m !== "string" ||
-						typeof e.s !== "string" ||
-						typeof e.k !== "string"
-					) {
-						return ack(false, undefined, "malformed envelope: rt/ms/sl/key required");
-					}
-			
-					if (!self.dispatch) {
-						return ack(false, undefined, "no dispatcher attached");
-					}
-			
-					try {
-						const result = await self.dispatch(env as HttpEnvelope);
-						return ack(true, result);
-					} catch (err) {
-						return ack(
-							false,
-							undefined,
-							err instanceof Error ? err.message : String(err),
-						);
-					}
-				},
-			}));
-			z.GLOBAL_SUBSCRIPTION = this.ATOM.BIND("GLOBAL_SUBSCRIPTION", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				globalListeners: new Set<LISTENER<W>>(),
-			
-				subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
-					self.globalListeners.add(listener);
-			
-					return () => {
-						self.globalListeners.delete(listener);
-					};
-				},
-			
-				notify(change: CHANGE<W>): void {
-					for (const listener of self.globalListeners) {
-						try {
-							listener(change);
-						} catch (error) {
-							console.error(`[soul-ELECTRON] listener failed for "${String(change.key)}":`, error);
-						}
-					}
-				},
-			
-				get size(): number {
-					return self.globalListeners.size;
-				},
-			
-				purge(): void {
-					self.globalListeners.clear();
-				},
-			}));
-			z.METRICS = this.ATOM.BIND("METRICS", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-			
-				adapters: {
-					metrics: new Map<string, {
-						id: string;
-						total: number;
-						failures: number;
-						totalLatency: number;
-						disabled: boolean;
-						lastWindow: number;
-						lastCount: number;
-					}>(),
-				},
-			
-				seen: new Set<string>(),
-			
-				getSeenCount(): number {
-					return self.seen.size;
-				},
-			
-				getMessageCount(rt: string): number {
-					return self.messageCount.get(rt) ?? 0;
-				},
-			
-				messageCount: new Map<string, number>(),
-			
-				getAdapterMetrics(): AdapterMetrics[] {
-					const now = Date.now();
-					const out: AdapterMetrics[] = [];
-			
-					for (const m of self.adapterMetrics.values()) {
-						const windowSec = Math.max(1, (now - m.lastWindow) / 1000);
-						const throughput = m.lastCount / windowSec;
-						const failureRate = m.total === 0 ? 0 : m.failures / m.total;
-						const latencyMs = m.total === 0 ? 0 : m.totalLatency / m.total;
-			
-						out.push({
-							id: m.id,
-							latencyMs,
-							failureRate,
-							throughputPerSec: throughput,
-							healthy: !m.disabled && failureRate < 0.5,
-							disabled: m.disabled,
-						});
-			
-						m.lastWindow = now;
-						m.lastCount = 0;
-					}
-			
-					return out;
-				},
-			
-				_queueMetrics: {
-					totalEnqueued: 0,
-					totalDropped: 0,
-					totalProcessed: 0,
-					peakSize: 0,
-					currentSize: 0,
-				},
-			}));
-			z.SUBSCRIPTION = this.ATOM.BIND("SUBSCRIPTION", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				listeners: new Set<LISTENER<W>>(),
-			
-				subscribe(listener: LISTENER<W>): UNSUBSCRIBE {
-					self.listeners.add(listener);
-			
-					return () => {
-						self.listeners.delete(listener);
-					};
-				},
-			
-				notify(change: CHANGE<W>): void {
-					for (const listener of self.listeners) {
-						try {
-							listener(change);
-						} catch (error) {
-							console.error(`[soul-ELECTRON] listener failed for "${String(change.key)}":`, error);
-						}
-					}
-				},
-			
-				get size(): number {
-					return self.listeners.size;
-				},
-			
-				purge(): void {
-					self.listeners.clear();
-				},
-			}));
-			z.WAITER = this.ATOM.BIND("WAITER", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-			
-				waiters: new Set<{
-					resolve: (value: A) => void;
-					reject: (reason?: A) => void;
-				}>(),
-			
-				wait<T = A>(timeout?: number): Promise<T> {
-					return new Promise<T>((resolve, reject) => {
-						const waiter = {
-							resolve: resolve as (value: A) => void,
-							reject,
-						};
-			
-						self.waiters.add(waiter);
-			
-						if (timeout !== undefined && timeout > 0) {
-							const timer = setTimeout(() => {
-								if (self.waiters.delete(waiter)) {
-									reject(new Error("SOUL_ELECTRON wait timed out"));
-								}
-							}, timeout);
-			
-							const originalResolve = waiter.resolve;
-							waiter.resolve = value => {
-								clearTimeout(timer);
-								originalResolve(value);
-							};
-			
-							const originalReject = waiter.reject;
-							waiter.reject = reason => {
-								clearTimeout(timer);
-								originalReject(reason);
-							};
-						}
-					});
-				},
-			
-				resolve<T = A>(value: T): number {
-					const waiters = [...self.waiters];
-					self.waiters.clear();
-			
-					for (const waiter of waiters) {
-						waiter.resolve(value as A);
-					}
-			
-					return waiters.length;
-				},
-			
-				reject(reason: A): number {
-					const waiters = [...self.waiters];
-					self.waiters.clear();
-			
-					for (const waiter of waiters) {
-						waiter.reject(reason);
-					}
-			
-					return waiters.length;
-				},
-			
-				purge(): void {
-					self.reject(new Error("SOUL_ELECTRON waiter ELECTRON destroyed"));
-				},
-			}));
-			z.SESSION = this.ATOM.BIND("SESSION", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				_cse_token: (config.cse_token ?? null) as S | null,
-				_sessionId: null as S | null,
-				_sessionToken: null as S | null,
-				_session_started_at: null as N | null,
-				_session_expires_at: null as N | null,
-				_auth_vized: false as B,
-				_auth_initialized: false as B,
-				_sessionTtlMs: (config.sessionTtlMs ?? 1000 * 60 * 60 * 12) as N,
-			
-				// ── crypto ─────────────────────────────────────────────────────────────────────────────────
-				computeHmacSha256(secret: S, data: S): S {
-					if (BUS_CRYPTO) {
-						const key = BUS_CRYPTO.to_utf8_bytes(secret);
-						const mac = BUS_CRYPTO.hash_hmac(key, data);
-						return BUS_CRYPTO.to_hex(BUS_CRYPTO.from_base64(mac));
-					}
-			
-					return "";
-				},
-			
-				// ── lifecycle ──────────────────────────────────────────────────────────────────────────────
-				/**
-				 * Stand the session up. Reads CSE_TOKEN from .env when no token was injected.
-				 * No token anywhere? The session still runs, but UNAUTHORIZED (matches the bus's stance).
-				 */
-				async initAuth(): Promise<void> {
-					if (self._auth_initialized) return;
-			
-					if (!self._cse_token && typeof process !== "undefined") {
-						try {
-						//   if (dotenv) dotenv.config();
-						} catch {
-							// env loader optional
-						}
-			
-						const sk = (typeof process !== "undefined" && process.env?.CSE_TOKEN) || null;
-						if (sk && sk.length >= 5) self._cse_token = sk;
-					}
-			
-					self._newSession();
-					self._auth_initialized = true;
-				},
-			
-				_newSession(): void {
-					const now = Date.now();
-			
-					if (self._cse_token && BUS_CRYPTO) {
-						self._sessionId = BUS_CRYPTO.to_hex(BUS_CRYPTO.random_bytes(16));
-						self._sessionToken = self.computeHmacSha256(self._cse_token, self._sessionId);
-					} else {
-						// degraded mode: still unique, just not cryptographically bound
-						self._sessionId = `sess_${now}_${Math.random().toString(36).slice(2)}`;
-						self._sessionToken = null;
-					}
-			
-					self._session_started_at = now;
-					self._session_expires_at = now + self._sessionTtlMs;
-					self._auth_vized = !!self._sessionToken;
-				},
-			
-				/** Rotate the session id + token. Anything wrapped before is invalid after this. */
-				renew(): void {
-					self._newSession();
-				},
-			
-				/** Force-expire. secureUnwrap() will reject everything until renew() or initAuth(). */
-				expire(): void {
-					self._session_expires_at = Date.now() - 1;
-					self._auth_vized = false;
-				},
-			
-				isValid(): B {
-					return self._session_expires_at !== null && Date.now() < self._session_expires_at;
-				},
-			
-				get expired(): B {
-					return !self.isValid();
-				},
-			
-				get isSecure(): B {
-					return self._cse_token !== null && self._sessionToken !== null;
-				},
-			
-				// ── wrap / unwrap ──────────────────────────────────────────────────────────────────────────
-				/** Wrap a payload with the cell's session identity. */
-				secureWrap(p: A) {
-					return {
-						sessionId: self._sessionId,
-						token: self._sessionToken,
-						ts: Date.now(),
-						p,
-					};
-				},
-			
-				/** Unwrap + verify. Tampered, stale, or foreign session → null. */
-				async secureUnwrap(msg: A): Promise<A | null> {
-					if (!msg?.sessionId || !msg?.token) return null;
-					if (msg.sessionId !== self._sessionId) return null; // not our session
-					if (!self.isValid()) return null; // our session but expired
-			
-					const expected = await self.computeHmacSha256(
-						self._cse_token ?? "",
-						msg.sessionId,
-					);
-			
-					if (self._sessionToken && msg.token !== expected) return null;
-			
-					return msg.p;
-				},
-			
-				purge(): void {
-					self._sessionId = null;
-					self._sessionToken = null;
-					self._session_started_at = null;
-					self._session_expires_at = null;
-					self._auth_vized = false;
-					self._auth_initialized = false;
-				},
-			}));
-			z.ROUTE = this.ATOM.BIND("ROUTE", ({ self, master, config }: any) => ({
-				k: config.k ?? "__SIGNALS__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				routeRules: [] as RouteRule[],
-			
-				toRegex(pattern: S): RegExp {
-					return new RegExp(
-						"^" +
-							pattern
-								.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-								.replace(/\*\*/g, ".*")
-								.replace(/\*/g, "[^.]+") +
-							"$",
-					);
-				},
-			
-				addRouteRule(rule: RouteRule): void {
-					self.routeRules.push(rule);
-			
-					if (self.DEVTOOLS_ACTIVE) {
-						self.emitDevtoolsEvent("route_added", undefined, undefined, undefined, {
-							name: rule.name,
-						});
-					}
-				},
-			
-				removeRouteRule(name: S): void {
-					self.routeRules = self.routeRules.filter(r => r.name !== name);
-			
-					if (self.DEVTOOLS_ACTIVE) {
-						self.emitDevtoolsEvent("route_removed", undefined, undefined, undefined, { name });
-					}
-				},
-			
-				listRouteRules(): RouteRule[] {
-					return [...self.routeRules];
-				},
-			
-				/** First matching enabled rule wins. Returns the rewritten target(s); adapter defaults to same_boundary. */
-				resolve(rt: S, ms: S, sl: S, k: S): RouteTarget[] {
-					for (const rule of self.routeRules) {
-						if (rule.enabled === false) continue;
-						if (!self.toRegex(rule.match).test(rt)) continue;
-			
-						const target: RouteTarget = {
-							adapter: rule.adapter ?? "same_boundary",
-							rt: rule.target?.rt ?? rt,
-							ms: rule.target?.ms ?? ms,
-							sl: rule.target?.sl ?? sl,
-							k: rule.target?.k ?? k,
-						   // priority: rule.priority,
-						};
-			
-						if (self.DEVTOOLS_ACTIVE) {
-							self.emitDevtoolsEvent("route_resolved", rt, ms, undefined, {
-								rule: rule.name,
-								adapter: target.adapter,
-							});
-						}
-			
-						return [target];
-					}
-			
-					// no rule: the identity target — same address, same boundary (PATCH 4's fallback)
-					return [{ adapter: "same_boundary", rt, ms, sl, k }];
-				},
-			
-				purge(): void {
-					self.routeRules.length = 0;
-				},
-			}));
-			z.RIFTS_ACCESS = this.ATOM.BIND("RIFTS_ACCESS", ({ self, master, config }: any) => ({
-				k: config.k ?? "__MODULE_ATOM__",
-				s: config.s ?? "SAURON_SLAVE_REG",
-				m: config.m ?? "SAURON_MASTER_REG",
-				r: config.r ?? "THE_WIZARD_ROOT_REG",
-			
-				initial: config.options?.module_type === "class_fn_pool" || !config.options?.module_type ? { ...config.initial } : config.initial,
-				module: config.options?.module_type === "class_fn_pool" || !config.options?.module_type ? { ...config.initial } : config.initial,
-				module_type: config.options?.module_type ?? "class_fn_pool",
-				version: 0,
-				sealed: false,
-				frozen: (config.options?.module_type ?? "class_fn_pool") === "class_fn_pool"        ? false        : config.options?.frozen ?? true,
-				hasWritten: false,
-				persisted: false,
-				listeners: new Set<(change: Change<A>) => void>(),
-				waiters: new Set<(value: A) => void>(),
-				undoStack: undefined as HistoryEntry[] | undefined,
-				conflict: config.options?.conflict as ConflictPolicy | undefined,
-				historyIndex: 0,
-				history: config.options?.history ? [{ k: 0, value: config.initial, timestamp: Date.now(), source: "initial", }] : undefined,
-				historyMax: config.options?.history ? Math.max(1, config.options.history.max ?? 50) : 50,
-				lifecycle: config.options?.lifecycle as SignalLifecycle | undefined,
-				async: undefined as AsyncSignalState | undefined,
-				metrics: undefined as Metrics | undefined,
-				conflictStrategy: config.options?.conflictStrategy as        "latest" | "fail" | "accumulate" | undefined,
-				schema: config.options?.schema as SignalSchema | undefined,
-				contracts: new Map<string, AtomContract<A>>(),
-				causal: [] as CausalEntry[],
-				lastWriteSource: undefined as string | undefined,
-				batches: new Set<SignalKey>(),
-				batchQueue: new Map<SignalKey, unknown>(),
-				batchOpts: new Map<SignalKey, { triggerRender?: boolean }>(),
-			
-				triggerRender: true,
-				boundary: "same-app" as Boundary,
-				read<T = A>(): T { return self.module;    },
-				peek<T = A>(): T { return self.module;    },
-				write<T = A>( incoming: any | ((prev: T) => T), options: AtomWriteOptions = {}, ): T {
-					if (self.frozen) return self.peek();
-					const prev = self.module;
-					const resolved = incoming;
-					const next = self.module_type === "class_fn_pool" ? resolved ? { ...prev, ...resolved } : prev : resolved;
-					self.module = next;
-					self.hasWritten = true;
-					self.version += 1;
-					self.lastWriteSource = options.source ?? "write";
-					self.assertContracts(next, prev);
-			
-					for (const l of self.listeners) { try { l(next); } catch (e) {} }
-					root.bus.marek.send(next,self.k,self.s, self.m, self.r, );
-			 
-					for (const w of self.waiters) { try { w(next); } catch (e) {} }
-					if (options.recordHistory !== false) { self.recordHistory(prev, next, self.lastWriteSource); }
-					self.recordCausal(next, self.lastWriteSource, options.cause);
-					self.waiters.clear();
-			
-					self.notifyListeners({
-						key: self.key,
-						previous: prev,
-						current: next,
-						version: self.version,
-						timestamp: Date.now(),
-						source: self.lastWriteSource,
-					});
-			
-					return next;
-				},
-				register<T = A>(name: string, val: any): T { return self.write((prev: A) => ({ ...prev, [name]: val }));    },
-				unregister<T = A>(name: string): T {
-					return self.write((prev: A) => {
-						const { [name]: _gone, ...rest } = prev;
-						return rest;
-					});
-				},
-				slot(name: string): any { return self.module[name]; },
-				on(listener: RiftListener<any>): void { self.listeners.add(listener); listener(self.module); },
-				waitFor<T = A>(): Promise<T> { return new Promise(resolve => { self.waiters.add(resolve); });    },
-				async waitForSlot(name: string, timeoutMs = 0): Promise<any> {
-					const existing = self.module[name];
-					if (existing !== undefined) return existing;
-			
-					if (!timeoutMs) {
-						const next = await self.waitFor();
-						return (next as Record<string, any>)[name];
-					}
-			
-					return Promise.race([
-						self.waitFor().then(next => (next as Record<string, any>)[name]),
-						new Promise((_, reject) =>
-							setTimeout(
-								() => reject(
-									new Error(`[ModuleAtom] waitForSlot("${name}") timed out after ${timeoutMs}ms`),
-								),
-								timeoutMs,
-							),
-						),
-					]);
-				},
-				inspect<T = A>(): T { return { ...self.module }; },
-				setSchema(schema?: SignalSchema) { self.schema = schema; return self; },
-				setLifecycle<T = A>(lifecycle?: SignalLifecycle<T>) { self.lifecycle = lifecycle; return self; },
-				setConflict( conflict?: ConflictPolicy, strategy?: "latest" | "fail" | "accumulate", ) {
-					self.conflict = conflict;
-					self.conflictStrategy = strategy;
-					return self;
-				},
-				setFrozen(): void { self.frozen = true; },
-				setUnfrozen(): void { self.frozen = false; },
-				setSealed(): void { self.sealed = true; },
-				setUnsealed(): void { self.sealed = false; },
-				setBoundary() {},
-				validate<T = A>(next: T): T {
-					if (!self.schema) return next;
-					return this._.validateSchema(self.schema, next);
-				},
-			
-				assertContracts<T = A>(next: T, previous: T): void {
-					for (const contract of self.contracts.values()) {
-						let valid = false;
-			
-						try {
-							valid = contract.postcondition(next, previous);
-						} catch (error) {
-							console.error(
-								`[Sauron] contract "${contract.name}" threw for "${String(self.key)}":`,
-								error,
-							);
-						}
-			
-						if (valid) continue;
-			
-						const message =
-							`[Sauron] contract "${contract.name}" violated ` +
-							`on write to "${String(self.key)}"`;
-			
-						if (contract.block) {
-							throw new Error(message);
-						}
-			
-						console.error(message);
-					}
-				},
-			
-				recordHistory<T = A>(previous: T, next: T, source?: string): void {
-					if (!self.history) return;
-			
-					self.history.splice(self.historyIndex + 1);
-			
-					const last = self.history[self.history.length - 1];
-			
-					self.history.push({
-						k: (last?.k ?? -1) + 1,
-						prev: previous,
-						value: next,
-						next,
-						timestamp: Date.now(),
-						source,
-						undone: false,
-					});
-			
-					while (self.history.length > self.historyMax) {
-						self.history.shift();
-					}
-			
-					self.historyIndex = self.history.length - 1;
-				},
-			
-				getHistory<T = A>(): readonly AtomHistoryEntry<T>[] {
-					return self.history ?? [];
-				},
-			
-				timeTravel<T = A>(steps = 1): T | undefined {
-					if (!self.history?.length || steps <= 0) return undefined;
-			
-					const idx = Math.max(
-						0,
-						Math.min(self.history.length - 1, self.historyIndex + steps),
-					);
-			
-					if (idx === self.historyIndex) return undefined;
-			
-					self.historyIndex = idx;
-					return self.replayHistory("time-travel");
-				},
-			
-				back<T = A>(steps = 1): T | undefined {
-					return self.timeTravel(-Math.abs(steps));
-				},
-			
-				forward<T = A>(steps = 1): T | undefined {
-					return self.timeTravel(Math.abs(steps));
-				},
-			
-				goto<T = A>(sequence: number): T | undefined {
-					if (!self.history?.length) return undefined;
-			
-					const idx = self.history.findIndex(entry => entry.k === sequence);
-					if (idx < 0 || idx === self.historyIndex) return undefined;
-			
-					self.historyIndex = idx;
-					return self.replayHistory("time-travel.goto");
-				},
-			
-				replayHistory<T = A>(source: string): T {
-					const entry = self.history![self.historyIndex];
-			
-					return self.write(entry.value as T, {
-						source,
-						cause: "time-travel",
-						triggerRender: true,
-						recordHistory: false,
-					});
-				},
-			
-				recordCausal<T = A>(value: T, source?: string, cause?: string): void {
-					self.causal.push({
-						value,
-						source,
-						cause,
-						timestamp: Date.now(),
-					} as CausalEntry);
-			
-					if (self.causal.length > 100) {
-						self.causal.shift();
-					}
-				},
-			
-				recordMetrics(): void {
-					if (!self.metrics) return;
-			
-					self.metrics.writeCount += 1;
-					self.metrics.lastWrite = Date.now();
-				},
-			
-				notifyListeners<T = A>(change: Change<T>): void {
-					const listeners = self._listeners.get(self.key);
-					if (!listeners) return;
-			
-					for (const listener of listeners) {
-						try {
-							listener(change);
-						} catch (error) {
-							console.error(
-								`[Sauron:SIGNAL_CELL:${String(self.key)}] listener failed:`,
-								error,
-							);
-						}
-					}
-				},
-			
-				resolveWaiters<T = A>(value: T): void {
-					const waiting = self._waiters.get(self.key);
-					if (!waiting) return;
-			
-					self._waiters.delete(self.key);
-			
-					for (const resolve of waiting) {
-						try {
-							resolve(value);
-						} catch (error) {
-							console.error(
-								`[Sauron:SIGNAL_CELL:${String(self.key)}] waiter failed:`,
-								error,
-							);
-						}
-					}
-				},
-			
-				notifyExternalSubscribers(): void {
-					const subscribers = self._externalSubscribers.get(self.key);
-					if (!subscribers) return;
-			
-					for (const callback of subscribers) {
-						try {
-							callback();
-						} catch (error) {
-							console.error(
-								`[Sauron:SIGNAL_CELL:${String(self.key)}] external subscriber failed:`,
-								error,
-							);
-						}
-					}
-				},
-			}));
-			return z
-		})(); 
-		public contracts = (() => {
-			const z = () => {}
-			z.DEFAULT = this.ATOM.CONTRACT(() => ({ atom: "VERTEX" }))
-			z.vertexContract = this.ATOM.CONTRACT(() => ({
-				atom: "VERTEX",
-				value: { count: 0 },
-				bindables: { conflict: this.ATOMS.CONFLICT, ttl: this.ATOMS.TTL },
-			}));
-			z.atomMasterContract = this.ATOM.CONTRACT(() => ({
-				atom: "ATOM",
-				value: 0,
-				bindables: { ttl: this.ATOMS.TTL },
-			}));
-			z.moduleContract = this.ATOM.CONTRACT(() => ({
-				atom: "MODULE",
-				value: [],
-				bindables: { conflict: this.ATOMS.CONFLICT },
-			}));
-			return z
-		})(); 
-		public atoms_def = new (class DEFINITION {
-			public MASTER_ATOM_KEYS = ["ATOM", "MODULE", "CLOUD", "SAURON", "DRS", "MSG_Q", "SLAB",  "S_CLASS", "SPREADSHEET",  "VERTEX"] as const;
-			public MQ = {
-				RETRY: this.DEFINE_ATOM_KIND("retry"),
-				ACK: this.DEFINE_ATOM_KIND("ack"),
-				DEADLINE: this.DEFINE_ATOM_KIND("deadline"),
-				DEDUPE: this.DEFINE_ATOM_KIND("dedupe"),
-				DEPTH: this.DEFINE_ATOM_KIND("depth"),
-				WILDCARD: this.DEFINE_ATOM_KIND("wildcard"),
-				REPLY: this.DEFINE_ATOM_KIND("reply"),
-				WINDOW: this.DEFINE_ATOM_KIND("window"),
-				RESUME: this.DEFINE_ATOM_KIND("resume"),
-				CREDIT: this.DEFINE_ATOM_KIND("credit"),
-				CORRELATION: this.DEFINE_ATOM_KIND("correlation"),
-				SEND: this.DEFINE_ATOM_KIND("send"),
-				SUB: this.DEFINE_ATOM_KIND("send"),
-				STREAM: this.DEFINE_ATOM_KIND("send"),
-				HANDLER: this.DEFINE_ATOM_KIND("send"),
-				DUPLEX: this.DEFINE_ATOM_KIND("send"),
-				DRS: this.DEFINE_ATOM_KIND("send"),
-				ANTIMSGQUEUE: this.DEFINE_ATOM_KIND("send"),
-			} as const;
-			public ELECTRONS = {
-				AW_SET: this.DEFINE_ATOM_KIND("adapter"),
-				CASUAL_CURSOR: this.DEFINE_ATOM_KIND("adapter"),
-				DELTA_STORE: this.DEFINE_ATOM_KIND("adapter"),
-				G_SET: this.DEFINE_ATOM_KIND("adapter"),
-				VERSION_VECTOR: this.DEFINE_ATOM_KIND("adapter"),
-				CIRCUIT_BREAKER: this.DEFINE_ATOM_KIND("adapter"),
-				CQRS: this.DEFINE_ATOM_KIND("adapter"),
-				RAFT: this.DEFINE_ATOM_KIND("adapter"),
-				YJS: this.DEFINE_ATOM_KIND("adapter"),
-				DIFFPATCH: this.DEFINE_ATOM_KIND("adapter"),
-				HYBRID_LOGICAL_CLOCK: this.DEFINE_ATOM_KIND("adapter"),
-				LWW: this.DEFINE_ATOM_KIND("adapter"),
-				LWW_ELEMENTAL: this.DEFINE_ATOM_KIND("adapter"),
-				MV: this.DEFINE_ATOM_KIND("adapter"),
-				OPTIMISTIC: this.DEFINE_ATOM_KIND("adapter"),
-				OR: this.DEFINE_ATOM_KIND("adapter"),
-				PN: this.DEFINE_ATOM_KIND("adapter"),
-				REVERSE_HEARTBEAT_MGR: this.DEFINE_ATOM_KIND("adapter"),
-				SEMAPHORE: this.DEFINE_ATOM_KIND("adapter"),
-				TOMBSTONE_COMPACTOR: this.DEFINE_ATOM_KIND("adapter"),
-				YIMIR: this.DEFINE_ATOM_KIND("adapter"),
-				HYBRID_LOGICAL_CLOCK_CRDT: this.DEFINE_ATOM_KIND("adapter"),
-				ADAPTER: this.DEFINE_ATOM_KIND("adapter"),
-				BEAM_CODEC: this.DEFINE_ATOM_KIND("beam_codec"),
-				BINARY: this.DEFINE_ATOM_KIND("binary"),
-				BYTE_CODE_VM: this.DEFINE_ATOM_KIND("byte_code_vm"),
-				CHANNEL: this.DEFINE_ATOM_KIND("channel"),
-				CHANNELS: this.DEFINE_ATOM_KIND("channels"),
-				CONCURRENCY: this.DEFINE_ATOM_KIND("concurrency"),
-				DEADLETTER: this.DEFINE_ATOM_KIND("deadletter"),
-				DESTRUCTION: this.DEFINE_ATOM_KIND("destruction"),
-				ERROR: this.DEFINE_ATOM_KIND("error"),
-				EVENT: this.DEFINE_ATOM_KIND("event"),
-				EXTERNAL_SUBSCRIPTION: this.DEFINE_ATOM_KIND("exterenal_sub"),
-				GATE: this.DEFINE_ATOM_KIND("gate"),
-				GLOBAL_SUBSCRIPTION: this.DEFINE_ATOM_KIND("global_sub"),
-				GOVERNOR: this.DEFINE_ATOM_KIND("GOVERNOR"),
-				HOOK: this.DEFINE_ATOM_KIND("hook"),
-				HTTP_TRANSPORT: this.DEFINE_ATOM_KIND("http_transport"),
-				INJECTION_CODEC: this.DEFINE_ATOM_KIND("injection"),
-				METRICS: this.DEFINE_ATOM_KIND("metrics"),
-				MIDDLEWARE: this.DEFINE_ATOM_KIND("middlleware"),
-				RIFTS_ACCESS: this.DEFINE_ATOM_KIND("rifts"),
-				REACTIVE: this.DEFINE_ATOM_KIND("reactive"),
-				ROUTE: this.DEFINE_ATOM_KIND("route"),
-				RUN_ON: this.DEFINE_ATOM_KIND("run_on"),
-				SEALED_ERROR: this.DEFINE_ATOM_KIND("sealed_error"),
-				SESSION: this.DEFINE_ATOM_KIND("session"),
-				SHELL: this.DEFINE_ATOM_KIND("reshelltry"),
-				SIGNAL: this.DEFINE_ATOM_KIND("signal"),
-				SOA_QUAD_TIERED_REGISTRY: this.DEFINE_ATOM_KIND("soa_registry"),
-				SUBSCRIPTION: this.DEFINE_ATOM_KIND("subscription"),
-				TRANSFORM: this.DEFINE_ATOM_KIND("transform"),
-				WAITER: this.DEFINE_ATOM_KIND("waiter"),
-				CONTRACTS: this.DEFINE_ATOM_KIND("contract"),
-				SCHEMA: this.DEFINE_ATOM_KIND("schema"),
-				VALUES_REGISTRY: this.DEFINE_ATOM_KIND("values_reg"),
-				COMPRESSION: this.DEFINE_ATOM_KIND("compression"),
-				CONFLICT: this.DEFINE_ATOM_KIND("conflict"),
-				CONTEXT: this.DEFINE_ATOM_KIND("context"),
-				ENCRYPTION: this.DEFINE_ATOM_KIND("encryption"),
-				GROUPS: this.DEFINE_ATOM_KIND("groups"),
-				HISTORY: this.DEFINE_ATOM_KIND("history"),
-				META: this.DEFINE_ATOM_KIND("meta"),
-				OFFSEC: this.DEFINE_ATOM_KIND("offsec"),
-				PERMISSIONS: this.DEFINE_ATOM_KIND("permissions"),
-				PERSISTENCE: this.DEFINE_ATOM_KIND("persistence"),
-				PRIORITY: this.DEFINE_ATOM_KIND("priority"),
-				SNAPSHOT: this.DEFINE_ATOM_KIND("snapshot"),
-				TAGS: this.DEFINE_ATOM_KIND("tags"),
-				TIME_TRAVEL: this.DEFINE_ATOM_KIND("time_travel"),
-				TTL: this.DEFINE_ATOM_KIND("ttl"),
-			} as const;
-			public DEFINE_ATOM_KIND(name: string): symbol {
-				return Symbol(name);
-			}
-			public PARTICLE_KEYS = {
-				...this.ELECTRONS,
-				...this.MQ,
-			} as const;
-		})();
 		// #endregion
 		//                                                                                                                          API
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public atom<T = any>(v: A, key: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.REGISTRY._sid()}`, s = this.s, m = this.m, r = this.r, options?: SignalOptions) {
+		public atom<T = any>(v: A, key: SignalKey = `__THE_WARLOCK_SIGNALS_${this.root.reg._sid()}`, s = this.s, m = this.m, r = this.r, options?: SignalOptions) {
 			const rk = this.create(key, v, options, s, m, r);
 			const self = this;
 			return {
@@ -6775,7 +7943,7 @@ class SIGNALS {
 				return atom as ATOM<T> 
 			}
 			const initialValue = typeof v === "function" ? (v as () => T)() : v;
-			atom = this.contracts.DEFAULT(initialValue, k, s, m, r);
+			atom = this.signals.contracts.DEFAULT(initialValue, k, s, m, r);
 			registry.set(k, atom);
 			return atom as ATOM<T> | T;
 		}
@@ -6895,7 +8063,7 @@ class SIGNALS {
 		//                                                                                                                   SEND / SUB
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		#defBucket?: M2<A, A>;
-		#bufs = new WM<O, A[]>(); // open batch buffers, touched only inside batches
+		#bufs = new WeakMap<O, A[]>(); // open batch buffers, touched only inside batches
 		private bucket(s: S, m: S, r: S): M2<A, A> {
 			if (s === this.s && m === this.m && r === this.r) {
 				return (this.#defBucket ??= this.hub.wr.map(s, m, r, "#NAKED_SIGNALS") as M2<A, A>);
@@ -7227,7 +8395,7 @@ class SIGNALS {
 					} else if (type === "object" || type === "function") {
 						let refId = weakMap.get(item);
 						if (!refId) {
-							refId = `ref:${this.hub.REGISTRY._sid()}`;
+							refId = `ref:${this.hub.reg._sid()}`;
 							weakMap.set(item, refId);
 						}
 						parts[i] = refId;
@@ -7295,7 +8463,7 @@ class SIGNALS {
 				}
 			};
 			fn.bindComponentToSignal = ( rk: S, s = this.s, m = this.m, r = this.r  ): V => {
-				const component = this.signals.rx.getCurrentComponent();
+				const component = this.root.state.getCurrentComponent();
 				if (!component) return;
 				const hookKey = `${component.id}:signal:${r}:${m}:${s}:${rk}`;
 				if (component.hooks.has(hookKey)) return;
@@ -7303,10 +8471,10 @@ class SIGNALS {
 				if (!atom) return;
 				const hook: HookState = { value: atom.read(), bindings: new Set() };
 				component.hooks.set(hookKey, hook);
-				const unsubSignal = atom.subscribeExternal(() => { hook.value = atom.read(); this.signals.rx.notifyHook(hookKey); });
+				const unsubSignal = atom.subscribeExternal(() => { hook.value = atom.read(); this.root.state.notifyHook(hookKey); });
 				component.unmount.add(unsubSignal);
 				if (component.render) {
-					const unsubRender = this.signals.rx.subscribeToHook( hookKey, () => component.render?.() );			
+					const unsubRender = this.root.state.subscribeToHook( hookKey, () => component.render?.() );			
 					component.unmount.add(unsubRender);
 				}
 			};
@@ -7892,684 +9060,436 @@ class SIGNALS {
 		};
 	
 		// #endregion
+	})();
+
+	
+	public r2x = new (class R2X {// EXAMPLE CLASS SHAPE
+		public hub: DEATH_STAR
+		public signals: SIGNALS
+		constructor(s: SIGNALS) {
+			this.hub = s.root
+			this.signals = s
+		}
+
+		
+
 	})(this);
+	public R21 = class R2X {
+        public hub: DEATH_STAR;
+        public signals: SIGNALS;
+
+        constructor(s: SIGNALS) {
+            this.hub = s.root;
+            this.signals = s;
+        }
+    };
 }
 // #endregion
-//                                                                                                         [DARTH MAUL] SIGNALS
+//                                                                                                                         AVRO
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-const { link, unlink, propagate, checkDirty, shallowPropagate, } = createReactiveSystem({
-    update(node) {
-        if ('getter' in node) {
-            return updateComputed(node);
-        }
-        if ('currentValue' in node) {
-            return updateSignal(node);
-        }
-        node.flags = 1;
-        return true;
-    },
-    notify(effect) {
-        let insertIndex = queuedLength;
-        let firstInsertedIndex = insertIndex;
-        do {
-            queued[insertIndex++] = effect;
-            effect.flags &= ~2;
-            effect = effect.subs?.sub;
-            if (effect === undefined || !(effect.flags & 2)) {
-                break;
-            }
-        } while (true);
-        queuedLength = insertIndex;
-        while (firstInsertedIndex < --insertIndex) {
-            const left = queued[firstInsertedIndex];
-            queued[firstInsertedIndex++] = queued[insertIndex];
-            queued[insertIndex] = left;
-        }
-    },
-    unwatched(node) {
-        if ('getter' in node) {
-            if (node.depsTail !== undefined) {
-                node.flags = 1 | 16;
-                disposeAllDepsInReverse(node);
-            }
-        }
-        else if ('currentValue' in node) {
-        }
-        else if ('fn' in node) {
-            effectOper.call(node);
-        }
-        else {
-            effectScopeOper.call(node);
-        }
-    },
-});
-function updateComputed(c) {
-    if (c.flags & HasChildEffect) {
-        let link = c.depsTail;
-        while (link !== undefined) {
-            const prev = link.prevDep;
-            const dep = link.dep;
-            if (!('getter' in dep) && !('currentValue' in dep)) {
-                unlink(link, c);
-            }
-            link = prev;
-        }
-    }
-    c.depsTail = undefined;
-    c.flags = 1 | 4;
-    const prevSub = setActiveSub(c);
-    try {
-        ++cycle;
-        const oldValue = c.value;
-        return oldValue !== (c.value = c.getter(oldValue));
-    }
-    finally {
-        activeSub = prevSub;
-        c.flags &= ~4;
-        purgeDeps(c);
-    }
-}
-function updateSignal(s) { s.flags = 1; return s.currentValue !== (s.currentValue = s.pendingValue);}
-function run(e) {
-    const flags = e.flags;
-    if (flags & 16
-        || (flags & 32
-            && checkDirty(e.deps, e))) {
-        if (flags & HasChildEffect) {
-            let link = e.depsTail;
-            while (link !== undefined) {
-                const prev = link.prevDep;
-                const dep = link.dep;
-                if (!('getter' in dep) && !('currentValue' in dep)) {
-                    unlink(link, e);
-                }
-                link = prev;
-            }
-        }
-        if (e.cleanup) {
-            runCleanup(e);
-            if (!e.flags) {
-                return;
-            }
-        }
-        e.depsTail = undefined;
-        e.flags = 2 | 4;
-        const prevSub = setActiveSub(e);
-        try {
-            ++cycle;
-            ++runDepth;
-            e.cleanup = e.fn();
-        }
-        finally {
-            --runDepth;
-            activeSub = prevSub;
-            e.flags &= ~4;
-            purgeDeps(e);
-        }
-    }
-    else if (e.deps !== undefined) {
-        e.flags = 2 | (flags & HasChildEffect);
-    }
-}
-function flush() {
-    try {
-        while (notifyIndex < queuedLength) {
-            const effect = queued[notifyIndex];
-            queued[notifyIndex++] = undefined;
-            run(effect);
-        }
-    }
-    finally {
-        while (notifyIndex < queuedLength) {
-            const effect = queued[notifyIndex];
-            queued[notifyIndex++] = undefined;
-            effect.flags |= 2 | 8;
-        }
-        notifyIndex = 0;
-        queuedLength = 0;
-    }
-}
-function computedOper() {
-    const flags = this.flags;
-    if (flags & 16
-        || (flags & 32
-            && (checkDirty(this.deps, this)
-                || (this.flags = flags & ~32, false)))) {
-        if (updateComputed(this)) {
-            const subs = this.subs;
-            if (subs !== undefined) {
-                shallowPropagate(subs);
-            }
-        }
-    }
-    else if (!flags) {
-        this.flags = 1 | 4;
-        const prevSub = setActiveSub(this);
-        try {
-            this.value = this.getter();
-        }
-        finally {
-            activeSub = prevSub;
-            this.flags &= ~4;
-        }
-    }
-    const sub = activeSub;
-    if (sub !== undefined) {
-        link(this, sub, cycle);
-    }
-    return this.value;
-}
-function signalOper(...value) {
-    if (value.length) {
-        if (this.pendingValue !== (this.pendingValue = value[0])) {
-            this.flags = 1 | 16;
-            const subs = this.subs;
-            if (subs !== undefined) {
-                propagate(subs, !!runDepth);
-                if (!batchDepth) {
-                    flush();
-                }
-            }
-        }
-    }
-    else {
-        if (this.flags & 16) {
-            if (updateSignal(this)) {
-                const subs = this.subs;
-                if (subs !== undefined) {
-                    shallowPropagate(subs);
-                }
-            }
-        }
-        const sub = activeSub;
-        if (sub !== undefined) {
-            link(this, sub, cycle);
-        }
-        return this.currentValue;
-    }
-}
-function runCleanup(e) {
-    const cleanup = e.cleanup;
-    e.cleanup = undefined;
-    const prevSub = activeSub;
-    activeSub = undefined;
-    try {
-        cleanup();
-    }
-    finally {
-        activeSub = prevSub;
-    }
-}
-function effectOper() { effectScopeOper.call(this); if (this.cleanup) { runCleanup(this); }
-}
-function effectScopeOper() {
-    this.flags = 0;
-    disposeAllDepsInReverse(this);
-    const sub = this.subs;
-    if (sub !== undefined) {
-        unlink(sub);
-    }
-}
-function disposeAllDepsInReverse(sub) {
-    let link = sub.depsTail;
-    while (link !== undefined) {
-        const prev = link.prevDep;
-        unlink(link, sub);
-        link = prev;
-    }
-}
-function purgeDeps(sub) {
-    const depsTail = sub.depsTail;
-    let dep = depsTail !== undefined ? depsTail.nextDep : sub.deps;
-    while (dep !== undefined) {
-        dep = unlink(dep, sub);
-    }
-}
-function makeRx<T>(id: string, b: Binding<T>): Rx<T> {
-	const fn = (...args: [] | [T]) => {
-		if (args.length === 0) return b.v;
-		set(id, args[0]);
-	};
+export class FastAvroWriter {
+	buf: Buffer = Buffer.alloc(256);
+	pos: N = 0;
 
-	const r = fn as unknown as Rx<T>;
-	Object.defineProperties(r, { id: { value: id }, node: { value: b.node }, el: { value: b.el } });
+	reset(): V { this.pos = 0; }
 
-	b.write(b.v);
-	rx.s(b, id);
-
-	r.attach = (parent) => { for (const n of b.owned) parent.appendChild(n); return r; };
-	r.dispose = () => {
-		rx.d(id);
-		_signals_root.unmount.delete(r.dispose); // idempotent under a second call
-		for (const n of b.owned) n.parentNode?.removeChild(n);
-	};
-
-	_signals_root.unmount.add(r.dispose);
-
-	return r;
-}
-export function getActiveSub() { return activeSub;}
-export function setActiveSub(sub) { const prevSub = activeSub; activeSub = sub; return prevSub;}
-export function getBatchDepth() { return batchDepth;}
-export function startBatch() { ++batchDepth;}
-export function endBatch() { if (!--batchDepth) { flush(); }}
-export function isSignal(fn) { return fn.name === 'bound ' + signalOper.name;}
-export function isComputed(fn) { return fn.name === 'bound ' + computedOper.name;}
-export function isEffect(fn) { return fn.name === 'bound ' + effectOper.name;}
-export function isEffectScope(fn) { return fn.name === 'bound ' + effectScopeOper.name;}
-
-export function computed(getter) {
-    return computedOper.bind({
-        value: undefined,
-        subs: undefined,
-        subsTail: undefined,
-        deps: undefined,
-        depsTail: undefined,
-        flags: 0,
-        getter: getter,
-    });
-}
-export function effect(fn) {
-    const e = {
-        fn,
-        cleanup: undefined,
-        subs: undefined,
-        subsTail: undefined,
-        deps: undefined,
-        depsTail: undefined,
-        flags: 2 | 4,
-    };
-    const prevSub = setActiveSub(e);
-    if (prevSub !== undefined) {
-        link(e, prevSub, 0);
-        prevSub.flags |= HasChildEffect;
-    }
-    try {
-        ++runDepth;
-        e.cleanup = e.fn();
-    }
-    finally {
-        --runDepth;
-        activeSub = prevSub;
-        e.flags &= ~4;
-    }
-    return effectOper.bind(e);
-}
-export function effectScope(fn) {
-    const e = {
-        deps: undefined,
-        depsTail: undefined,
-        subs: undefined,
-        subsTail: undefined,
-        flags: 1,
-    };
-    const prevSub = setActiveSub(e);
-    if (prevSub !== undefined) {
-        link(e, prevSub, 0);
-        prevSub.flags |= HasChildEffect;
-    }
-    try {
-        fn();
-    }
-    finally {
-        activeSub = prevSub;
-    }
-    return effectScopeOper.bind(e);
-}
-export function trigger(fn) {
-    const sub = {
-        deps: undefined,
-        depsTail: undefined,
-        flags: 2,
-    };
-    const prevSub = setActiveSub(sub);
-    try {
-        fn();
-    }
-    finally {
-        activeSub = prevSub;
-        sub.flags = 0;
-        let link = sub.deps;
-        while (link !== undefined) {
-            const dep = link.dep;
-            link = unlink(link, sub);
-            const subs = dep.subs;
-            if (subs !== undefined) {
-                propagate(subs, !!runDepth);
-                shallowPropagate(subs);
-            }
-        }
-        if (!batchDepth) {
-            flush();
-        }
-    }
-}
-export function createReactiveSystem({ update, notify, unwatched, }) {
-    return {
-        link,
-        unlink,
-        propagate,
-        checkDirty,
-        shallowPropagate,
-    };
-    function link(dep, sub, version) {
-        const prevDep = sub.depsTail;
-        if (prevDep !== undefined && prevDep.dep === dep) {
-            return;
-        }
-        const nextDep = prevDep !== undefined ? prevDep.nextDep : sub.deps;
-        if (nextDep !== undefined && nextDep.dep === dep) {
-            nextDep.version = version;
-            sub.depsTail = nextDep;
-            return;
-        }
-        const prevSub = dep.subsTail;
-        if (prevSub !== undefined && prevSub.version === version && prevSub.sub === sub) {
-            return;
-        }
-        const newLink = sub.depsTail
-            = dep.subsTail
-                = {
-                    version,
-                    dep,
-                    sub,
-                    prevDep,
-                    nextDep,
-                    prevSub,
-                    nextSub: undefined,
-                };
-        if (nextDep !== undefined) {
-            nextDep.prevDep = newLink;
-        }
-        if (prevDep !== undefined) {
-            prevDep.nextDep = newLink;
-        }
-        else {
-            sub.deps = newLink;
-        }
-        if (prevSub !== undefined) {
-            prevSub.nextSub = newLink;
-        }
-        else {
-            dep.subs = newLink;
-        }
-    }
-    function unlink(link, sub = link.sub) {
-        const { dep, prevDep, nextDep, nextSub, prevSub } = link;
-        if (nextDep !== undefined) {
-            nextDep.prevDep = prevDep;
-        }
-        else {
-            sub.depsTail = prevDep;
-        }
-        if (prevDep !== undefined) {
-            prevDep.nextDep = nextDep;
-        }
-        else {
-            sub.deps = nextDep;
-        }
-        if (nextSub !== undefined) {
-            nextSub.prevSub = prevSub;
-        }
-        else {
-            dep.subsTail = prevSub;
-        }
-        if (prevSub !== undefined) {
-            prevSub.nextSub = nextSub;
-        }
-        else if ((dep.subs = nextSub) === undefined) {
-            unwatched(dep);
-        }
-        return nextDep;
-    }
-    function propagate(link, innerWrite) {
-        let next = link.nextSub;
-        let stack;
-        top: do {
-            const sub = link.sub;
-            let flags = sub.flags;
-            if (!(flags & (4 | 8 | 16 | 32))) {
-                sub.flags = flags | 32;
-                if (innerWrite) {
-                    sub.flags |= 8;
-                }
-            }
-            else if (!(flags & (4 | 8))) {
-                flags = 0;
-            }
-            else if (!(flags & 4)) {
-                sub.flags = (flags & ~8) | 32;
-            }
-            else if (!(flags & (16 | 32)) && isValidLink(link, sub)) {
-                sub.flags = flags | (8 | 32);
-                flags &= 1;
-            }
-            else {
-                flags = 0;
-            }
-            if (flags & 2) {
-                notify(sub);
-            }
-            if (flags & 1) {
-                const subSubs = sub.subs;
-                if (subSubs !== undefined) {
-                    const nextSub = (link = subSubs).nextSub;
-                    if (nextSub !== undefined) {
-                        stack = { value: next, prev: stack };
-                        next = nextSub;
-                    }
-                    continue;
-                }
-            }
-            if ((link = next) !== undefined) {
-                next = link.nextSub;
-                continue;
-            }
-            while (stack !== undefined) {
-                link = stack.value;
-                stack = stack.prev;
-                if (link !== undefined) {
-                    next = link.nextSub;
-                    continue top;
-                }
-            }
-            break;
-        } while (true);
-    }
-    function checkDirty(link, sub) {
-        let stack;
-        let checkDepth = 0;
-        let dirty = false;
-        top: do {
-            const dep = link.dep;
-            const flags = dep.flags;
-            if (sub.flags & 16) {
-                dirty = true;
-            }
-            else if ((flags & (1 | 16)) === (1 | 16)) {
-                const subs = dep.subs;
-                if (update(dep)) {
-                    if (subs.nextSub !== undefined) {
-                        shallowPropagate(subs);
-                    }
-                    dirty = true;
-                }
-            }
-            else if ((flags & (1 | 32)) === (1 | 32)) {
-                stack = { value: link, prev: stack };
-                link = dep.deps;
-                sub = dep;
-                ++checkDepth;
-                continue;
-            }
-            if (!dirty) {
-                const nextDep = link.nextDep;
-                if (nextDep !== undefined) {
-                    link = nextDep;
-                    continue;
-                }
-            }
-            while (checkDepth--) {
-                link = stack.value;
-                stack = stack.prev;
-                if (dirty) {
-                    const subs = sub.subs;
-                    if (update(sub)) {
-                        if (subs.nextSub !== undefined) {
-                            shallowPropagate(subs);
-                        }
-                        sub = link.sub;
-                        continue;
-                    }
-                    dirty = false;
-                }
-                else {
-                    sub.flags &= ~32;
-                }
-                sub = link.sub;
-                const nextDep = link.nextDep;
-                if (nextDep !== undefined) {
-                    link = nextDep;
-                    continue top;
-                }
-            }
-            return dirty && !!sub.flags;
-        } while (true);
-    }
-    function shallowPropagate(link) {
-        do {
-            const sub = link.sub;
-            const flags = sub.flags;
-            if ((flags & (32 | 16)) === 32) {
-                sub.flags = flags | 16;
-                if ((flags & (2 | 4)) === 2) {
-                    notify(sub);
-                }
-            }
-        } while ((link = link.nextSub) !== undefined);
-    }
-    function isValidLink(checkLink, sub) {
-        let link = sub.depsTail;
-        while (link !== undefined) {
-            if (link === checkLink) {
-                return true;
-            }
-            link = link.prevDep;
-        }
-        return false;
-    }
-}
-export function signal(initialValue) {
-    return signalOper.bind({
-        currentValue: initialValue,
-        pendingValue: initialValue,
-        subs: undefined,
-        subsTail: undefined,
-        flags: 1,
-    });
-}
-export function signalRx<T>(): Rx<T | undefined>;
-export function signalRx<T>(initialValue: T, injectDom?: boolean): Rx<T>;
-export function signalRx<T>(initialValue?: T, injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
-	const el = injectDom ? document.createElement('span') : null;
-	el?.setAttribute('data-sid', __sauron_id__);
-
-	return makeRx(__sauron_id__, {
-		v: initialValue, node: el, el, owned: el ? [el] : [],
-		write(v) { if (el) el.textContent = str(v); },
-	});
-}
-export function signalRxTxt<T>(): Rx<T | undefined>;
-export function signalRxTxt<T>(initialValue: T, node?: Node, injectDom?: boolean): Rx<T>;
-export function signalRxTxt<T>(initialValue?: T, node?: Node, injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
-	let text = (node as Text | null) ?? null;
-	const owned: Node[] = [];
-
-	if (!text && injectDom) owned.push(document.createComment(__sauron_id__), (text = document.createTextNode('')));
-
-	return makeRx(__sauron_id__, {
-		v: initialValue, node: text, el: text?.parentElement ?? null, owned,
-		write(v) { if (text) text.data = str(v); },
-	});
-}
-export function signalRxAtr<T>(): Rx<T | undefined>;
-export function signalRxAtr<T>(initialValue: T, node?: Element, attributeName?: string, injectDom?: boolean): Rx<T>;
-export function signalRxAtr<T>(initialValue?: T, node?: Element, attributeName = 'value',
-	injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
-
-	if (node && injectDom && !node.hasAttribute('data-sid')) node.setAttribute('data-sid', __sauron_id__);
-	const live = node instanceof HTMLInputElement && attributeName === 'value' ? node : null;
-
-	return makeRx(__sauron_id__, {
-		v: initialValue, node, el: node ?? null, owned: [],
-		write(v) {
-			if (!node) return;
-			if (v == null || v === false) node.removeAttribute(attributeName);
-			else node.setAttribute(attributeName, v === true ? '' : str(v));
-			if (live && live.value !== str(v) && document.activeElement !== live) live.value = str(v);
-		},
-	});
-}
-export function scanRoot(root: ParentNode = document, componentId = _signals_root.id) {
-	const out: Record<string, string | null> = Object.create(null);
-
-	for (const el of root.querySelectorAll('[data-sid]')) {
-		out[el.getAttribute('data-sid')!] = el.getAttribute('value') ?? el.textContent;
+	private ensure(length: N): V {
+		if (this.pos + length <= this.buf.length) return;
+		let size = this.buf.length;
+		while (size < this.pos + length) size *= 2;
+		const next = Buffer.alloc(size);
+		this.buf.copy(next, 0, 0, this.pos);
+		this.buf = next;
 	}
 
-	const w = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
-	while (w.nextNode()) {
-		const c = w.currentNode as Comment;
-		if (c.data.startsWith('rx')) out[c.data] = c.nextSibling?.textContent ?? null;
+	byte(v: N): V { this.ensure(1); this.buf[this.pos++] = v; }
+	bytes(v: Uint8Array): V { this.ensure(v.length); this.buf.set(v, this.pos); this.pos += v.length; }
+
+	long(value: N): V {
+		this.ensure(10);
+		if (Math.abs(value) <= SAFE_ZIGZAG_LIMIT) {
+			let n = value >= 0 ? value * 2 : (-value * 2 - 1);
+			while (n >= 128) { this.buf[this.pos++] = (n % 128) | 0x80; n = Math.floor(n / 128); }
+			this.buf[this.pos++] = n;
+			return;
+		}
+		let n = BigInt(value);
+		n = n >= 0n ? n << 1n : ((-n) << 1n) - 1n;
+		while (n >= 0x80n) { this.buf[this.pos++] = Number(n & 0x7fn) | 0x80; n >>= 7n; }
+		this.buf[this.pos++] = Number(n);
+	}
+	float(value: N): V { this.ensure(4); this.buf.writeFloatLE(value, this.pos); this.pos += 4; }
+	double(value: N): V { this.ensure(8); this.buf.writeDoubleLE(value, this.pos); this.pos += 8; }
+
+	string(v: S): V {
+		const len = Buffer.byteLength(v, "utf8");
+		this.long(len);
+		this.ensure(len);
+		this.buf.write(v, this.pos, "utf8");
+		this.pos += len;
 	}
 
-	return out;
+	finish(): Buffer { return Buffer.from(this.buf.subarray(0, this.pos)); }
 }
-// #endregion
-//                                                               [SITH] [PALPATINE] [DARTH VADER] [GALEN MAREK] [RULE OF 2] BUS
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-const THE_MESH_CACHE: R<S, R<S, R<S, R<S, V>>>> = O.create(null);
+export class FastAvroReader {
+	pos: N = 0;
+	constructor(private readonly buf: Buffer) {}
+
+	byte(): N { return this.buf[this.pos++]; }
+	bytes(length: N): Buffer { const out = Buffer.from(this.buf.subarray(this.pos, this.pos + length)); this.pos += length; return out; }
+
+	long(): N {
+		let result = 0, shift = 0, b: N;
+		do {
+			b = this.buf[this.pos++];
+			result += (b & 0x7f) * Math.pow(2, shift);
+			shift += 7;
+		} while (b & 0x80);
+		return result % 2 === 0 ? result / 2 : -(result + 1) / 2;
+	}
+	float(): N { const n = this.buf.readFloatLE(this.pos); this.pos += 4; return n; }
+	double(): N { const n = this.buf.readDoubleLE(this.pos); this.pos += 8; return n; }
+	string(): S { const len = this.long(); const s = this.buf.toString("utf8", this.pos, this.pos + len); this.pos += len; return s; }
+	done(): B { return this.pos === this.buf.length; }
+}
+const AVRO_ERROR_SCHEMA: AVROSchema = {
+	type: "record",
+	name: "AVROError",
+	fields: [
+		{ name: "type", type: "string" },
+		{ name: "error", type: "string" },
+		{ name: "id", type: "string" },
+	],
+};
+export class BINARY_AVRO_CODEGEN {
+	private readonly names: OB<AVROSchema> = Object.create(null);
+
+	private readonly writeRoot: AvroWriteFn;
+	private readonly readRoot: AvroReadFn;
+	private readonly writeError: AvroWriteFn;
+	private readonly readError: AvroReadFn;
+	private readonly writer = new FastAvroWriter();
+	private readonly errorSchema = AVRO_ERROR_SCHEMA;
+
+	constructor(schema: AVROSchema) {
+		if (Array.isArray(schema)) throw new Error("Avro: root schema cannot be a union");
+
+		this.collect(schema);
+		this.collect(this.errorSchema);
+
+		// Everything below runs exactly ONCE, here, at construction — the generated
+		// source text is the whole point: no schema-walking left at encode/decode time.
+		const writeBody = this.genWrite(schema, "value").join("\n");
+		const readBody = `return ${this.genRead(schema)};`;
+		this.writeRoot = new Function("w", "value", writeBody) as A as AvroWriteFn;
+		this.readRoot = new Function("r", readBody) as A as AvroReadFn;
+
+		const errWriteBody = this.genWrite(this.errorSchema, "value").join("\n");
+		const errReadBody = `return ${this.genRead(this.errorSchema)};`;
+		this.writeError = new Function("w", "value", errWriteBody) as A as AvroWriteFn;
+		this.readError = new Function("r", errReadBody) as A as AvroReadFn;
+	}
+
+	// ---- compile-time schema bookkeeping (never runs after construction) ----
+
+	private collect(schema: AVROSchema): V {
+		if (Array.isArray(schema)) { for (const b of schema) this.collect(b); return; }
+		if (typeof schema === "string") return;
+
+		if (schema.name) this.names[schema.name] = schema;
+
+		if (Array.isArray(schema.type)) this.collect(schema.type);
+		else if (typeof schema.type === "object") this.collect(schema.type);
+		else if (typeof schema.type === "string" && ![
+			"null", "boolean", "int", "long", "float", "double",
+			"bytes", "string", "record", "array", "map", "enum", "fixed",
+		].includes(schema.type)) {
+			if (!this.names[schema.type]) throw new Error(`Avro: unknown named type ${schema.type}`);
+		}
+
+		if (schema.fields) for (const field of schema.fields) this.collect(field.type);
+		if (schema.items) this.collect(schema.items);
+		if (schema.values) this.collect(schema.values);
+	}
+
+	private resolve(schema: AVROSchema): AVROSchema {
+		if (typeof schema === "string" && this.names[schema]) return this.names[schema];
+		return schema;
+	}
+
+	private kindOf(schema: AVROSchema): S {
+		schema = this.resolve(schema);
+		if (typeof schema === "string") return schema;
+		if (Array.isArray(schema)) return "union";
+		return typeof schema.type === "string" ? schema.type : this.kindOf(schema.type);
+	}
+
+	// ---- codegen: produces an inline boolean-expression STRING testing a union branch ----
+
+	private genMatch(schema: AVROSchema, expr: S): S {
+		schema = this.resolve(schema);
+	
+		if (typeof schema === "string") {
+			switch (schema) {
+				case "null": return `(${expr} === null || ${expr} === undefined)`;
+				case "boolean": return `typeof ${expr} === "boolean"`;
+				case "int": return `typeof ${expr} === "number" && Number.isInteger(${expr})`;
+				case "long": case "float": case "double": return `typeof ${expr} === "number"`;
+				case "string": return `typeof ${expr} === "string"`;
+				case "bytes": return `${expr} instanceof Uint8Array`;
+				default: return "false";
+			}
+		}
+	
+		if (Array.isArray(schema)) {return schema.map(s => this.genMatch(s, expr)).join(" || ");}
+	
+		if (typeof schema.type !== "string") return this.genMatch(schema.type, expr);
+	
+		switch (schema.type) {
+			case "fixed": return `${expr} instanceof Uint8Array && ${expr}.length === ${(schema as A).size}`;
+			case "enum": return `${JSON.stringify((schema as A).symbols)}.includes(${expr})`;
+			case "array": return `Array.isArray(${expr})`;
+			case "map": case "record": return `${expr} !== null && typeof ${expr} === "object" && !Array.isArray(${expr})`;
+			default: return this.genMatch(schema.type, expr);
+		}
+	}
+
+	// ---- codegen: produces an array of JS STATEMENT strings that write `expr` into `w` ----
+
+	private genWrite(schema: AVROSchema, expr: S): AR<S> {
+		schema = this.resolve(schema);
+
+		if (Array.isArray(schema)) {
+			if (schema.length === 2) {
+				const nullIdx = schema.findIndex((s) => this.kindOf(s) === "null");
+				if (nullIdx !== -1) {
+					const otherIdx = nullIdx === 0 ? 1 : 0;
+					// common case: an optional field — special-cased to skip the generic
+					// branch-scan entirely, since this covers most unions you'll ever write.
+					return [`if (${expr} === null || ${expr} === undefined) { w.long(${nullIdx}); } else { w.long(${otherIdx}); ${this.genWrite(schema[otherIdx], expr).join(" ")} }`];
+				}
+			}
+			const branches = schema.map((s, i) => `if (${this.genMatch(s, expr)}) { w.long(${i}); ${this.genWrite(s, expr).join(" ")} }`);
+			return [branches.join(" else ") + " else { throw new Error('Avro: no matching union branch'); }"];
+		}
+
+		if (typeof schema === "string") {
+			switch (schema) {
+				case "null": return [];
+				case "boolean": return [`w.byte(${expr} ? 1 : 0);`];
+				case "int": case "long": return [`w.long(${expr});`];
+				case "float": return [`w.float(${expr});`];
+				case "double": return [`w.double(${expr});`];
+				case "string": return [`w.string(${expr});`];
+				case "bytes": return [`w.long(${expr}.length); w.bytes(${expr});`];
+				default: throw new Error(`Avro: unknown type ${schema}`);
+			}
+		}
+		if (typeof schema.type !== "string") return this.genWrite(schema.type, expr);
+
+		switch (schema.type) {
+			case "null": return [];
+			case "boolean": return [`w.byte(${expr} ? 1 : 0);`];
+			case "int": case "long": return [`w.long(${expr});`];
+			case "float": return [`w.float(${expr});`];
+			case "double": return [`w.double(${expr});`];
+			case "string": return [`w.string(${expr});`];
+			case "bytes": return [`w.long(${expr}.length); w.bytes(${expr});`];
+			case "fixed": {
+				const size = (schema as A).size;
+				return [`if (!(${expr} instanceof Uint8Array) || ${expr}.length !== ${size}) throw new Error("Avro: invalid fixed value"); w.bytes(${expr});`];
+			}
+			case "enum": {
+				const symbols = JSON.stringify((schema as A).symbols);
+				return [`{ const i = ${symbols}.indexOf(${expr}); if (i < 0) throw new Error("Avro: invalid enum symbol " + ${expr}); w.long(i); }`];
+			}
+			case "record": {
+				const lines: S[] = [];
+				for (const f of schema.fields as A[]) lines.push(...this.genWrite(f.type, `${expr}[${JSON.stringify(f.name)}]`));
+				return lines;
+			}
+			case "array": {
+				const inner = this.genWrite((schema as A).items, "arr[i]").join(" ");
+				return [`{ const arr = ${expr}; if (arr.length) { w.long(arr.length); for (let i = 0; i < arr.length; i++) { ${inner} } } w.long(0); }`];
+			}
+			case "map": {
+				const inner = this.genWrite((schema as A).values, "obj[k]").join(" ");
+				return [`{ const obj = ${expr}; const keys = Object.keys(obj); if (keys.length) { w.long(keys.length); for (let i = 0; i < keys.length; i++) { const k = keys[i]; w.string(k); ${inner} } } w.long(0); }`];
+			}
+			default: throw new Error(`Avro: unsupported schema type ${schema.type}`);
+		}
+	}
+
+	// ---- codegen: produces a single JS EXPRESSION string that reads one value from `r` ----
+
+	private genRead(schema: AVROSchema): S {
+		schema = this.resolve(schema);
+
+		if (Array.isArray(schema)) {
+			const cases = schema.map((s, i) => `case ${i}: return ${this.genRead(s)};`).join(" ");
+			return `(function(){ const i = r.long(); switch(i){ ${cases} default: throw new Error("Avro: invalid union index"); } })()`;
+		}
+		if (typeof schema === "string") {
+			switch (schema) {
+				case "null": return "null";
+				case "boolean": return "(r.byte() === 1)";
+				case "int": case "long": return "r.long()";
+				case "float": return "r.float()";
+				case "double": return "r.double()";
+				case "string": return "r.string()";
+				case "bytes": return "r.bytes(r.long())";
+				default: throw new Error(`Avro: unknown type ${schema}`);
+			}
+		}
+		if (typeof schema.type !== "string") return this.genRead(schema.type);
+
+		switch (schema.type) {
+			case "null": return "null";
+			case "boolean": return "(r.byte() === 1)";
+			case "int": case "long": return "r.long()";
+			case "float": return "r.float()";
+			case "double": return "r.double()";
+			case "string": return "r.string()";
+			case "bytes": return "r.bytes(r.long())";
+			case "fixed": return `r.bytes(${(schema as A).size})`;
+			case "enum": return `(${JSON.stringify((schema as A).symbols)})[r.long()]`;
+			case "record": {
+				const assigns = (schema.fields as A[]).map((f) => `o[${JSON.stringify(f.name)}] = ${this.genRead(f.type)};`).join(" ");
+				return `(function(){ const o = {}; ${assigns} return o; })()`;
+			}
+			case "array": return `(function(){ const out = []; let c; while ((c = r.long()) !== 0) { for (let i = 0; i < c; i++) out.push(${this.genRead((schema as A).items)}); } return out; })()`;
+			case "map": return `(function(){ const out = {}; let c; while ((c = r.long()) !== 0) { for (let i = 0; i < c; i++) { const k = r.string(); out[k] = ${this.genRead((schema as A).values)}; } } return out; })()`;
+			default: throw new Error(`Avro: unsupported schema type ${schema.type}`);
+		}
+	}
+
+	// ---- public API: identical contract to BINARY_AVRO_FAST / the original BINARY_AVRO ----
+
+	public encode_msg(msg: AVROValue): Buffer {
+		if (msg instanceof Uint8Array) return msg as A;
+		try {
+			this.writer.reset();
+			this.writer.long(0);
+			this.writeRoot(this.writer, msg);
+			return this.writer.finish();
+		} catch (err) {
+			console.log("[AVRO_PIPE] Failed to encode outbound packet:", err);
+			this.writer.reset();
+			this.writer.long(1);
+			this.writeError(this.writer, {
+				type: "error",
+				error: err instanceof Error ? err.message : "Encoding failed",
+				id: String((msg as A)?.id ?? "unknown"),
+			});
+			return this.writer.finish();
+		}
+	}
+
+	public decode_msg(raw: A): AVROValue {
+		if (!(raw instanceof Uint8Array)) {
+			console.error("[AVRO_PIPE] Protocol violation: Expected encoded Uint8Array data stream.");
+			return null;
+		}
+		try {
+			const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength);
+			const r = new FastAvroReader(buf);
+			const branch = r.long();
+			if (branch !== 0 && branch !== 1) throw new Error("Avro: invalid envelope branch");
+			const value = branch === 0 ? this.readRoot(r) : this.readError(r);
+			if (!r.done()) throw new Error("Avro: trailing bytes");
+			return value;
+		} catch (err) {
+			console.error("[AVRO_PIPE] Failed to decode inbound packet:", err);
+			return null;
+		}
+	}
+}
+const SAFE_ZIGZAG_LIMIT = Number.MAX_SAFE_INTEGER / 2;
+const THE_MESH_CACHE = new O2<S, O2<S, O2<S, O2<S, V>>>>();
 type c_type = "mesh" | 'globalThis'
+const SIG_BUS_SCHEMA: AVROSchema = {
+	type: "record",
+	name: "SIGBusMessage",
+	fields: [
+	  { name: "id", type: "string" },
+	  { name: "r", type: "string" },
+	  { name: "m", type: "string" },
+	  { name: "s", type: "string" },
+	  { name: "k", type: "string" },
+	  { name: "p", type: "string" },
+	  { name: "ts", type: "long" },
+	  { name: "_ack", type: "boolean" },
+	  { name: "replyTo", type: ["null", "string"] },
+	  { name: "stream", type: ["null", "boolean"] },
+	  { name: "end", type: ["null", "boolean"] },
+	  { name: "ttl", type: ["null", "long"] },
+	  { name: "error", type: ["null", { type: "record", name: "ErrorInfo", fields: [
+		{ name: "message", type: "string" },
+		{ name: "code", type: ["null", "string"] },
+	  ] }] },
+	],
+};
+// #endregion
+//                                                                                                                    PID TABLE 
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+class PidTable {
+	#toPid: Record<S, N> = Object.create(null);
+	#toKey: S[] = [];
+	intern(key: S): N {
+		const existing = this.#toPid[key];
+		if (existing !== undefined) return existing;
+		const pid = this.#toKey.length;
+		this.#toPid[key] = pid;
+		this.#toKey.push(key);
+		return pid;
+	}
+	keyOf(pid: N): S { return this.#toKey[pid]; }
+}
+// #endregion
+//                                                                                                                   MESH STORE 
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class THE_MESH_STORE {
-	// to create other r level tier, must use global this option for creating a new context
 	public r: A = "THE_WIZARD_ROOT_REG";
 	public m: A = "SAURON_MASTER_REG";
 	public s: A = "SAURON_SLAVE_REG";
 	public k: A = "__SAURON__";
 	public cache: c_type
-	THE_MESH_CACHE: R<S, R<S, R<S, R<S, V>>>> = O.create(null);
-	_the_mesh_cache: R<S, A> = O.create(null);
-	_handlers: R<S, A> = O.create(null);
-	#subRoot: R<S, R<S, R<S, R<S, ST<QuadSub<A>>>>>> = O.create(null);
+    public DEVTOOLS_ACTIVE = false;
+
+	public THE_MESH_CACHE = new O2<S, O2<S, O2<S, O2<S, V>>>>();
+	public _the_mesh_cache = new O2<S, A>();
+	public _handlers = new O2();
+	#subRoot = new O2<S, A>();
  
-	#metaSubRoot: R<S, R<S, R<S, R<S, ST<QuadSub<A>>>>>> = O.create(null);
-	_meta: R<S, A> = O.create(null);
+	#metaSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
+	public _meta = new O2<S, A>();
 
-	#signalsSubRoot: R<S, R<S, R<S, R<S, ST<QuadSub<A>>>>>> = O.create(null);
-	_signals: R<S, A> = O.create(null);
+	#signalsSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
+	public _signals = new O2<S, A>();
 
-	#nakedSignalsSubRoot: R<S, R<S, R<S, R<S, ST<QuadSub<A>>>>>> = O.create(null);
-	_naked_signals: R<S, A> = O.create(null);
+	#nakedSignalsSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
+	public _naked_signals = new O2<S, A>();
 
-	#contextSubRoot: R<S, R<S, R<S, R<S, ST<QuadSub<A>>>>>> = O.create(null);
-	_context: R<S, A> = O.create(null);
+	#contextSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
+	public _context = new O2<S, A>();
 
-	#atomsSubRoot: R<S, R<S, R<S, R<S, ST<QuadSub<A>>>>>> = O.create(null);
-	_atoms: R<S, A> = O.create(null);
+	#atomsSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
+	public _atoms = new O2<S, A>();
 
-	#sauronSubRoot: R<S, R<S, R<S, R<S, ST<QuadSub<A>>>>>> = O.create(null);
-	_sauron: R<S, A> = O.create(null);
+	#sauronSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
+	public _sauron = new O2<S, A>();
 
-	constructor(hub: SITH, cache: c_type = "mesh") {
+	constructor(hub: A, cache: c_type = "mesh") {
 		this.r = hub.r;
 		this.m = hub.m;
 		this.s = hub.s;
 		this.k = hub.k;
 		this.cache = cache
+		this.DEVTOOLS_ACTIVE = hub.DEVTOOLS_ACTIVE
 		this._handlers = this.getS('_handlers', this.m, this.r );
-		const rL = ((globalThis as A)[this.r] ??= O.create(null));
-		const mL = (rL[this.m] ??= O.create(null));
-		this._handlers = mL['_handlers'] ??= O.create(null); // this._globalThis
+		const rL = ((globalThis as A)[this.r] ??= new O2());
+		const mL = (rL[this.m] ??= new O2());
+		this._handlers = mL['_handlers'] ??= new O2(); // this._globalThis
 		this._meta = this.getS('_meta', this.m, this.r);
 		this._signals = this.getS('_signals', this.m, this.r);
 		this._naked_signals = this.getS('_naked_signals', this.m, this.r);
@@ -8580,20 +9500,20 @@ class THE_MESH_STORE {
 	}
 	public getS(s: S = this.s, m: S = this.m, r: S = this.r, c: c_type = "mesh") {
 		const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
-		const rL = (cache[r] ??= O.create(null));
-		const mL = (rL[m] ??= O.create(null));
-		const sL = (mL[s] ??= O.create(null));
+		const rL = (cache[r] ??= new O2());
+		const mL = (rL[m] ??= new O2());
+		const sL = (mL[s] ??= new O2());
 		return sL;
 	}
 	public getM(m: S = this.m, r: S = this.r, c = "mesh") {
 		const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
-		const rL = (cache[r] ??= O.create(null));
-		const mL = (rL[m] ??= O.create(null));
+		const rL = (cache[r] ??= new O2());
+		const mL = (rL[m] ??= new O2());
 		return mL;
 	}
 	public getR(r: S = this.r, c = "mesh") {
 		const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
-		const rL = (cache[r] ??= O.create(null));
+		const rL = (cache[r] ??= new O2());
 		return rL;
 	}
 	public handlers = (() => {
@@ -8613,7 +9533,7 @@ class THE_MESH_STORE {
 		fn.set = (() => {
 			const fn = (v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.r, c: c_type = "mesh"): this => {
 				const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
-				const rL = (cache[r] ??= O.create(null));
+				const rL = (cache[r] ??= new O2());
 				const mL = (rL[m] ??= Object.create(null));
 				const sL = (mL[s] ??= Object.create(null));
 				const next = rv(v);
@@ -8652,7 +9572,7 @@ class THE_MESH_STORE {
 		fn.delete = (() => {
 			const fn = (k: S, s: S = '_handlers', m: S = this.m, r: S = this.r, c: c_type = "mesh"): B => {
 				const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
-				const rL = (cache[r] ??= O.create(null));
+				const rL = (cache[r] ??= new O2());
 				const mL = (rL[m] ??= Object.create(null));
 				const sL = (mL[s] ??= Object.create(null));
 				if (!sL || !(k in sL)) return false;
@@ -9120,6 +10040,55 @@ class THE_MESH_STORE {
 		};
 		return fn;
 	})();
+	public u = undefined;
+	public uuuu = [this.u, this.u, this.u, this.u];
+	public UUUU = () => {
+		return [this.s, this.m, this.r];
+	};
+	public uuu = [this.u, this.u, this.u];
+	public UUU = () => {
+		return [this.s, this.m, this.r];
+	};
+	public uu = [this.u, this.u];
+	public UU = () => {
+		return [this.m, this.r];
+	};
+	//                                                                                 MSG Q
+	// #region ═════════════════════════════════════════════════════════════════════════════════════
+	public _cse_token: A;
+	public _init_sessionToken: A;
+	public _sessionToken: A;
+	public _sessionId: A;
+	public online = false;
+	public _auth_initialized: B = false;
+	public _http = null
+	public _cross_boundary = null
+	public _same_boundary = null
+	public adapters = new O2<S, Set<CSEAdapter>>()
+	public streams = new O2<S, (chunk: S, done: B) => V>()
+	public readonly QUEUE_KEY = 'staff:sends:offline:queue'
+	public pending = new O2<S, { resolve: (v: U) => void; reject: (e: Error) => V; timer: RET<typeof setTimeout> }>()
+	public messageCount = new O2<S, N>()
+	public seen = new Set<S>()
+	public throttling = false;
+	public history = new O2<S, U[]>();
+
+	public groups
+	public transforms
+    public middleware: ((msg: CSEMessage) => B | V)[] = []
+	public globalMiddleware: {
+		beforeSend: ((msg: A) => B | V | P<B | V>)[];
+		afterSend: ((msg: A, result: U) => V | P<V>)[];
+		beforeReceive: ((msg: A) => B | V | P<B | V>)[];
+		afterReceive: ((msg: A, result: U) => V | P<V>)[];
+		onError: ((err: Error, msg?: A) => V | P<V>)[];
+	} = {
+		beforeSend: [],
+		afterSend: [],
+		beforeReceive: [],
+		afterReceive: [],
+		onError: [],
+	};
 	public async invokeHandlers(msg: SIG_BUS_Message): P<U> {
 		const root = this.THE_MESH_CACHE
 		const rL = (root[msg.r] ??= Object.create(null));
@@ -9153,14 +10122,2145 @@ class THE_MESH_STORE {
 	
 		return Object.keys(merged).length === 0 ? { success: true } : merged;
 	}
+	public schemas = new O2<S, SIG_BUS_Schema>()
+	public adapter: RuntimeAdapter | NU  = null  
+	public IS_WIN = process.platform === "win32"
+	public PIPE_PATH = this.IS_WIN ? "\\\\.\\pipe\\sig-bus-perf" : "/tmp/sig-bus-perf.sock";
+	public waiters = new O2<S, Set<Listener>>();
+	public adapterMetrics = new O2<S, { id: S; total: N; failures: N; totalLatency: N; disabled: B; lastWindow: N; lastCount: N }>();
+	public backpressure: BackpressureConfig = {} 
+	public wildcardSubscriptions: Array<{ pattern: S; handler: Function }> = [] 
+	public deliveryHandlers = new Set<(info: { id: S; status: "ack" | "nak"; reason?: S }) => V>()
+	public deadLetters = [] as SIG_BUS_Message[]
+	public durableOffsets = new O2<S, S>()
+	public durableHistory = new O2<S, SIG_BUS_Message[]>()
+	public permissions = new O2<S, ChannelPermissions>()
+	public routeRules = [] as RouteRule[]
+	public encryptionConfigs: EncryptionConfig[] = []
+	public compressionConfigs: CompressionConfig[] = []
+	public tagSubs = new O2<S, Set<CSEHandler>>()
+	public tagsByChannel = new O2<S, Set<S>>()
+	public queue: SIG_BUS_Message[] = []  
+	public eventNames: S[] = [] 
+	public listenerCount = 0
+	public priorityWeight: Record<SIG_BUS_Priority, number> = {
+		high:   3,
+		normal: 2,
+		low:    1,
+	};
+	public defaultPriority: SIG_BUS_Priority = "normal";
+	serialExecutor_ = class {
+		private chain: Promise<void> = Promise.resolve();
+		enqueue<T>(fn: () => Promise<T>): Promise<T> {
+			const run = this.chain.then(fn);
+			this.chain = run.then(
+				() => undefined,
+				() => undefined,
+			);
+			return run;
+		}
+		get idle(): Promise<void> {
+			return this.chain;
+		}
+	};
+	public serial_() {
+		return new this.serialExecutor_();
+	}
+	public handlers_= {
+		getExact: (k: S, s = this.s, m = this.m, r = this.r) => {
+			const handlers = this.getS(s, m, r).get(k);
+			return handlers;
+		},
+		matching: (k: string, s = this.s, m = this.m, r = this.r): CSEHandler[] => {
+			// 1. handlers whose CHANNEL matches
+			const byChannel = new Set<CSEHandler>();
+			for (const [ch, set] of this.getR(r)) {
+				if (this.handlers_.matchesPattern(ch, r)) for (const h of set) byChannel.add(h);
+			}
+
+			// 2. handlers whose CHANNEL and SUB match
+			const bySub = new Set<CSEHandler>();
+			for (const [sub, chMap] of this.getM(m, r)) {
+				if (!this.handlers_.matchesPattern(sub, m)) continue;
+				for (const [ch, set] of chMap) {
+					if (!this.handlers_.matchesPattern(ch, r)) continue;
+					for (const h of set) bySub.add(h);
+				}
+			}
+
+			// 3. handlers whose SUB and TRIP match
+			const byTrip = new Set<CSEHandler>();
+			for (const [trip, subMap] of this.getS(s, m , r)) {
+				if (!this.handlers_.matchesPattern(trip, s)) continue;
+				for (const [sub, set] of subMap) {
+					if (!this.handlers_.matchesPattern(sub, m)) continue;
+					for (const h of set) byTrip.add(h);
+				}
+			}
+
+			// 4. handlers whose TRIP and QUAD match
+			const byQuad = new Set<CSEHandler>();
+			for (const [quad, tripMap] of this.getS(s, m , r)?.[k]) {
+				if (!this.handlers_.matchesPattern(quad, k)) continue;
+				for (const [trip, set] of tripMap) {
+					if (!this.handlers_.matchesPattern(trip, s)) continue;
+					for (const h of set) byQuad.add(h);
+				}
+			}
+
+			// A handler matches only if it is in ALL four candidate sets.
+			const out: CSEHandler[] = [];
+			for (const h of byChannel) {
+				if (bySub.has(h) && byTrip.has(h) && byQuad.has(h)) out.push(h);
+			}
+			return out;
+		},
+		/**
+		 * 		list: (k?: string, s?: string, m?: string, r?: string): { r: string; count: number }[] => {
+		if (r) {
+			const handlers = this._map<string, Set<A>>(s ?? this.s, m ?? this.m, r);
+			const set = handlers.get(k ?? this.k);
+			return [{ r, count: set?.size ?? 0 }];
+		}
+		// no r given — enumerate via the accessor across the current scope
+		const out: { r: string; count: number }[] = [];
+		for (const [ch] of this.asmap<string, Set<A>>(this.s, this.m, this.r)) {
+			const set = this._map<string, Set<A>>(this.s, this.m, ch).get(this.k);
+			out.push({ r: ch, count: set?.size ?? 0 });
+		}
+		return out;
+		},
+		*/
+		invoke: async (msg: SIG_BUS_Message): Promise<unknown> => {
+			const handlers = this.handlers_.matching(msg.k ? msg.k : "[NO_ADP_FOUND]", msg.s, msg.m, msg.r);
+			if (handlers.length === 0) return { success: false };
+			console.log(handlers, "emitter.invokeHandlers.handlers");
+
+			// transforms (incoming)
+			//  msg = await this.applyTransforms(msg, 'incoming')
+
+			const results = await Promise.all(handlers.map((h: A) => Promise.resolve(h(msg.p)).catch(() => ({ success: false }))));
+			console.log(results, "emitter.invokeHandlers.results");
+
+			if (results.length === 1) return results[0];
+
+			const merged: Record<string, unknown> = {};
+			const collisions: { key: string; r: string }[] = [];
+
+			for (const result of results) {
+				if (result === undefined || result === null) continue;
+
+				if (typeof result !== "object") {
+					merged["value"] = result;
+					continue;
+				}
+
+				const r = result as Record<string, unknown>;
+				for (const [key, value] of Object.entries(r)) {
+					if (key in merged) collisions.push({ key, r: msg.r });
+					merged[key] = value;
+				}
+			}
+
+			if (collisions.length > 0) {
+				(merged as A)._cse_collisions = collisions;
+			}
+			console.log(merged, "emitter.invokeHandlers.merged");
+
+			return Object.keys(merged).length === 0 ? { success: true } : merged;
+		},
+		matchesPattern: (pattern: string, r: string): boolean => {
+			if (pattern === "*") return true;
+			if (pattern === r) return true;
+			const regex = new RegExp("^" + pattern.replace(/\*/g, "[^:]+(?::[^:]+)*") + "$");
+			return regex.test(r);
+		},
+	};
+	public schemas_ = {
+		getAll: () => {
+			return O2.fromEntries(this.schemas);
+		},
+	};
+	public groups_ = {
+		create: (name: string, channels: string[] = [], options?: SIG_BUS_GroupOptions): void => {
+			this.groups.set(name, {
+				channels: new Set(channels),
+				enabled: options?.enabled ?? true,
+				middleware: options?.middleware ? [options.middleware] : [],
+			});
+			if (this.DEVTOOLS_ACTIVE) this.log.log(`[HOOK_SYSTEM][SIGNALS][GROUPS][CREATE]`, { msg: "group_created", name }, this.log.t.error);
+		},
+		delete: (name: string): void => {
+			this.groups.delete(name);
+			if (this.DEVTOOLS_ACTIVE) this.log.log(`[HOOK_SYSTEM][SIGNALS][GROUPS][DELETE]`, { msg: "group_deleted", name }, this.log.t.error);
+		},
+		enable: (name: string): void => {
+			const g = this.groups.get(name);
+			if (!g) return;
+			g.enabled = true;
+			if (this.DEVTOOLS_ACTIVE) this.log.log(`[HOOK_SYSTEM][SIGNALS][GROUPS][ENABLE]`, { msg: "group_enabled", name }, this.log.t.error);
+		},
+		disable: (name: string): void => {
+			const g = this.groups.get(name);
+			if (!g) return;
+			g.enabled = false;
+			if (this.DEVTOOLS_ACTIVE) this.log.log(`[HOOK_SYSTEM][SIGNALS][GROUPS][DISABLE]`, { msg: "group_disabled", name }, this.log.t.error);
+		},
+		addTo: (name: string, r: string): void => {
+			const g = this.groups.get(name);
+			if (!g) return;
+			g.channels.add(r);
+		},
+		removeFrom: (name: string, r: string): void => {
+			const g = this.groups.get(name);
+			if (!g) return;
+			g.channels.delete(r);
+		},
+		use: (name: string, fn: (msg: SIG_BUS_Message) => boolean | void): void => {
+			const g = this.groups.get(name);
+			if (!g) return;
+			g.middleware.push(fn);
+		},
+		getAll: (): Record<string, { channels: string[]; enabled: boolean; middlewareCount: number }> => {
+			const out: Record<string, { channels: string[]; enabled: boolean; middlewareCount: number }> = {};
+			for (const [name, g] of this.groups) {
+				out[name] = { channels: [...g.channels], enabled: g.enabled, middlewareCount: g.middleware.length };
+			}
+			return out;
+		},
+	};
+	public transforms_ = {
+		add: (channelPattern: string, transform: SIG_BUS_Transform): void => {
+			const list = this.transforms.get(channelPattern) ?? [];
+			list.push(transform);
+			this.transforms.set(channelPattern, list);
+			if (this.DEVTOOLS_ACTIVE)
+				this.log.log(
+					`[✘][HOOK_SYSTEM][CHECK_DYNAMIC]`,
+					{
+						channelPattern,
+						msg: "transform_added",
+					},
+					this.log.t.error,
+				); //this.emitDevtoolsEvent('transform_added', channelPattern)
+		},
+		getAll: (): Record<string, SIG_BUS_Transform[]> => {
+			return Object.fromEntries(this.transforms);
+		},
+		apply: async (msg: SIG_BUS_Message, dir: "incoming" | "outgoing"): Promise<SIG_BUS_Message> => {
+			for (const [pattern, list] of this.transforms.entries()) {
+				if (!this.handlers_.matchesPattern(pattern, msg.r)) continue;
+				for (const t of list) {
+					const fn = dir === "incoming" ? t.incoming : t.outgoing;
+					if (!fn) continue;
+					msg = await Promise.resolve(fn(msg));
+				}
+			}
+			return msg;
+		},
+		remove: (channelPattern: string): void => {
+			this.transforms.delete(channelPattern);
+		},
+	};
+	public encryption_ = {
+		getConfigs: (): EncryptionConfig[] => {
+			return [...this.encryptionConfigs];
+		},
+		configure: (config: EncryptionConfig): void => {
+			this.encryptionConfigs.push(config);
+			if (this.DEVTOOLS_ACTIVE) this.log.log(`[SIGNALS][ENCRYPTION][CONFIGURE]`, { msg: "encryption_configured", config }, this.log.t.deep);
+		},
+		unwrap: async (msg: A) => {
+			if (!msg?.sessionId || !msg?.token) return null;
+			const expected = this.encryption_.computeHmacSha256(this._cse_token, msg.sessionId);
+			if (msg.token !== expected) return null;
+			return msg.p;
+		},
+		wrap: (p: A) => {
+			return {
+				sessionId: this._sessionId,
+				token: this._sessionToken,
+				p,
+			};
+		},
+		init: async () => {
+			// no dotenv import — read the env directly
+			const sk = (typeof process !== "undefined" && process.env?.ENC_TOKEN) || undefined;
+
+			if (sk && sk.length >= 5) {
+				// seed the session once, then derive a stable token from it
+				this._cse_token = sk;
+				this._sessionId = this.crypto.to_hex(this.crypto.random_bytes(16));
+				// computeHmacSha256 is sync-hex on Node; if only WebCrypto is available
+				// the async path fills _hmacCache and the sync read picks it up next tick.
+				this._sessionToken = this.encryption_.computeHmacSha256(this._cse_token, this._sessionId);
+				this._init_sessionToken = !!this._sessionToken;
+			} else {
+				if (this.DEVTOOLS_ACTIVE) this.log.log(`[SIGNALS][ENCRYPTION][CONFIGURE]`, { msg: "[!ENC_TOKEN - SIGNALS IS STILL AVAILABLE, IF YOU WOULD LIKE TO ADD A SECURITY LAYER THEN ADD ENC_TOKEN TO .ENV]" }, this.log.t.deep);
+				this._auth_initialized = false;
+			}
+		},
+		computeHmacSha256: (secret: string, data: string): string => {
+			if (!this.crypto.ready()) return "";
+
+			// try the sync path first (Node); catch the "no Node crypto" throw
+			let syncResult = "";
+			try {
+				syncResult = this.crypto.hash_hmac_hex(secret, data);
+			} catch {
+				syncResult = "";
+			}
+			if (syncResult) return syncResult;
+
+			// WebCrypto-only: fire async, cache, return "" this tick.
+			// cache key must match whatever the sync path will look up next tick.
+			const cacheKey = this.crypto.to_hex(this.crypto.to_utf8_bytes(secret)) + ":" + this.crypto.to_hex(this.crypto.to_utf8_bytes(data));
+
+			this.crypto.hash_hmac_hex_async(secret, data).then((hex: A) => {
+				this.crypto._hmacCache.set(cacheKey, hex);
+			});
+
+			return "";
+		},
+	};
+	public crypto = new (class DISRUPTOR_CRYPTO {
+		ser(value: unknown): string {
+			if (value instanceof Map) {
+				return JSON.stringify({ __type: "Map", value: Array.from(value.entries()).map(([key, val]) => [this.ser(key), this.ser(val)]) });
+			}
+			if (value instanceof Set) {
+				return JSON.stringify({ __type: "Set", value: Array.from(value.values()).map((value) => this.ser(value)) });
+			}
+			return typeof value === "string" ? value : JSON.stringify(value);
+		}
+		deser(raw: string | null): any {
+			if (raw === null) return null;
+			try {
+				const parsed = JSON.parse(raw);
+				if (parsed?.__type === "Map") {
+					return new Map(parsed.value.map(([key, value]: [string, string]) => [this.deser(key), this.deser(value)]));
+				}
+				if (parsed?.__type === "Set") {
+					return new Set(parsed.value.map((value: string) => this.deser(value)));
+				}
+				return parsed;
+			} catch {
+				return raw;
+			}
+		}
+		hasNode = typeof process !== "undefined" && !!process.versions?.node;
+		_buf(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+			const out = new Uint8Array(new ArrayBuffer(bytes.byteLength)) as Uint8Array<ArrayBuffer>;
+			out.set(bytes);
+			return out;
+		}
+		_hasSubtle = typeof globalThis.crypto !== "undefined" && typeof (globalThis.crypto as any).subtle !== "undefined" && typeof (globalThis.crypto as any).getRandomValues === "function";
+		_nodeCrypto: any = null;
+		_getNodeCrypto() {
+			if (this._nodeCrypto) return this._nodeCrypto;
+			if (!this.hasNode) return null;
+			try {
+				this._nodeCrypto = require("node:crypto");
+			} catch {
+				this._nodeCrypto = null;
+			}
+			return this._nodeCrypto;
+		}
+		constructor() {}
+		// ── random bytes ────────────────────────────────────────────────────────
+		random_bytes(size = 32): Uint8Array {
+			if (this._hasSubtle) return globalThis.crypto.getRandomValues(new Uint8Array(size));
+			const nc = this._getNodeCrypto();
+			if (nc) return new Uint8Array(nc.randomBytes(size));
+			// last resort — NOT cryptographically secure, but the bus will refuse
+			// to init auth without real randomness, so this never protects anything.
+			const out = new Uint8Array(size);
+			for (let i = 0; i < size; i++) out[i] = (Math.random() * 256) | 0;
+			return out;
+		}
+		// ── HMAC-SHA256 ─────────────────────────────────────────────────────────
+		// Returned as hex so it matches the existing computeHmacSha256 contract.
+		// Async version — used when WebCrypto is the only option.
+		async hash_hmac_hex_async(secret: string | Uint8Array, data: string | Uint8Array): Promise<string> {
+			const keyBytes = typeof secret === "string" ? this.to_utf8_bytes(secret) : secret;
+			const dataBytes = typeof data === "string" ? this.to_utf8_bytes(data) : data;
+	
+			if (this._hasSubtle) {
+				const key = await globalThis.crypto.subtle.importKey(
+					"raw",
+					this._buf(keyBytes), // ← wrap
+					{ name: "HMAC", hash: "SHA-256" },
+					false,
+					["sign"],
+				);
+				const sig = await globalThis.crypto.subtle.sign(
+					"HMAC",
+					key,
+					this._buf(dataBytes), // ← wrap
+				);
+				return this.to_hex(new Uint8Array(sig));
+			}
+	
+			const nc = this._getNodeCrypto();
+			if (nc) {
+				const h = nc.createHmac("sha256", Buffer.from(keyBytes));
+				h.update(Buffer.from(dataBytes));
+				return h.digest("hex");
+			}
+	
+			return "";
+		}
+	
+		// Cache used by the sync path when only WebCrypto is available.
+		// Populated by hash_hmac_hex_async's callers, read by hash_hmac_hex.
+		_hmacCache = new Map<string, string>();
+	
+		// ── SHA-256 ─────────────────────────────────────────────────────────────
+		async hash_sha256_hex(data: string | Uint8Array): Promise<string> {
+			const bytes = typeof data === "string" ? this.to_utf8_bytes(data) : data;
+	
+			if (this._hasSubtle) {
+				const digest = await globalThis.crypto.subtle.digest(
+					"SHA-256",
+					this._buf(bytes), // ← wrap
+				);
+				return this.to_hex(new Uint8Array(digest));
+			}
+	
+			const nc = this._getNodeCrypto();
+			if (nc) {
+				const h = nc.createHash("sha256");
+				h.update(Buffer.from(bytes));
+				return h.digest("hex");
+			}
+	
+			return "";
+		}
+	
+		// ── HKDF (derive a session key from a shared secret) ────────────────────
+		async derive_hkdf(ikm: Uint8Array, salt: Uint8Array, info: Uint8Array, length = 32): Promise<Uint8Array> {
+			if (this._hasSubtle) {
+				const key = await globalThis.crypto.subtle.importKey(
+					"raw",
+					this._buf(ikm), // ← wrap
+					"HKDF",
+					false,
+					["deriveBits"],
+				);
+				const bits = await globalThis.crypto.subtle.deriveBits(
+					{
+						name: "HKDF",
+						hash: "SHA-256",
+						salt: this._buf(salt), // ← wrap
+						info: this._buf(info), // ← wrap
+					},
+					key,
+					length * 8,
+				);
+				return new Uint8Array(bits);
+			}
+	
+			const nc = this._getNodeCrypto();
+			if (nc) {
+				return new Uint8Array(nc.hkdfSync("sha256", Buffer.from(ikm), Buffer.from(salt), Buffer.from(info), length));
+			}
+	
+			return new Uint8Array(length);
+		}
+	
+		// ── AES-GCM (the bus's symmetric p encryption) ────────────────────
+		async encrypt_aes_gcm(key: Uint8Array, iv: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
+			if (this._hasSubtle) {
+				const k = await globalThis.crypto.subtle.importKey(
+					"raw",
+					this._buf(key), // ← wrap
+					"AES-GCM",
+					false,
+					["encrypt"],
+				);
+				const ct = await globalThis.crypto.subtle.encrypt(
+					{ name: "AES-GCM", iv: this._buf(iv) }, // ← wrap
+					k,
+					this._buf(data), // ← wrap
+				);
+				return new Uint8Array(ct);
+			}
+	
+			const nc = this._getNodeCrypto();
+			if (nc) {
+				const cipher = nc.createCipheriv("aes-256-gcm", Buffer.from(key), Buffer.from(iv));
+				const ct = Buffer.concat([cipher.update(Buffer.from(data)), cipher.final()]);
+				const tag = cipher.getAuthTag();
+				// append tag, matching WebCrypto's output format
+				return new Uint8Array(Buffer.concat([ct, tag]));
+			}
+	
+			return data;
+		}
+	
+		async decrypt_aes_gcm(key: Uint8Array, iv: Uint8Array, ct: Uint8Array): Promise<Uint8Array> {
+			if (this._hasSubtle) {
+				const k = await globalThis.crypto.subtle.importKey(
+					"raw",
+					this._buf(key), // ← wrap
+					"AES-GCM",
+					false,
+					["decrypt"],
+				);
+				const pt = await globalThis.crypto.subtle.decrypt(
+					{ name: "AES-GCM", iv: this._buf(iv) }, // ← wrap
+					k,
+					this._buf(ct), // ← wrap
+				);
+				return new Uint8Array(pt);
+			}
+	
+			const nc = this._getNodeCrypto();
+			if (nc) {
+				// split off the 16-byte tag from the end
+				const tag = ct.slice(ct.length - 16);
+				const body = ct.slice(0, ct.length - 16);
+				const decipher = nc.createDecipheriv("aes-256-gcm", Buffer.from(key), Buffer.from(iv));
+				decipher.setAuthTag(Buffer.from(tag));
+				const pt = Buffer.concat([decipher.update(Buffer.from(body)), decipher.final()]);
+				return new Uint8Array(pt);
+			}
+	
+			return ct;
+		}
+	
+		// ── Encoding ────────────────────────────────────────────────────────────
+		to_utf8_bytes(str: string): Uint8Array {
+			if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(str);
+			const nc = this._getNodeCrypto();
+			if (nc) return new Uint8Array(Buffer.from(str, "utf8"));
+			// last resort
+			const out = new Uint8Array(str.length);
+			for (let i = 0; i < str.length; i++) out[i] = str.charCodeAt(i) & 0xff;
+			return out;
+		}
+	
+		to_hex(data: Uint8Array): string {
+			if (typeof Buffer !== "undefined") return Buffer.from(data).toString("hex");
+			let out = "";
+			for (let i = 0; i < data.length; i++) out += data[i].toString(16).padStart(2, "0");
+			return out;
+		}
+	
+		from_hex(hex: string): Uint8Array {
+			if (typeof Buffer !== "undefined") return new Uint8Array(Buffer.from(hex, "hex"));
+			const out = new Uint8Array(hex.length / 2);
+			for (let i = 0; i < hex.length; i += 2) out[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+			return out;
+		}
+	
+		to_base64(data: Uint8Array): string {
+			if (typeof Buffer !== "undefined") return Buffer.from(data).toString("base64");
+			let bin = "";
+			for (let i = 0; i < data.length; i++) bin += String.fromCharCode(data[i]);
+			return btoa(bin);
+		}
+	
+		from_base64(str: string): Uint8Array {
+			if (typeof Buffer !== "undefined") return new Uint8Array(Buffer.from(str, "base64"));
+			const bin = atob(str);
+			const out = new Uint8Array(bin.length);
+			for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+			return out;
+		}
+	
+		// ── Constants ───────────────────────────────────────────────────────────
+		ready(): boolean {
+			return this._hasSubtle || this._getNodeCrypto() !== null;
+		}
+	
+		secure_equal(a: Uint8Array, b: Uint8Array): boolean {
+			let diff = a.length ^ b.length;
+			const len = Math.max(a.length, b.length);
+			for (let i = 0; i < len; i++) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
+			return diff === 0;
+		}
+	
+		hash_hmac_hex(secret: string | Uint8Array, data: string | Uint8Array): string {
+			const nc = this._getNodeCrypto();
+			if (!nc) throw new Error("Synchronous HMAC requires Node crypto");
+			const key = typeof secret === "string" ? this.to_utf8_bytes(secret) : secret;
+			const bytes = typeof data === "string" ? this.to_utf8_bytes(data) : data;
+			return nc.createHmac("sha256", Buffer.from(key)).update(Buffer.from(bytes)).digest("hex");
+		}
+	
+		hash_hmac(secret: string | Uint8Array, data: string | Uint8Array): string {
+			return this.hash_hmac_hex(secret, data);
+		}
+	
+		hash_sha256(data: string | Uint8Array): string {
+			const nc = this._getNodeCrypto();
+			if (!nc) throw new Error("Synchronous hashing requires Node crypto");
+			const bytes = typeof data === "string" ? this.to_utf8_bytes(data) : data;
+			return nc.createHash("sha256").update(Buffer.from(bytes)).digest("hex");
+		}
+	
+		derive_key(password: string, salt: Uint8Array, iterations = 310_000, length = 32): Uint8Array {
+			const nc = this._getNodeCrypto();
+			if (!nc) throw new Error("Synchronous PBKDF2 requires Node crypto");
+			return new Uint8Array(nc.pbkdf2Sync(Buffer.from(this.to_utf8_bytes(password)), Buffer.from(salt), iterations, length, "sha256"));
+		}
+	
+		symmetric_encrypt(p: string, key: Uint8Array): { ciphertext: string; nonce: string } {
+			const nc = this._getNodeCrypto();
+			if (!nc) throw new Error("Synchronous encryption requires Node crypto");
+			if (key.length !== 32) throw new Error("AES-256-GCM requires a 32-byte key");
+	
+			const nonce = nc.randomBytes(12);
+			const cipher = nc.createCipheriv("aes-256-gcm", Buffer.from(key), nonce);
+			const ciphertext = Buffer.concat([cipher.update(p, "utf8"), cipher.final(), cipher.getAuthTag()]);
+	
+			return {
+				ciphertext: this.to_base64(new Uint8Array(ciphertext)),
+				nonce: this.to_base64(new Uint8Array(nonce)),
+			};
+		}
+	
+		symmetric_decrypt(p: { ciphertext: string; nonce: string }, key: Uint8Array): string {
+			const nc = this._getNodeCrypto();
+			if (!nc) throw new Error("Synchronous decryption requires Node crypto");
+			if (key.length !== 32) throw new Error("AES-256-GCM requires a 32-byte key");
+	
+			const ciphertext = this.from_base64(p.ciphertext);
+			const nonce = this.from_base64(p.nonce);
+			if (nonce.length !== 12 || ciphertext.length < 16) throw new Error("Invalid AES-GCM payload");
+	
+			const body = ciphertext.slice(0, -16);
+			const tag = ciphertext.slice(-16);
+			const decipher = nc.createDecipheriv("aes-256-gcm", Buffer.from(key), Buffer.from(nonce));
+			decipher.setAuthTag(Buffer.from(tag));
+	
+			return Buffer.concat([decipher.update(Buffer.from(body)), decipher.final()]).toString("utf8");
+		}
+		generate_key_pair(_type: string): { publicKey: Uint8Array; secretKey: Uint8Array } {
+			const nc = this._getNodeCrypto();
+			if (!nc) throw new Error("Synchronous key generation requires Node crypto");
+	
+			const pair = nc.generateKeyPairSync("ed25519");
+			return {
+				publicKey: new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" })),
+				secretKey: new Uint8Array(pair.privateKey.export({ type: "pkcs8", format: "der" })),
+			};
+		}
+	
+		pqc_generate_KEM_keys(): { publicKey: Uint8Array; secretKey: Uint8Array; algorithm: string } {
+			const nc = this._getNodeCrypto();
+			if (!nc) throw new Error("PQC key generation requires a supported Node crypto provider");
+	
+			const pair = nc.generateKeyPairSync("ml-kem-768");
+			return {
+				publicKey: new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" })),
+				secretKey: new Uint8Array(pair.privateKey.export({ type: "pkcs8", format: "der" })),
+				algorithm: "ML-KEM-768",
+			};
+		}
+	})()
+	public compression_ = {
+		getConfigs: (): SIG_BUS_CompressionConfig[] => {
+			return [...this.compressionConfigs];
+		},
+		configure: (config: SIG_BUS_CompressionConfig): void => {
+			this.compressionConfigs.push(config);
+			if (this.DEVTOOLS_ACTIVE) this.log.log(`[SIGNALS][COMPRESSION][CONFIGURE]`, { msg: "compression_configured", config }, this.log.t.deep);
+		},
+	};
+	public checkpoints_ = {
+		getAll: () => {
+			return O2.fromEntries(this.durableOffsets);
+		},
+	};
+	public wildcards_ = {
+		getHandlers: (rt: string, ms: string): Function[] => {
+			const handlers: Function[] = [];
+			const fullTopic = `${rt}.${ms}`;
+			for (const { pattern, handler } of this.wildcardSubscriptions) {
+				if (this.BACK_END.matchesPattern(fullTopic, pattern)) {
+					handlers.push(handler);
+				}
+			}
+
+			return handlers;
+		},
+		matches: (topic: string, pattern: string): boolean => {
+			const topicParts = topic.split(".");
+			const patternParts = pattern.split(".");
+
+			// If lengths don't match, return false
+			if (topicParts.length !== patternParts.length) return false;
+
+			// Check each part
+			for (let i = 0; i < topicParts.length; i++) {
+				if (patternParts[i] === "*") continue; // Wildcard matches anything
+				if (topicParts[i] !== patternParts[i]) return false;
+			}
+
+			return true;
+		},
+	};
+	public durable_ = {
+		getHistorySizes: (): Record<string, number> => {
+			const out: Record<string, number> = {};
+			for (const [ch, hist] of this.durableHistory) out[ch] = hist.length;
+			return out;
+		},
+	};
+	public tags_ = {
+		sub: (tag: string, handler: SIG_BUS_Handler): (() => void) => {
+			const set = this.tagSubs.get(tag) ?? new Set<SIG_BUS_Handler>();
+			set.add(handler);
+			this.tagSubs.set(tag, set);
+			if (this.DEVTOOLS_ACTIVE) this.log.log(`[SIGNALS][TAGS][SUB]`, { msg: "tag_subscribed", tag }, this.log.t.deep);
+			return () => set.delete(handler);
+		},
+		list: (): string[] => {
+			return [...this.tagSubs.keys()];
+		},
+		listChannels: (tag: string): string[] => {
+			const out: string[] = [];
+			for (const [ch, tags] of this.tagsByChannel.entries()) {
+				if (tags.has(tag)) out.push(ch);
+			}
+			return out;
+		},
+	};
+	public routes_ = {
+		addRule: (rule: SIG_BUS_RouteRule): void => {
+			this.routeRules.push(rule);
+			if (this.DEVTOOLS_ACTIVE) this.log.log(`[SIGNALS][ROUTES][ADD_RULE]`, { msg: "route_added", rule }, this.log.t.deep);
+		},
+		removeRule: (name: string): void => {
+			 this.routeRules.filter((r: A) => r.name !== name);
+		},
+		listRules: (): SIG_BUS_RouteRule[] => {
+			return [...this.routeRules];
+		},
+	};
+	public msgs_ = {
+		getCount: (r: string): number => {
+			return this.messageCount.get(r) ?? 0;
+		},
+	};
+	public middleware_ = {
+		list: (): number[] => {
+			return [this.middleware.length];
+		},
+	};
+	public channels_ = {
+		// list: (): string[] => { return [...this._channels(this.s, this.m, this.r).keys()]; },
+		setSchema: (schema: SIG_BUS_Schema, r: string): void => {
+			this.schemas.set(r, schema);
+		},
+		setPermissions: (perms: SIG_BUS_rtPermissions, r: string): void => {
+			this.permissions.set(r, perms);
+		},
+		getSchema: (r: string): SIG_BUS_Schema | null => {
+			return this.schemas.get(r) ?? null;
+		},
+		getPermissions: (r: string): SIG_BUS_rtPermissions | null => {
+			return this.permissions
+			.get(r) ?? null;
+		},
+	};
+	public defaultPriority_ = {
+		set: (priority: SIG_BUS_Priority): void => {
+			this.defaultPriority = priority;
+		},
+		get: (): SIG_BUS_Priority => {
+			return this.defaultPriority;
+		},
+	};
+	public BACK_END = (() => {
+		const fn = () => {};
+		fn.run = {
+			beforeSend: async (msg: SIG_BUS_Message): P<B> => {
+				for (const fn of this.globalMiddleware.beforeSend) {
+					const r = await fn(msg);
+					if (r === false) return false;
+				}
+				return true;
+			},
+			afterSend: async (msg: SIG_BUS_Message, result: U): P<V> => {
+				for (const fn of this.globalMiddleware.afterSend) {
+					await fn(msg, result);
+				}
+			},
+			beforeReceive: async (msg: SIG_BUS_Message): P<B> => {
+				for (const fn of this.globalMiddleware.beforeReceive) {
+					const r = await fn(msg);
+					if (r === false) return false;
+				}
+				return true;
+			},
+			afterReceive: async (msg: SIG_BUS_Message, result: U): P<V> => {
+				for (const fn of this.globalMiddleware.afterReceive) {
+					await fn(msg, result);
+				}
+			},
+			onError: async (err: Error, msg?: SIG_BUS_Message): P<V> => {
+				for (const fn of this.globalMiddleware.onError) {
+					await fn(err, msg);
+				}
+				//  log(`[THE_WIZARD][STAFF][SEND_VIA_ADAPTER]`, {   msg: msg,  transport: `[${msg ? msg.boundary : 'undefined'}]`,  }, t.deep)//this.drop.t.error
+			},
+			middleware: (msg: SIG_BUS_Message): B => {
+				for (const fn of this.middleware) {
+					if (fn(msg) === false) return false;
+				}
+				// group middleware
+				for (const [, g] of this.groups) {
+					if (!g.enabled) continue;
+					if (![...g.channels].some((ch) => this.handlers_.matchesPattern(ch, msg.r))) continue;
+					for (const fn of g.middleware) {
+						if (fn(msg) === false) return false;
+					}
+				}
+				return true;
+			},
+		};
+		fn.clean_string = (r: S) => {
+			return r.replace(/[\[\]]/g, "");
+		};
+		fn.getActiveStreams = (): S[] => {
+			return [...this.streams.keys()];
+		};
+		fn.matchesPattern = (pattern: S, r: S): B => {
+			if (pattern === "*") return true;
+			if (pattern === r) return true;
+			const regex = new RegExp("^" + pattern.replace(/\*/g, "[^:]+(?::[^:]+)*") + "$");
+			return regex.test(r);
+		};
+		fn.SHOULD_BACKPRESSURE = (): B => {
+			if (!this.backpressure.maxQueueSize) return false;
+			if (this.queue.length < this.backpressure.maxQueueSize) return false;
+			if (this.throttling) return true;
+			this.throttling = true;
+			setTimeout(() => {
+				this.throttling = false;
+				this.DISPATCH.drain().catch(console.error);
+			}, this.backpressure.throttleMs ?? 100);
+			return true;
+		};
+		fn.getSubTopology = (s = this.s, m = this.m, r = this.r): AR<{r: S;handlerCount: N;sub_channels: AR<{subChannel: S;handlerCount: N;}>;}> => {
+			const out: AR<{r: S;handlerCount: N;sub_channels: AR<{subChannel: S;handlerCount: N;}>;}> = [];
+		
+			const channels = this.getR(r);
+		
+			for (const [ch, set] of channels) {
+				const subMap = this.getM(m, r);
+		
+				out.push({
+					r: ch,
+					handlerCount: set.size,
+					sub_channels: [...subMap.entries()].map(([sc, hs]) => ({
+						subChannel: sc,
+						handlerCount: hs.size
+					}))
+				});
+			}
+		
+			return out;
+		};
+		return fn;
+	})();
+	binary = new BINARY_AVRO_CODEGEN(SIG_BUS_SCHEMA);
+	public DISPATCH = (() => {
+		const codecRegistry = new Map<S, BINARY_AVRO_CODEGEN>();
+
+		function getCodec(schemaName: S, schema: AVROSchema): BINARY_AVRO_CODEGEN {
+			let codec = codecRegistry.get(schemaName);
+			if (!codec) {
+				codec = new BINARY_AVRO_CODEGEN(schema); // only runs once per distinct schema, ever
+				codecRegistry.set(schemaName, codec);
+			}
+			return codec;
+		}
+		const fn = async (raw: A, adapter?: string) => {
+			let msg: A = raw;
+			//                                    DECODE DE-BINARY
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			// Decode first — mirrors encode running last on the send side.
+			if (msg instanceof Uint8Array || (typeof Buffer !== "undefined" && Buffer.isBuffer(msg))) {
+				msg = this.binary.decode_msg(msg);
+				if (!msg) return {success: false, decodeFailed: true};
+			}
+			// #endregion
+			//                                    SECURE UNWRAP
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			if (this._auth_initialized) {
+				msg = await this.encryption.unwrap(msg);
+				if (!msg) return {success: false, unauthorized: true};
+			}
+			// #endregion
+			//                                    CHANNEL MAPPING
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			msg.r = msg.r ?? this.r;
+			msg.m = msg.m ?? this.m;
+			msg.s = msg.s ?? this.s;
+			msg.k = msg.k;
+			console.log(msg, "emitter.dispatch.msg");
+			// #endregion
+			//                                    TRACE METRICS
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			if (this.DEVTOOLS_ACTIVE) this.metrics.traceStage(msg.id, msg.r, "dispatch"); // _metrics
+			// #endregion
+			//                                    REPLY
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			if (msg.r && msg.r.startsWith(":reply:")) {
+				const originalMsgId = msg.r.replace(":reply:", "");
+				const pendingTx = this.pending.get(originalMsgId);
+				if (pendingTx) {
+					clearTimeout(pendingTx.timer);
+					this.pending.delete(originalMsgId);
+					pendingTx.resolve(msg.p);
+					return {success: true, isReply: true};
+				}
+			}
+			// #endregion
+			//                                    TTL
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			if (this.seen.has(msg.id)) return {success: true};
+			if (msg.ttl && Date.now() - msg.ts > msg.ttl) {
+				if (this.DEVTOOLS_ACTIVE) this.log.log(`[SIGNALS][DISPATCH][TTL]`, {msg: "ttl_expired", p: msg}, this.log.t.deep);
+				return {success: false, dropped: true};
+			}
+			if (this.seen.size > 10000) this.seen.clear();
+			this.seen.add(msg.id);
+			// #endregion
+			//                                    MSG HISTORY
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			const h = this.history.get(msg.r) ?? [];
+			h.push(msg.p);
+			if (h.length > 3) h.splice(0, h.length - 3);
+			this.history.set(msg.r, h);
+			// #endregion
+			//                                    MSG COUNT
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			const count = (this.messageCount.get(msg.r) ?? 0) + 1;
+			this.messageCount.set(msg.r, count);
+			// #endregion
+			//                                    IF RUNNING NO MIDDLEWARE
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			if (!this.BACK_END.run.middleware(msg)) {
+				if (this.DEVTOOLS_ACTIVE) this.log.log(`[SIGNALS][DISPATCH][NO_MIDDLEWARE]`, {msg: "blocked", p: msg}, this.log.t.deep);
+				return {success: false, dropped: true};
+			}
+			// #endregion
+			//                                    ROUTING RULES
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			//   let targets = [...this.adapters].filter(a => a !== msg._adapter)
+			for (const rule of this.routeRules) {
+				if (!rule.match(msg)) continue;
+				if (this.DEVTOOLS_ACTIVE) {
+					// log(`[SIGNALS][DISPATCH][ROUTING]`, { msg: 'route_matched', p: msg  }, t.deep)
+					this.metrics.traceStage(msg.id, msg.r, "route", {rule: rule.name}); // _metrics
+				}
+				//     if (rule.targetAdapters) { targets = targets.filter(a => rule.targetAdapters!.includes(a.id ?? '')) }
+				if (rule.targetAdapters) {
+					// if (this.DEVTOOLS_ACTIVE) this.emitDevtoolsEvent('route_rejected', msg.r, msg.m || undefined, msg.id, { rule: rule.name })
+					if (!rule.targetAdapters.includes(msg.r)) return {success: false, routed: false};
+				}
+			}
+			
+			// #endregion
+			//                                    APPLY TRANSFORMS
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			msg = await this.transforms.apply(msg, "outgoing");
+			if (this.DEVTOOLS_ACTIVE) {
+				//  this.emitDevtoolsEvent('transform_applied', msg.r, msg.m || undefined, msg.id, { direction: 'outgoing' });
+				this.metrics.traceStage(msg.id, msg.r, "transform"); // _metrics
+			}
+			/**  const localListeners = this.meta._subscribers(raw.k, raw.s, raw.m, raw.r)
+              if (localListeners && localListeners.size > 0) {
+                  queueMicrotask(() => {
+                      for (const listener of localListeners) {
+                          listener(msg);
+                      }
+                  });
+              } */
+			// #endregion
+			//                                    SEND
+			// #region ═════════════════════════════════════════════════════════════════════════════════════
+			Promise.resolve().then(() => {
+				switch (adapter) {
+					case "http":
+						this.DISPATCH.sendMessage(msg, this.adp.http);
+						break;
+					case "cross_boundary":
+						this.DISPATCH.sendMessage(msg, this.adp.cross_boundary);
+						break;
+					case "same_boundary":
+						this.DISPATCH.sendMessage(msg, this.adp.same_boundary);
+						break;
+					case "atom_adapter":
+						this.DISPATCH.sendMessage(msg, this.adp.atom);
+						break;
+					case "ws":
+						this.DISPATCH.sendMessage(msg, this.adp.ws);
+						break;
+
+					case "reliableSocket":
+						this.DISPATCH.sendMessage(msg, this.adp.reliableSocket);
+						break;
+					case "workerThreadAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.workerThread);
+						break;
+					case "webTransportDatagramsAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.webTransportDatagrams);
+						break;
+					case "webTransportClientAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.webTransportClient);
+						break;
+					case "webRtcDataChannelHostAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelHost);
+						break;
+					case "webRtcDataChannelClientAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelClient);
+						break;
+					case "dataChannelAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.dataChannel);
+						break;
+					case "startWebTransportServer":
+						this.DISPATCH.sendMessage(msg, this.adp.startWebTransportServer);
+						break;
+					case "webTransportAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.webTransport);
+						break;
+					case "webRTCAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.webRTC);
+						break;
+					case "sseAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.sse);
+						break;
+					case "sharedArrayBufferAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.sharedArrayBuffer);
+						break;
+					case "sharedWorkerAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.sharedWorker);
+						break;
+					case "serviceWorkerAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.serviceWorker);
+						break;
+					case "postMessageAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.postMessage);
+						break;
+					case "startNamedPipeBroker":
+						this.DISPATCH.sendMessage(msg, this.adp.startNamedPipeBroker);
+						break;
+					case "startMQTTBroker":
+						this.DISPATCH.sendMessage(msg, this.adp.startMQTTBroker);
+						break;
+					case "mqttAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.mqtt);
+						break;
+					case "messageChannelAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.messageChannel);
+						break;
+					case "messageChannel":
+						this.DISPATCH.sendMessage(msg, this.adp.messageChannel);
+						break;
+					case "http2ClientAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.http2Client);
+						break;
+					case "http2ServerAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.http2Server);
+						break;
+					case "httpAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.http);
+						break;
+					case "electronIPCMainAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.electronIPCMain);
+						break;
+					case "electronIPCRendererAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.electronIPCRenderer);
+						break;
+					case "nativeMessagingHostAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingHost);
+						break;
+					case "nativeMessagingBrowserAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingBrowser);
+						break;
+					case "childProcessAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.childProcess);
+						break;
+					case "broadcastChannelAdapter2":
+						this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel2);
+						break;
+					case "broadcastChannelAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel);
+						break;
+					case "broadcastChannelAdapter":
+						this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel);
+						break;
+
+					default:
+						console.log("http adapter");
+						this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel);
+					// this.sendMessage(msg, a.http);
+					// this.sendMessage(msg, a.same_boundary);
+				}
+			});
+			// #endregion
+			const result = await this.invokeHandlers(msg);
+			console.log(result, "emitter.dispatch.result");
+			return result;
+		};
+		fn.hot_dispatch = () => {
+
+		}
+		fn.sendMessage = (msg: SIG_BUS_Message, adapter: SIG_BUS_Adapter, boundary?: "same-app" | "same-node" | "cross-node") => {
+			// Prepare p - JSON serialize, strip functions
+			let finalizedPayload = {...msg};
+			if (finalizedPayload.p && typeof finalizedPayload.p === "object" && boundary === "cross-node") {
+				finalizedPayload.p = JSON.parse(
+					JSON.stringify(finalizedPayload.p, (key, value) => {
+						if (typeof value === "function") return undefined;
+						return value;
+					}),
+				);
+			}
+
+			// Send through adapter
+			if (this._auth_initialized) {
+				const secured = this.encryption.wrap(finalizedPayload);
+				adapter.send(secured as A);
+			} else {
+				adapter.send(finalizedPayload);
+			}
+		};
+		fn.drain = async (): P<V> => {
+			const startTime = Date.now();
+			const msgs = [...this.queue];
+			this.queue = [];  
+			// await this.root.JEDI.IDB_KV.delete(this.QUEUE_KEY);
+
+			// Process each message through flood gates (round robin)
+			for (const msg of msgs) {
+				if (msg.ttl && msg.ts !== undefined && Date.now() - msg.ts > msg.ttl) continue;
+				await this.DISPATCH(msg);
+			}
+
+			this.metrics.recordQueue("drain", Date.now() - startTime); // _metrics
+		};
+		fn.enqueue = async (msg: SIG_BUS_Message): P<V> => {
+			if (this.DEVTOOLS_ACTIVE) {
+				this.log.log(`[THE_WIZARD][SIGNALS][ENQUEUE]`, {msg: msg}, this.log.t.deep); //this.drop.t.error
+				// this.emitDevtoolsEvent('enqueue', msg.r, msg.m || undefined, msg.id, { priority: msg.priority, ttl: msg.ttl });
+				this.metrics.recordFeature("floodGate"); // _metrics
+				this.metrics.traceStage(msg.id, String(msg.r), "enqueue", {priority: msg.priority, ttl: msg.ttl}); // _metrics
+				this.metrics.tracePayloadSize(msg.id, JSON.stringify(msg.p ?? "").length); // _metrics
+			}
+
+			// Normal queue processing continues here...
+			if (this.DEVTOOLS_ACTIVE) {
+				this.metrics.recordQueue("enqueue");
+			}
+
+			this.queue.push(msg);
+			this.queue.sort((a: A, b: A) =>
+				this.priorityWeight[b.priority] - this.priorityWeight[a.priority]
+			  );
+
+			if (this.backpressure.maxQueueSize && this.queue.length > this.backpressure.maxQueueSize) {
+				const dropped = this.queue.pop();
+				if (dropped) {
+					this.deadLetters.push(dropped);
+					if (this.DEVTOOLS_ACTIVE) this.metrics.recordQueue("drop"); // _metrics
+				}
+			}
+
+			const PAYLOAD_SIZE_CAP = 524288;
+			const persistable = this.queue.map((m: A) => {
+				const size = JSON.stringify(m.p).length;
+				return size > PAYLOAD_SIZE_CAP ? {...m, p: null} : m;
+			});
+			// wait this.root.JEDI.IDB_KV?.set(this.QUEUE_KEY, persistable);
+
+			if (this.DEVTOOLS_ACTIVE && this.queue.some((m: A) => m.id === msg.id)) {
+				this.metrics.finishTrace(msg.id, "queued");
+			} // _metrics
+		};
+		return fn;
+	})();
+	public encryption = {
+        wrap: (f: any) => {
+            return f
+        },
+		unwrap: (f: any) => {
+            return f
+        },
+    }
+	public adp =(() => {
+		const z = () => {}
+		z.ws =  undefined
+		z.cross_boundary =  undefined
+		z.same_boundary =  undefined
+		z.atom =  undefined
+		z.reliableSocket =  undefined
+		z.workerThread =  undefined
+		z.webTransportDatagrams =  undefined
+		z.webTransportClient =  undefined
+		z.webRtcDataChannelHost =  undefined
+		z.webRtcDataChannelClient =  undefined
+		z.dataChannel =  undefined
+		z.startWebTransportServer =  undefined
+		z.webTransport =  undefined
+		z.webRTC =  undefined
+		z.sse =  undefined
+		z.sharedArrayBuffer =  undefined
+		z.sharedWorker =  undefined
+		z.serviceWorker =  undefined
+		z.postMessage =  undefined
+		z.startNamedPipeBroker =  undefined
+		z.startMQTTBroker =  undefined
+		z.mqtt =  undefined
+		z.messageChannel =  undefined
+		z.messageChannel =  undefined
+		z.http2Client =  undefined
+		z.http2Server =  undefined
+		z.http =  undefined
+		z.electronIPCMain =  undefined
+		z.electronIPCRenderer =  undefined
+		z.nativeMessagingHost =  undefined
+		z.nativeMessagingBrowser =  undefined
+		z.childProcess =  undefined
+		z.broadcastChannel2 =  undefined
+		z.broadcastChannel =  undefined
+		z.broadcastChannel =  undefined
+		return z
+	})()
+	public async receive(msg: SIG_BUS_Message): P<U> {
+		if (this.seen.has(msg.id)) return;
+		if (msg.ttl && msg.ts !== undefined && Date.now() - msg.ts > msg.ttl) return;
+		if (this.seen.size > 10000) this.seen.clear();
+		this.seen.add(msg.id);
+
+		if (!(await this.BACK_END.run.beforeReceive(msg))) return;
+		if (!this.BACK_END.run.middleware(msg)) return;
+
+		// schema validation
+		const schema = this.schemas.get(msg.r) as A;
+		if (schema) {
+			const ok = schema.validate(msg.p);
+			if (!ok) {
+				this.deadLetters.push(msg);
+				await this.BACK_END.run.onError(new Error(`schema validation failed for ${msg.r}`), msg);
+				return;
+			}
+			if (schema.coerce) msg.p = schema.coerce(msg.p);
+		}
+
+		const result = await this.handlers_.invoke(msg);
+		return result
+	}
+	public log = new (class ORC_SHOUT {
+		/**
+		 * ✔ ✘
+		   drop.log(`[THE_WIZARD][STAFF][SEND_VIA_ADAPTER]`, {
+			messageId: msg.id,
+			rt: msg.rt,
+			ms: msg.ms,
+			sl: msg.sl,
+			k: msg.k,
+			isBinaryTarget: msg.binary,
+			isSecuredTarget: this.staff._auth_initialized,
+			payloadPreview: msg.p
+		   }, t.deep)//this.drop.t.error
+		 * 
+		 *  try {// check to see if in dynamic imports cache
+		 *     return dynamic_importer().has(module)
+		 *   } catch (e: A) {log(`[✘][HOOK_SYSTEM][CHECK_DYNAMIC]`, { error: e }, t.error) }
+		 * 
+			log(`[✘][HOOK_SYSTEM][CHECK_DYNAMIC]`, { error: e }, t.error)
+			log(`[SIGNALS][ENCRPYTION][CONFIGURE]`, { msg: 'encryption_configured', config }, t.deep)
+		 */
+		c = {
+			emerald: {
+				10: "#002c22",
+				9: "#004f3b",
+				8: "#016630",
+				7: "#007a55",
+				6: "#009966",
+				5: "#00bc7d",
+			},
+			blue: {
+				10: "",
+				9: "",
+				8: "",
+				7: "",
+				6: "",
+				5: "",
+			},
+		};
+		t = {
+			deep: {
+				bg: "#020817",
+				txt: "#f8fafc",
+				size: 12,
+				title_size: 14,
+				title_txt: "#94a3b8",
+				payload_key: "#a4ed2c",
+				payload_value: "#f8fafc",
+				font: "monospace",
+				border: "2px solid #101727",
+				borderRadius: "6px",
+				padding: "8px 16px",
+				svg: "",
+			},
+			vintage: {
+				bg: "#001B29",
+				txt: "#e9e1ba",
+				size: 12,
+				title_size: 14,
+				title_txt: "#ada785",
+				payload_key: "#29c3a0",
+				payload_value: "#fafafa",
+				font: "monospace",
+				border: "2px solid #112932",
+				borderRadius: "6px",
+				padding: "8px 16px",
+				svg: "",
+			},
+			error: {
+				bg: "#09090B",
+				txt: "#e7000b",
+				size: 12,
+				title_size: 14,
+				title_txt: "#9f0712",
+				payload_key: "#a4ed2c",
+				payload_value: "#f8fafc",
+				font: "monospace",
+				border: "2px solid #e7000b",
+				borderRadius: "6px",
+				padding: "8px 16px",
+				svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
+			},
+			warn: {
+				bg: "#09090B",
+				txt: "#e17100",
+				size: 12,
+				title_size: 14,
+				title_txt: "#973c00",
+				payload_key: "#a4ed2c",
+				payload_value: "#f8fafc",
+				font: "monospace",
+				border: "2px solid #e17100",
+				borderRadius: "6px",
+				padding: "8px 16px",
+				svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e17100" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+			},
+			success: {
+				bg: "#09090B",
+				txt: "#009966",
+				size: 12,
+				title_size: 14,
+				title_txt: "#016630",
+				payload_key: "#a4ed2c",
+				payload_value: "#f8fafc",
+				font: "monospace",
+				border: "2px solid #009966",
+				borderRadius: "6px",
+				padding: "8px 16px",
+				svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#009966" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/></svg>`,
+			},
+			info: {
+				bg: "#09090B",
+				txt: "#155dfc",
+				size: 12,
+				title_size: 14,
+				title_txt: "#193cb8",
+				payload_key: "#a4ed2c",
+				payload_value: "#f8fafc",
+				font: "monospace",
+				border: "2px solid #155dfc",
+				borderRadius: "6px",
+				padding: "8px 16px",
+				svg: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#155dfc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>`,
+			},
+		};
+		log(msg: string | string[], p?: any, theme = this.t.deep) {
+			const isArray = Array.isArray(msg);
+			const title = isArray ? msg[0] : msg;
+			const paragraphs = isArray ? msg.slice(1) : [];
+	
+			// Build container style (background + border + padding)
+			const containerStyle = `
+				  background: ${theme.bg};
+				  ${theme.border ? `border: ${theme.border};` : ""}
+				  ${theme.borderRadius ? `border-radius: ${theme.borderRadius};` : ""}
+				  ${theme.padding ? `padding: ${theme.padding};` : ""}
+				  font-family: ${theme.font};
+				  display: block;
+				  margin: 4px 0;
+			  `;
+	
+			// Build title style (with SVG if present)
+			const titleWithIcon = theme?.svg ? `${theme?.svg} ${title}` : title;
+			const titleStyle = `
+				  color: ${theme.title_txt};
+				  font-size: ${theme.title_size}px;
+				  font-weight: bold;
+				  font-family: ${theme.font};
+				  display: flex;
+				  align-items: center;
+				  gap: 8px;
+			  `;
+	
+			// Build paragraph style
+			const paragraphStyle = `
+				  color: ${theme.txt};
+				  font-size: ${theme.size}px;
+				  font-family: ${theme.font};
+				  margin-top: 4px;
+			  `;
+	
+			// Build p key/value styles
+			const keyStyle = `
+				  color: ${theme.payload_key};
+				  font-weight: bold;
+				  font-family: ${theme.font};
+			  `;
+			const valueStyle = `
+				  color: ${theme.payload_value};
+				  font-family: ${theme.font};
+			  `;
+	
+			// Format p as key: value pairs
+			let payloadStr = "";
+			if (p && typeof p === "object") {
+				const entries = Object.entries(p);
+				payloadStr = entries.map(([key, value]) => `%c${key}: %c${JSON.stringify(value, null, 2)}`).join("\n");
+			}
+	
+			// Build the final log
+			const logParts = [`%c${titleWithIcon}`, ...paragraphs.map((p) => `%c${p}`), payloadStr ? `\n${payloadStr}` : ""].filter(Boolean).join("\n");
+	
+			const styles = [
+				containerStyle + titleStyle, // Container + title combined
+				...paragraphs.map(() => paragraphStyle),
+				...(payloadStr ? [keyStyle, valueStyle] : []),
+			];
+	
+			console.log(logParts, ...styles);
+			// const dev_tools = get('DEVTOOLS_ACTIVE')
+			// if (dev_tools === true) console.log(logParts, ...styles);
+		}
+	})()
+	public metrics = new (class METRICS_PORNSTAR {
+		// #region ███ CONSTANTS ██████████████████████████████████████
+		private _startTime = Date.now();
+		private _nodeId = `node_${Math.random().toString(36).slice(2, 8)}`;
+		private _snapshots: MetricsSnapshot[] = [];
+		private _maxSnapshots = 200;
+		// Queue Metrics
+		private _queueMetrics = {
+			totalEnqueued: 0,
+			totalDropped: 0,
+			totalProcessed: 0,
+			peakSize: 0,
+			currentSize: 0,
+			drainCount: 0,
+			totalDrainTime: 0,
+			deadLetterSize: 0,
+			avgQueueDepth: 0,
+			depthSamples: 0
+		};
+		// Flood Gate Metrics - THE GOOD STUFF
+		private _floodGateMetrics = {
+			gate1: { hits: 0, errors: 0, lastHit: 0, totalLatency: 0, count: 0 },
+			gate2: { hits: 0, errors: 0, lastHit: 0, totalLatency: 0, count: 0 },
+			gate3: { hits: 0, errors: 0, lastHit: 0, totalLatency: 0, count: 0 },
+			gate4: { hits: 0, errors: 0, lastHit: 0, totalLatency: 0, count: 0 },
+			totalHits: 0,
+			totalErrors: 0,
+			totalLatency: 0,
+			latencyCount: 0,
+			bypassed: 0,
+			queued: 0,
+			lastWindowStart: Date.now(),
+			windowHits: 0
+		};
+		// Lane Metrics - SPREAD 'EM WIDE
+		private _laneMetrics = {
+			normal: { processed: 0, errors: 0, totalLatency: 0, count: 0, lastWindowStart: Date.now(), windowCount: 0 },
+			signal: { processed: 0, errors: 0, totalLatency: 0, count: 0, lastWindowStart: Date.now(), windowCount: 0 },
+			binary: { processed: 0, errors: 0, totalLatency: 0, count: 0, lastWindowStart: Date.now(), windowCount: 0 },
+			signal_save_value: { processed: 0, errors: 0, totalLatency: 0, count: 0, lastWindowStart: Date.now(), windowCount: 0 }
+		};
+		// Adapter Metrics - ALL THE ADAPTERS
+		private _adapterMetrics = new Map<string, {
+			total: number;
+			failures: number;
+			totalLatency: number;
+			count: number;
+			lastHit: number;
+			floodGateProcessed: number;
+			lastWindowStart: number;
+			windowCount: number;
+		}>();
+		// Backpressure Metrics
+		private _backpressureMetrics = {
+			throttleCount: 0,
+			lastThrottle: 0,
+			totalBackpressureEvents: 0,
+			currentThrottleDuration: 0
+		};
+		// Channel Metrics
+		private _channelMetrics = new Map<string, {
+			messages: number;
+			lastMessage: number;
+			handlers: number;
+		}>();
+		// Feature Usage Metrics
+		private _featureMetrics = {
+			beacon: 0,
+			radar: 0,
+			vessel: 0,
+			dock: 0,
+			convoy: 0,
+			sonar: 0,
+			heartbeat: 0,
+			watchdog: 0,
+			floodGate: 0,
+			pipeline: 0,
+			tide: 0,
+			mesh: 0,
+			crdt: 0,
+			synapse: 0,
+			transaction: 0,
+			circuitBreaker: 0,
+			rateLimit: 0,
+			plinko: 0,
+			gateMaster: 0,
+			saga: 0,
+			ecs: 0,
+			reactor: 0
+		};
+		private _eventLoopLag = 0;
+		private _lagMeasurements: number[] = [];
+		private traces = new Map<string, MessageTrace>();
+		private readonly MAX_TRACES = 2000; // ring buffer — oldest evicted first
+		private traceOrder: string[] = [];
+		// #endregion
+		// #region ███ CONSTRUCTOR ██████████████████████████████████████
+		constructor() {
+			// Measure event loop lag periodically
+			setInterval(() => {
+				const start = Date.now();
+				Promise.resolve().then(() => {
+					this._eventLoopLag = Date.now() - start;
+					this._lagMeasurements.push(this._eventLoopLag);
+					if (this._lagMeasurements.length > 100) {
+						this._lagMeasurements.shift();
+					}
+				});
+			}, 1000);
+		}
+		// #endregion
+		// #region ███ RECORD METHODS ██████████████████████████████████████
+		recordQueue(action: 'enqueue' | 'dequeue' | 'drop' | 'process' | 'drain', duration?: number) {
+			const now = Date.now();
+			switch (action) {
+				case 'enqueue':
+					this._queueMetrics.totalEnqueued++;
+					this._queueMetrics.currentSize++;
+					if (this._queueMetrics.currentSize > this._queueMetrics.peakSize) {
+						this._queueMetrics.peakSize = this._queueMetrics.currentSize;
+					}
+					break;
+				case 'dequeue':
+				case 'process':
+					this._queueMetrics.currentSize = Math.max(0, this._queueMetrics.currentSize - 1);
+					if (action === 'process') {
+						this._queueMetrics.totalProcessed++;
+					}
+					break;
+				case 'drop':
+					this._queueMetrics.totalDropped++;
+					this._queueMetrics.currentSize = Math.max(0, this._queueMetrics.currentSize - 1);
+					break;
+				case 'drain':
+					this._queueMetrics.drainCount++;
+					if (duration) {
+						this._queueMetrics.totalDrainTime += duration;
+					}
+					break;
+			}
+	
+			// Track average queue depth
+			this._queueMetrics.depthSamples++;
+			this._queueMetrics.avgQueueDepth =
+				(this._queueMetrics.avgQueueDepth * (this._queueMetrics.depthSamples - 1) + this._queueMetrics.currentSize) /
+				this._queueMetrics.depthSamples;
+		}
+		recordFloodGate(gateNumber: 1 | 2 | 3 | 4, latency: number, error?: Error) {
+			const gateKey = `gate${gateNumber}` as const;
+			const gate = this._floodGateMetrics[gateKey];
+			gate.hits++;
+			gate.lastHit = Date.now();
+			gate.totalLatency += latency;
+			gate.count++;
+			if (error) {
+				gate.errors++;
+				this._floodGateMetrics.totalErrors++;
+			}
+	
+			this._floodGateMetrics.totalHits++;
+			this._floodGateMetrics.totalLatency += latency;
+			this._floodGateMetrics.latencyCount++;
+			this._floodGateMetrics.windowHits++;
+	
+			// Reset window every second
+			const now = Date.now();
+			if (now - this._floodGateMetrics.lastWindowStart > 1000) {
+				this._floodGateMetrics.lastWindowStart = now;
+				this._floodGateMetrics.windowHits = 0;
+			}
+		}
+		recordLane(lane: 'normal' | 'signal' | 'binary' | 'signal_save_value', latency: number, error?: Error) {
+			const metrics = this._laneMetrics[lane];
+			metrics.processed++;
+			metrics.totalLatency += latency;
+			metrics.count++;
+			metrics.windowCount++;
+			if (error) metrics.errors++;
+	
+			// Reset window every second
+			const now = Date.now();
+			if (now - metrics.lastWindowStart > 1000) {
+				metrics.lastWindowStart = now;
+				metrics.windowCount = 0;
+			}
+		}
+		recordAdapter(id: string, latency: number, isFloodGate = false, error?: Error) {
+			let metrics = this._adapterMetrics.get(id);
+			if (!metrics) {
+				metrics = {
+					total: 0,
+					failures: 0,
+					totalLatency: 0,
+					count: 0,
+					lastHit: 0,
+					floodGateProcessed: 0,
+					lastWindowStart: Date.now(),
+					windowCount: 0
+				};
+				this._adapterMetrics.set(id, metrics);
+			}
+	
+			metrics.total++;
+			metrics.totalLatency += latency;
+			metrics.count++;
+			metrics.lastHit = Date.now();
+			metrics.windowCount++;
+			if (isFloodGate) metrics.floodGateProcessed++;
+			if (error) metrics.failures++;
+		}
+		recordBackpressure(throttled: boolean, duration?: number) {
+			if (throttled) {
+				this._backpressureMetrics.throttleCount++;
+				this._backpressureMetrics.lastThrottle = Date.now();
+				this._backpressureMetrics.totalBackpressureEvents++;
+				if (duration) {
+					this._backpressureMetrics.currentThrottleDuration = duration;
+				}
+			}
+		}
+		recordChannel(rt: string, handlerCount?: number) {
+			let metrics = this._channelMetrics.get(rt);
+			if (!metrics) {
+				metrics = { messages: 0, lastMessage: 0, handlers: 0 };
+				this._channelMetrics.set(rt, metrics);
+			}
+			metrics.messages++;
+			metrics.lastMessage = Date.now();
+			if (handlerCount !== undefined) {
+				metrics.handlers = handlerCount;
+			}
+		}
+		recordFeature(feature: keyof typeof this._featureMetrics) {
+			this._featureMetrics[feature]++;
+		}
+		// #endregion
+		// #region ███ SNAPSHOT █████████████████████████████████████████████
+		snapshot(
+			queueSize: number,
+			maxQueueSize: number,
+			openGates: number,
+			throttled: boolean,
+			adapters: Set<any>,
+			channels: Map<string, Set<any>>
+		): MetricsSnapshot {
+			const now = Date.now();
+			const windowSeconds = 1;
+	
+			// Calculate throughputs
+			const floodGateThroughput = this._floodGateMetrics.windowHits / windowSeconds;
+			const laneThroughput = {
+				normal: this._laneMetrics.normal.windowCount / windowSeconds,
+				signal: this._laneMetrics.signal.windowCount / windowSeconds,
+				binary: this._laneMetrics.binary.windowCount / windowSeconds,
+				signal_save_value: this._laneMetrics.signal_save_value.windowCount / windowSeconds
+			};
+	
+			// Calculate adapter metrics
+			const adapterMetricsArray: Array<{
+				id: string;
+				total: number;
+				failures: number;
+				avgLatency: number;
+				throughput: number;
+				errorRate: number;
+				healthy: boolean;
+				floodGateProcessed: number;
+			}> = [];
+	
+			for (const [id, metrics] of this._adapterMetrics) {
+				const avgLatency = metrics.count > 0 ? metrics.totalLatency / metrics.count : 0;
+				const errorRate = metrics.total > 0 ? metrics.failures / metrics.total : 0;
+				const throughput = metrics.windowCount / windowSeconds;
+	
+				adapterMetricsArray.push({
+					id,
+					total: metrics.total,
+					failures: metrics.failures,
+					avgLatency,
+					throughput,
+					errorRate,
+					healthy: errorRate < 0.5 && metrics.total > 0,
+					floodGateProcessed: metrics.floodGateProcessed
+				});
+			}
+	
+			// Sort adapters by total
+			adapterMetricsArray.sort((a, b) => b.total - a.total);
+	
+			// Get top channels
+			const topChannels = Array.from(this._channelMetrics.entries())
+				.map(([name, metrics]) => ({ name, count: metrics.messages }))
+				.sort((a, b) => b.count - a.count)
+				.slice(0, 10);
+	
+			const activeHandlers = Array.from(channels.values()).reduce((sum, set) => sum + set.size, 0);
+	
+			const snapshot: MetricsSnapshot = {
+				timestamp: now,
+				nodeId: this._nodeId,
+				uptime: now - this._startTime,
+	
+				queue: {
+					currentSize: queueSize,
+					maxSize: maxQueueSize,
+					fillPercent: maxQueueSize > 0 ? (queueSize / maxQueueSize) * 100 : 0,
+					peakSize: this._queueMetrics.peakSize,
+					totalEnqueued: this._queueMetrics.totalEnqueued,
+					totalDropped: this._queueMetrics.totalDropped,
+					totalProcessed: this._queueMetrics.totalProcessed,
+					drainCount: this._queueMetrics.drainCount,
+					avgDrainTime: this._queueMetrics.drainCount > 0 ?
+						this._queueMetrics.totalDrainTime / this._queueMetrics.drainCount : 0,
+					deadLetterSize: this._queueMetrics.deadLetterSize
+				},
+	
+				floodGates: {
+					openGates,
+					gate1: {
+						hits: this._floodGateMetrics.gate1.hits,
+						errors: this._floodGateMetrics.gate1.errors,
+						lastHit: this._floodGateMetrics.gate1.lastHit,
+						avgLatency: this._floodGateMetrics.gate1.count > 0 ?
+							this._floodGateMetrics.gate1.totalLatency / this._floodGateMetrics.gate1.count : 0
+					},
+					gate2: {
+						hits: this._floodGateMetrics.gate2.hits,
+						errors: this._floodGateMetrics.gate2.errors,
+						lastHit: this._floodGateMetrics.gate2.lastHit,
+						avgLatency: this._floodGateMetrics.gate2.count > 0 ?
+							this._floodGateMetrics.gate2.totalLatency / this._floodGateMetrics.gate2.count : 0
+					},
+					gate3: {
+						hits: this._floodGateMetrics.gate3.hits,
+						errors: this._floodGateMetrics.gate3.errors,
+						lastHit: this._floodGateMetrics.gate3.lastHit,
+						avgLatency: this._floodGateMetrics.gate3.count > 0 ?
+							this._floodGateMetrics.gate3.totalLatency / this._floodGateMetrics.gate3.count : 0
+					},
+					gate4: {
+						hits: this._floodGateMetrics.gate4.hits,
+						errors: this._floodGateMetrics.gate4.errors,
+						lastHit: this._floodGateMetrics.gate4.lastHit,
+						avgLatency: this._floodGateMetrics.gate4.count > 0 ?
+							this._floodGateMetrics.gate4.totalLatency / this._floodGateMetrics.gate4.count : 0
+					},
+					totalHits: this._floodGateMetrics.totalHits,
+					totalErrors: this._floodGateMetrics.totalErrors,
+					bypassRate: this._floodGateMetrics.totalHits + this._floodGateMetrics.queued > 0 ?
+						(this._floodGateMetrics.totalHits / (this._floodGateMetrics.totalHits + this._floodGateMetrics.queued)) * 100 : 0,
+					avgLatency: this._floodGateMetrics.latencyCount > 0 ?
+						this._floodGateMetrics.totalLatency / this._floodGateMetrics.latencyCount : 0,
+					throughputPerSecond: floodGateThroughput
+				},
+	
+				lanes: {
+					normal: {
+						processed: this._laneMetrics.normal.processed,
+						avgLatency: this._laneMetrics.normal.count > 0 ?
+							this._laneMetrics.normal.totalLatency / this._laneMetrics.normal.count : 0,
+						errors: this._laneMetrics.normal.errors,
+						throughput: laneThroughput.normal
+					},
+					signal: {
+						processed: this._laneMetrics.signal.processed,
+						avgLatency: this._laneMetrics.signal.count > 0 ?
+							this._laneMetrics.signal.totalLatency / this._laneMetrics.signal.count : 0,
+						errors: this._laneMetrics.signal.errors,
+						throughput: laneThroughput.signal
+					},
+					binary: {
+						processed: this._laneMetrics.binary.processed,
+						avgLatency: this._laneMetrics.binary.count > 0 ?
+							this._laneMetrics.binary.totalLatency / this._laneMetrics.binary.count : 0,
+						errors: this._laneMetrics.binary.errors,
+						throughput: laneThroughput.binary
+					},
+					signal_save_value: {
+						processed: this._laneMetrics.signal_save_value.processed,
+						avgLatency: this._laneMetrics.signal_save_value.count > 0 ?
+							this._laneMetrics.signal_save_value.totalLatency / this._laneMetrics.signal_save_value.count : 0,
+						errors: this._laneMetrics.signal_save_value.errors,
+						throughput: laneThroughput.signal_save_value
+					}
+				},
+	
+				adapters: adapterMetricsArray.slice(0, 20),
+	
+				backpressure: {
+					throttled,
+					throttleCount: this._backpressureMetrics.throttleCount,
+					lastThrottle: this._backpressureMetrics.lastThrottle,
+					avgQueueDepth: this._queueMetrics.avgQueueDepth,
+					maxQueueDepth: this._queueMetrics.peakSize,
+					totalBackpressureEvents: this._backpressureMetrics.totalBackpressureEvents
+				},
+	
+				channels: {
+					total: channels.size,
+					activeSubs: activeHandlers,
+					totalMessages: Array.from(this._channelMetrics.values()).reduce((sum, m) => sum + m.messages, 0),
+					topChannels
+				},
+	
+				system: {
+					memoryUsage: process.memoryUsage(),
+					cpuUsage: process.cpuUsage(),
+					eventLoopLag: this._eventLoopLag,
+					activeHandlers,
+					pendingRequests: this._queueMetrics.currentSize
+				},
+	
+				features: { ...this._featureMetrics }
+			};
+	
+			// Store snapshot
+			this._snapshots.push(snapshot);
+			if (this._snapshots.length > this._maxSnapshots) {
+				this._snapshots.shift();
+			}
+	
+			return snapshot;
+		}
+		// #endregion
+		// #region ███ QUERY METHODS ████████████████████████████████████████
+		getHistory(limit?: number): MetricsSnapshot[] {
+			return limit ? this._snapshots.slice(-limit) : this._snapshots;
+		}
+		getLatest(): MetricsSnapshot | null {
+			return this._snapshots[this._snapshots.length - 1] || null;
+		}
+		getMetricsSummary() {
+			const latest = this.getLatest();
+			if (!latest) return null;
+	
+			return {
+				totalMessages: latest.queue.totalProcessed + latest.queue.totalDropped,
+				totalErrors: latest.floodGates.totalErrors + latest.lanes.normal.errors + latest.lanes.signal.errors + latest.lanes.binary.errors + latest.lanes.signal_save_value.errors,
+				avgLatency: latest.floodGates.avgLatency,
+				throughput: latest.floodGates.throughputPerSecond,
+				queuePressure: latest.queue.fillPercent,
+				activeAdapters: latest.adapters.length,
+				features: latest.features
+			};
+		}
+		// #endregion
+		// #region ███ STREAM DATA FOR DASHBOARD ███████████████████████████
+		getStreamData() {
+			const latest = this.getLatest();
+			if (!latest) return null;
+	
+			return {
+				...latest,
+				adapters: latest.adapters,
+				history: this._snapshots.slice(-30).map(s => ({
+					timestamp: s.timestamp,
+					queueSize: s.queue.currentSize,
+					openGates: s.floodGates.openGates,
+					throughput: s.floodGates.throughputPerSecond,
+					avgLatency: s.floodGates.avgLatency,
+					errors: s.floodGates.totalErrors
+				}))
+			};
+		}
+		// #endregion
+		// #region ███ RESET █████████████████████████████████████████████████
+		reset() {
+			this._startTime = Date.now();
+			this._snapshots = [];
+			this._queueMetrics = {
+				totalEnqueued: 0,
+				totalDropped: 0,
+				totalProcessed: 0,
+				peakSize: 0,
+				currentSize: 0,
+				drainCount: 0,
+				totalDrainTime: 0,
+				deadLetterSize: 0,
+				avgQueueDepth: 0,
+				depthSamples: 0
+			};
+			this._floodGateMetrics = {
+				gate1: { hits: 0, errors: 0, lastHit: 0, totalLatency: 0, count: 0 },
+				gate2: { hits: 0, errors: 0, lastHit: 0, totalLatency: 0, count: 0 },
+				gate3: { hits: 0, errors: 0, lastHit: 0, totalLatency: 0, count: 0 },
+				gate4: { hits: 0, errors: 0, lastHit: 0, totalLatency: 0, count: 0 },
+				totalHits: 0,
+				totalErrors: 0,
+				totalLatency: 0,
+				latencyCount: 0,
+				bypassed: 0,
+				queued: 0,
+				lastWindowStart: Date.now(),
+				windowHits: 0
+			};
+			this._adapterMetrics.clear();
+			this._channelMetrics.clear();
+			Object.keys(this._featureMetrics).forEach(key => {
+				this._featureMetrics[key as keyof typeof this._featureMetrics] = 0;
+			});
+		}
+		// #endregion
+		// #region ███ PER MSG TRACING █████████████████████████████████████████████████
+		private getOrCreateTrace(id: string, rt: string, ms?: string): MessageTrace {
+			let t = this.traces.get(id);
+			if (!t) {
+				t = { id, rt, ms, createdAt: Date.now(), stages: [] };
+				this.traces.set(id, t);
+				this.traceOrder.push(id);
+				if (this.traceOrder.length > this.MAX_TRACES) {
+					const evict = this.traceOrder.shift();
+					if (evict) this.traces.delete(evict);
+				}
+			}
+			return t;
+		}
+		// Call at the start of any stage a message passes through.
+		traceStage(id: string, rt: string, stage: StageName, detail?: Record<string, unknown>, ms?: string) {
+			const t = this.getOrCreateTrace(id, rt, ms);
+			const prev = t.stages[t.stages.length - 1];
+			const now = Date.now();
+			if (prev && prev.durationMs === undefined) {
+				prev.durationMs = now - prev.ts; // close out the previous open stage
+			}
+			t.stages.push({ stage, ts: now, detail });
+		}
+		traceLane(id: string, lane: LaneName) {
+			const t = this.traces.get(id);
+			if (t) t.lane = lane;
+		}
+		traceGate(id: string, gate: GateNumber) {
+			const t = this.traces.get(id);
+			if (t) t.gate = gate;
+		}
+		traceAdapter(id: string, adapterId: string) {
+			const t = this.traces.get(id);
+			if (t) t.adapterId = adapterId;
+		}
+		tracePayloadSize(id: string, bytes: number) {
+			const t = this.traces.get(id);
+			if (t) t.payloadSize = bytes;
+		}
+		// Call when a message reaches a terminal state.
+		finishTrace(id: string, outcome: MessageTrace['outcome']) {
+			const t = this.traces.get(id);
+			if (!t) return;
+			const now = Date.now();
+			const last = t.stages[t.stages.length - 1];
+			if (last && last.durationMs === undefined) last.durationMs = now - last.ts;
+			t.finishedAt = now;
+			t.totalMs = now - t.createdAt;
+			t.outcome = outcome;
+		}
+		// #endregion
+		// #region ███ query surface for consumers █████████████████████████████████████████████████
+		getMessageTrace(id: string): MessageTrace | null {
+			return this.traces.get(id) ?? null;
+		}
+		getRecentTraces(limit = 100): MessageTrace[] {
+			return this.traceOrder.slice(-limit).map(id => this.traces.get(id)!).filter(Boolean);
+		}
+		getTracesByChannel(rt: string, limit = 100): MessageTrace[] {
+			const out: MessageTrace[] = [];
+			for (let i = this.traceOrder.length - 1; i >= 0 && out.length < limit; i--) {
+				const t = this.traces.get(this.traceOrder[i]);
+				if (t && t.rt === rt) out.push(t);
+			}
+			return out;
+		}
+		getTracesByAdapter(adapterId: string, limit = 100): MessageTrace[] {
+			const out: MessageTrace[] = [];
+			for (let i = this.traceOrder.length - 1; i >= 0 && out.length < limit; i--) {
+				const t = this.traces.get(this.traceOrder[i]);
+				if (t && t.adapterId === adapterId) out.push(t);
+			}
+			return out;
+		}
+		getTracesByOutcome(outcome: MessageTrace['outcome'], limit = 100): MessageTrace[] {
+			const out: MessageTrace[] = [];
+			for (let i = this.traceOrder.length - 1; i >= 0 && out.length < limit; i--) {
+				const t = this.traces.get(this.traceOrder[i]);
+				if (t && t.outcome === outcome) out.push(t);
+			}
+			return out;
+		}
+		// #endregion
+	})()
+
+	//public channel = new O2<S, Set<CSEHandler>>()
+	//public sub_channel = new O2<S, O2<S, Set<CSEHandler>>>()
+	//public trip_channel = new O2<S, O2<S, Set<CSEHandler>>>()
+	//public quad_channel = new O2<S, O2<S, Set<CSEHandler>>>()
+	public contracts = new O2<string, { name?: string; key?: string; precondition?: (v: A) => boolean; postcondition?: (v: A) => boolean; invariant?: (snapshot: Record<string, A>) => boolean; block?: boolean }>()
+	public traceCounter = 0;
+	public relayCounter = 0;
+	public closeHandlers = new Set<() => V>();
+	public counters: StreamLabMetrics = {
+		dataSent: 0,
+		dataAcked: 0,
+		dataRetransmitted: 0,
+		nackSent: 0,
+		nackReceived: 0,
+		overflow: 0,
+		dlq: 0,
+		dropped: 0,
+		errors: 0,
+		streamsActive: 0,
+		streamsCompleted: 0,
+		relaySent: 0,
+	};
+	public h = {
+		//HELPERS
+		WIRE_VERSION: 1,
+		parseEnvelope: (raw: unknown): WireEnvelope | null => {
+			if (!raw || typeof raw !== "object") return null;
+			const e = raw as Record<string, unknown>;
+			if (e.v !== this.h.WIRE_VERSION || typeof e.sid !== "string" || typeof e.seq !== "number") return null;
+			return e as unknown as WireEnvelope;
+		},
+		normCh: (v: string): string => {
+			return v.replace(/[\[\]]/g, "").trim();
+		},
+		fnv1a: (input: string): string => {
+			// FNV-1a 32-bit — isomorphic, deterministic, no crypto dependency.
+			let h = 0x811c9dc5;
+			for (let i = 0; i < input.length; i++) {
+				h ^= input.charCodeAt(i);
+				h = Math.imul(h, 0x01000193);
+			}
+			return (h >>> 0).toString(36);
+		},
+		streamId: (quad: string, trip: string, sub: string, ch: string, name = "stream"): string => {
+			const base = [this.h.normCh(quad), this.h.normCh(trip), this.h.normCh(sub), this.h.normCh(ch)].join("|");
+			const slug = name.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 20) || "s";
+			return `sl_${this.h.fnv1a(`${base}|${name}`)}_${slug}`;
+		},
+		newEpoch: (): string => {
+			return `${Date.now().toString(36)}-${this.h.fnv1a(Math.random().toString(36).slice(2))}`;
+		},
+		newTrace: (): string => {
+			this.traceCounter = (this.traceCounter + 1) >>> 0;
+			return `tr-${Date.now().toString(36)}-${this.traceCounter.toString(36)}-${this.h.fnv1a(Math.random().toString(36).slice(2))}`;
+		},
+		toBase64: (bytes: Uint8Array): string => {
+			if (typeof Buffer !== "undefined") return Buffer.from(bytes).toString("base64");
+			let s = "";
+			for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+			return btoa(s);
+		},
+		fromBase64: (b64: string): Uint8Array => {
+			if (typeof Buffer !== "undefined") return new Uint8Array(Buffer.from(b64, "base64"));
+			const bin = atob(b64);
+			const out = new Uint8Array(bin.length);
+			for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+			return out;
+		},
+		encodePayload: (data: unknown, binary: boolean): { enc: "json" | "base64"; data: unknown } => {
+			if (!binary) return { enc: "json", data };
+			const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(String(data));
+			return { enc: "base64", data: this.h.toBase64(bytes) };
+		},
+		decodePayload: (env: WireEnvelope, binary: boolean): unknown => {
+			if (binary && env.enc === "base64" && typeof env.data === "string") return this.h.fromBase64(env.data);
+			return env.data;
+		},
+		sleep: (m: number) => new Promise<void>((r) => setTimeout(r, m)),
+		isFunc: (v: unknown): v is (...a: never[]) => unknown => {
+			return typeof v === "function";
+		},
+		trackActive: (delta: number) => {
+			this.counters.streamsActive = Math.max(0, this.counters.streamsActive + delta);
+		},
+		normalizeKey: (rawKey: string) => {
+			return rawKey.trim().toLowerCase();
+		},
+	};
+	// #endregion
+	//                                                                               SIGNALS
+	// #region ═════════════════════════════════════════════════════════════════════════════════════
+	public mainMap = new O2<S | N | SY, S>();
+	public weakMap = new WeakMap<object, S>();
+	public tupleCache = new O2<S, string>();
+	public listeners = new O2<S, Set<SignalListener>>();
+	public conflicts = new O2<S, ConflictPolicy>();
+	public causal = new O2<S, CausalEntry[]>();
+	// #endregion
+	//                                                                              REACTIVE
+	// #region ═════════════════════════════════════════════════════════════════════════════════════
+	public components = new O2<S, ComponentInstance>();
+	public pendingNotifications = new Set<S>()
+	public loopScheduled = false
+	public currentComponent = null as ComponentInstance | NU
+	public currentHookState = null as HookState | NU
+	public batchDepth = 0
+	public openScopes = new Set<BatchScope>();
+	public dirty = new Set<FlushCallback>();
+	public PRIORITY_ORDER = ["immediate", "user-blocking", "normal", "background", "idle"] as Priority[] 
+	public GLOBAL_SCOPE = Symbol("THE_WIZARD_ROOT_REG");
+	public scopeCursors = { immediate: 0, "user-blocking": 0, normal: 0, background: 0, idle: 0 } as R<Priority, N>; 
+	public currentScope = this.GLOBAL_SCOPE as SY | S 
+	public flushScheduled = false
+	// #endregion
 }
-export type MaybePromise<R = any> = R;
-export function MaybePromise<R = any>(v: R): MaybePromise {
-    return v !== undefined ? v as R : Promise.resolve(v) as Promise<R> 
-}
+// #endregion
+//                                                               [SITH] [PALPATINE] [DARTH VADER] [GALEN MAREK] [RULE OF 2] BUS 
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 export class SITH {
 	public root: DEATH_STAR;
 	public mesh_store: THE_MESH_STORE 
+	public state: RAVEN["state"] 
+
 	public r: A = "THE_WIZARD_ROOT_REG";
 	public m: A = "SAURON_MASTER_REG";
 	public s: A = "SAURON_SLAVE_REG";
@@ -9175,21 +12275,2389 @@ export class SITH {
 	public u32Capacity = 1 << 18
 	public i32Capacity = 1 << 18
 	public byteCapacity = 1 << 20
-	constructor(DEATH_STAR: DEATH_STAR, capacity = 65_536 * 2, schedule= DEFAULT_SCHEDULE, shared= typeof SharedArrayBuffer !== "undefined", maxBatch = 8192, wait = "yield") {
-		this.root = DEATH_STAR;
-		this.shared = shared;
-		this.wait = wait;
-		this.maxBatch = maxBatch;
-		this.capacity = capacity;
-		this.schedule = schedule
-		this.r = DEATH_STAR.r;
-		this.m = DEATH_STAR.m;
-		this.s = DEATH_STAR.s;
-		this.k = DEATH_STAR.k;
-		this.mesh_store = new THE_MESH_STORE(this)
-
+	public DEVTOOLS_ACTIVE = false
+	constructor() {}
+	public send = (() => {
+		//const msg: SIG_BUS_Message = { id: this.hub.reg._sid(), r: r, m: m, s: s, k: k,  p: p, ts: Date.now(), _ack: false };
+	const fn = <T = A>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, adapter = "ws") => {
+		let v: A = this.mesh_store.DISPATCH({ id: this.root.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
+		if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+		else {
+			const tMs = 5000;
+			return MaybePromise( (() => {
+					return new P<T>((resolve, reject) => {
+						let timer: RT<typeof setTimeout> | UD;
+						if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+						if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+					});
+				})(),
+			);
+		}
+	};
+	fn.gt = (() => {
+		const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
+			const root = c === 'globalThis' ? globalThis as any : this.mesh_store.THE_MESH_CACHE;
+			const rL = (root[r] ??= Object.create(null));
+			const mL = (rL[m] ??= Object.create(null));
+			const channel = mL[s] ??= Object.create(null);
+			const handler = channel[k]?.handler;
+			if (!handler) return undefined;
+			const v: A = handler(p, { r, m, s, k, p: p });
+			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+			else {
+				const tMs = 5000;
+				return MaybePromise( (() => {
+						return new P<T>((resolve, reject) => {
+							let timer: RT<typeof setTimeout> | UD;
+							if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+							if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+						});
+					})(),
+				);
+			}
+		}
+		fn.hot = (() => {
+			const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
+				const handler = this.mesh_store[k]._handlers;
+				if (!handler) return undefined;
+				const v: A = handler(p, { r, m, s, k, p: p });
+				if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+				else {
+					const tMs = 5000;
+					return MaybePromise( (() => {
+							return new P<T>((resolve, reject) => {
+								let timer: RT<typeof setTimeout> | UD;
+								if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+								if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+							});
+						})(),
+					);
+				}
+			}
+			return fn;
+		})();
+		return fn;
+	})();
+	fn.adapter = (() => {
+		const fn =()  => { }
+		fn.hot = (() => {
+			const fn = () =>{ }
+			return fn;
+		})();
+		return fn;
+	})();
+	fn.stream=<T = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'): T | P<T> | UD =>{
+		const root =  c === 'globalThis' ? globalThis as any : this.mesh_store.THE_MESH_CACHE;
+		const rL = (root[r] ??= Object.create(null));
+		const mL = (rL[m] ??= Object.create(null));
+		const _listeners = mL[s] ??= Object.create(null);
+		const handler = _listeners[k]?.handler;
+		if (!handler) return undefined;
+		const msg: SIG_BUS_Message1 = { r, m, s, k, p: p, _ack: false };
+		const result = handler(p, msg);
+		if (handler) { for (const listener of handler) listener(msg); }
+		return result as T | P<T> | UD;
 	}
-    public palpatine = new (class PALPATINE {// BATCHING NGIN: 1.5B OPS/SEC
+	fn.nested = (() => {
+		const fn =(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
+			const root =  c === 'globalThis' ? globalThis as any : this.mesh_store.THE_MESH_CACHE;
+			const rL = (root[r] ??= Object.create(null));
+			const mL = (rL[m] ??= Object.create(null));
+			const _listeners = mL[s] ??= Object.create(null);
+			const set = _listeners[k]?.handler;
+			if (!set) return;
+			for (const fn of set) { fn(p); }
+		 }
+		fn.hot = (() => {
+			const fn = (p: P, k: S, s: S = '_globalThis') =>{
+				const set = this.mesh_store._handlers[k]?.handler;
+				if (!set) return;
+				for (const fn of set) { fn(p); }
+			 }
+			return fn;
+		})();
+		return fn;
+	})();
+	return fn;
+	})();
+	public sub = (() => {
+		const fn = ( handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh" ): () => V => {
+			// CHANNEL LEVEL
+			const channelSet = (this.mesh_store.getR(r, c)[r] ??= new Set<A>()) as Set<A>;
+			channelSet.add(handler);
+
+			// SUB_CHANNEL LEVEL
+			const subMap = this.mesh_store.getM(m, r, c);
+			const subSet = (subMap[r] ??= new Set<A>()) as Set<A>;
+			subSet.add(handler);
+
+			// TRIP_CHANNEL LEVEL
+			const tripMap = this.mesh_store.getS(s, m, r, c);
+			const tripSet = (tripMap[m] ??= new Set<A>()) as Set<A>;
+			tripSet.add(handler);
+
+			// QUAD_CHANNEL LEVEL
+			const quadMap = (tripMap[k] ??= Object.create(null)) as Record<S, Set<A>>;
+			const quadSet = (quadMap[s] ??= new Set<A>()) as Set<A>;
+			quadSet.add(handler);
+
+			return () => {
+				// QUAD_CHANNEL
+				quadSet.delete(handler);
+				if (!quadSet.size) delete quadMap[s];
+				if (!Object.keys(quadMap).length) delete tripMap[k];
+
+				// TRIP_CHANNEL
+				tripSet.delete(handler);
+				if (!tripSet.size) delete tripMap[m];
+
+				// SUB_CHANNEL
+				subSet.delete(handler);
+				if (!subSet.size) delete subMap[r];
+
+				// CHANNEL
+				channelSet.delete(handler);
+				if (!channelSet.size) delete this.mesh_store.getR(r, c)[r];
+
+				// Remove empty hierarchy nodes
+				if (!Object.keys(subMap).length) { delete this.mesh_store.getR(c, r)[m]; }
+				if (!Object.keys(tripMap).length) { delete this.mesh_store.getR(c, r)[m]; }
+			};
+		};
+		fn.hot = (handler: A, k: S ) => {
+			const root = this.mesh_store._handlers;
+			let handlers = root[k] as Set<A> | undefined;
+			if (!handlers) { handlers = new Set<A>(); root[k] = handlers as A; }
+			handlers.add(handler);
+			return () => { handlers!.delete(handler); if (handlers!.size === 0) { delete root[k]; } };
+		}
+		fn.gt = (() => {
+			const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'): () => V=> {
+				const root =  c === 'globalThis' ? globalThis as any : this.mesh_store.THE_MESH_CACHE;
+				const rL = (root[r] ??= new O2());
+				const mL = (rL[m] ??= new O2());
+				const sl = mL[s] ??= new O2(); 
+				const channel = (sl[k] ??= Object.create(null));
+				channel.handler = handler;
+					return () => {
+						if (channel.handler === handler) {
+							channel.handler = undefined;
+						}
+					};
+			}
+			fn.hot = (() => {
+				const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis'): () => V =>{
+					const channel =  this.mesh_store._handlers[k]?.handler;
+					channel.handler = handler;
+					return () => {
+						if (channel.handler === handler) {
+							channel.handler = undefined;
+						}
+					};
+				}
+				return fn;
+			})();
+			return fn;
+		})();
+		fn.adapter = (() => {
+			const fn =( handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh")  => { }
+			fn.hot = (() => {
+				const fn = () =>{ }
+				return fn;
+			})();
+			return fn;
+		})();
+		fn.nested = (handler: (data: any) => void, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
+			if (r === this.r && m === this.m && s === this.s) {
+				const root =  this.mesh_store._handlers[k]?.handler; 
+				const _listeners = root[k];
+				if (!_listeners.has(k)) {
+					_listeners.set(k, new Set());
+				}
+				_listeners[k]!.add(handler);
+				return () => {
+					const set = _listeners.get(k);
+					if (set) {
+						set.delete(handler);
+						if (set.size === 0) _listeners.delete(k);
+					}
+				};
+			} else {
+				const root = c === 'globalThis' ? globalThis as any : this.mesh_store.THE_MESH_CACHE;
+				const rL = (root[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				let _listeners = mL[s] ??= Object.create(null);
+				_listeners = _listeners[k]
+				if (!_listeners.has(k)) {
+					_listeners.set(k, new Set());
+				}
+				_listeners.get(k)!.add(handler);
+				return () => {
+					const set = _listeners.get(k);
+					if (set) {
+						set.delete(handler);
+						if (set.size === 0) _listeners.delete(k);
+					}
+				};
+			}
+		};
+		fn.nested3 = (p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r) => {
+			if (r === this.r && m === this.m && s === this.s) {
+			} else {
+			}
+		};
+		return fn;
+	})();
+	async *streamGen<P = A, R = A>(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, opts: { adapter?: S } = {}): AG<R, V, U> {
+		const replyTo = this.root.reg._sid();
+		const queue: R[] = [];
+		let closed = false;
+		let failure: U;
+		let wake: (() => V) | UD;
+		const handlers = this.mesh_store.getS(s, m, r).get(k);
+		if (!handlers || !handlers.size) { throw new Error(`[rift] no subscriber for k="${k}"`); }
+		const reply = (value: R | Promise<R> | typeof END) => {
+			if (value === END) { closed = true; } 
+			else if (value instanceof Error) { failure = value; }
+			else { queue.push(value as R); }
+			wake?.();
+			wake = undefined;
+		};
+		for (const handler of handlers) {
+			handler({ id: this.root.reg._sid(), r: r ?? this.r, m: m ?? this.m, s: s ?? this.s, k, p: { p }, ts: Date.now(), _ack: false, replyTo, stream: true }, reply);
+		}
+		while (true) {
+			if (queue.length) { yield queue.shift()!; continue; }
+			if (failure) throw failure;
+			if (closed) return;
+			await new P<V>((resolveWake) => { wake = resolveWake; });
+		}
+	}
+	public stream = (() => {
+		function stream(handler: (msg: SIG_BUS_Message1) => V, k: S, s: S, m?: S, r?: S): () => V;
+		function stream(k: S, s: S, m?: S, r?: S): AsyncIterableIterator<SIG_BUS_Message1>;
+		function stream(handlerOrSlave: ((msg: SIG_BUS_Message1) => V) | S, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) | AsyncIterableIterator<SIG_BUS_Message1> {
+				const handler = typeof handlerOrSlave === "function" ? handlerOrSlave : undefined;
+				const global = globalThis as any;
+				const channel = (this.channels[k] ??= {});
+				if (!channel) throw new Error("Channel does not exist");
+				const listeners = (channel.push ??= new Set());
+		
+				if (handler) {
+					listeners.add(handler);
+					return () => { listeners.delete(handler); if (!listeners.size) channel.push = undefined; };
+				}
+		
+				const queue: SIG_BUS_Message1[] = [];
+				const waiters: Array<{ resolve: (value: IteratorResult<SIG_BUS_Message1>) => void }> = [];
+				let offset = 0;
+				let closed = false;
+				const listener = (msg: SIG_BUS_Message1) => {
+					if (waiters.length) { waiters.shift()!.resolve({ value: msg, done: false }); } 
+					else { queue.push(msg); }
+				};
+				listeners.add(listener);
+				const close = () => {
+					if (closed) return;
+					closed = true;
+					listeners.delete(listener);
+					if (!listeners.size) channel.push = undefined;
+					for (const waiter of waiters) { waiter.resolve({ value: undefined, done: true }); }
+					waiters.length = 0;
+					queue.length = 0;
+					offset = 0;
+				};
+		
+				const iterator: AsyncIterableIterator<SIG_BUS_Message1> = {
+					next: (): Promise<IteratorResult<SIG_BUS_Message1>> => {
+						if (offset < queue.length) {
+							const value = queue[offset++];
+							if (offset === queue.length) { queue.length = 0; offset = 0; }
+							return Promise.resolve({ value, done: false });
+						}
+						if (closed) { return Promise.resolve({ value: undefined, done: true }); }
+						return new Promise((resolve) => waiters.push({ resolve }));
+					},
+					return: async () => { close(); return { value: undefined, done: true }; },
+					[Symbol.asyncIterator](): AsyncIterableIterator<SIG_BUS_Message1> { return iterator; },
+				};
+		
+				return iterator;
+		}
+		const fn = () => stream
+		fn.request = (p: A, onChunk: (chunk: A) => V, k: S, s: S = this.s, m: S = this.m, r: S = this.r): P<V> => {
+			const streamId = this.root.reg._sid();// `[${r}][${m}][${s}][${k}][${_sid()}]`.replace(/[.\[\]]/g, match => (match === "." ? "_" : ""));
+			const result = new Promise<void>((resolve, reject) => {
+				let closed = false;
+				let closeSubscription: (() => V) | UD;
+				const finish = (error?: unknown) => {
+					if (closed) return;
+					closed = true;
+					closeSubscription?.();
+					if (error) { reject(error instanceof Error ? error : new Error(String(error))); }
+					else { resolve(); }
+				};
+				closeSubscription = this.sub(
+					(data: StreamEvent) => {
+						if (closed) return;
+
+						switch (data.type) {
+							case "chunk": onChunk(data.data); break;
+							case "done": finish(); break;
+							case "error": finish(data.error); break;
+						}
+					}, k, s, m, r, );
+
+				try { this.send({streamId, ...p}, k, s, m, r); }
+				catch (error) { finish(error); }
+			});
+			return result;
+		};
+		fn.native = (k?: string, s = this.s, m = this.m, r = this.r): WritableStream => {
+			return new WritableStream({ write: (chunk) => { this.send(chunk, k, s, m, r) }, });
+		};
+		fn.openSync = (k: S, s?: S, m?: S, r = this.r, opts?: {windowSize?: N}) => {
+			// Like syncStream, but for continuous/unbounded emission — no known chunk count up front. Adds a bounded in-flight window so a fast sender backs off instead of flooding a slow receiver.
+			const cleanChannel = r.replace(/[\[\]]/g, "");
+			const streamId = this.root.reg._sid()//`${cleanChannel}-${m}-${Math.random().toString(36).slice(2)}`.replace(/\./g, "-");
+			const windowSize = opts?.windowSize ?? 32;
+
+			const unacked = new Map<number, {p: any; retries: number}>();
+			let nextSeq = 0;
+			let acknowledgedUpTo = -1;
+			const sendQueue: any[] = [];
+			let draining = false;
+
+			const closeAckSub = this.sub((ackData: any) => {
+					if (typeof ackData?.seq !== "number") return;
+					unacked.delete(ackData.seq);
+					if (ackData.seq > acknowledgedUpTo) acknowledgedUpTo = ackData.seq;
+					drain(); // an ack frees a window slot — try sending more
+				},k, `sync.${streamId}:ack`, m, r, );
+
+			const closeRetransmitSub = this.sub(async (reqData: any) => {
+					const missing = unacked.get(reqData?.seq);
+					if (missing) {missing.retries++;await this.send.gt.hot({streamId, seq: reqData.seq, data: missing.p, isRetry: true}, k, s, m, r);}
+				}, k, `sync.${streamId}:retransmit`, m, r, );
+
+			const drain = async () => {
+				if (draining) return;
+				draining = true;
+				while (sendQueue.length > 0 && unacked.size < windowSize) {
+					const p = sendQueue.shift();
+					const seq = nextSeq++;
+					unacked.set(seq, {p, retries: 0});
+					await this.send({streamId, seq, data: p, isRetry: false}, k, s, m, r);
+				}
+				draining = false;
+			};
+
+			return {/** Queue an op for send. Backs off automatically if the receiver hasn't acked enough of the window yet. */
+				push: (p: any) => {sendQueue.push(p);drain();},
+				pendingCount: () => unacked.size + sendQueue.length,
+				close: () => {closeAckSub();closeRetransmitSub();},
+			};
+		}; 
+		fn.sync = (k: S, s = this.s, m = this.m, r = this.r, opts: SyncStreamOptions = {}): SyncStreamSendHandle => {
+			const windowSize = opts.windowSize ?? 8;
+			const retransmitMs = opts.retransmitMs ?? 5000;
+			const inFlight = new Map<number, Outbound>();
+			let nextSeq = 0;
+			let closed = false;
+			self;
+			const unsub = this.sub( (data: unknown) => {
+					const d = data as {seq?: number} | null;
+					if (!d || typeof d.seq !== "number") return;
+					const o = inFlight.get(d.seq);
+					if (o && !o.acked) {
+						o.acked = true;
+						if (o.timer) clearTimeout(o.timer);
+						inFlight.delete(d.seq);
+					}
+				},`${k}:syncAck`,s,m,r,);
+			const unsubData = this.sub( (data: unknown) => {
+					const d = data as {sync?: boolean; seq?: number} | null;
+					if (d && d.sync === true && typeof d.seq === "number") {
+						this.send({seq: d.seq}, `${k}:syncAck`, s, m, r);
+					}
+				}, k, s, m, r, );
+
+			const push = (p: unknown): void => {
+				if (closed) throw new Error(`syncStream ${r}: push after close`);
+				if (inFlight.size >= windowSize) { throw new Error(`syncStream ${r}: window full (${windowSize})`); }
+				const o: Outbound = {seq: nextSeq++, p, acked: false, sentAt: Date.now()};
+				inFlight.set(o.seq, o);
+				const send = () => this.send({sync: true, seq: o.seq, p: o.p}, k, s, m, r);
+				send();
+				const arm = () => {o.timer = setTimeout(() => {if (!o.acked) { send(); arm(); } }, retransmitMs); };
+				arm();
+			};
+
+			const handle: SyncStreamSendHandle = {
+				push,
+				pendingCount: () => inFlight.size,
+				close: () => {
+					closed = true;
+					for (const o of inFlight.values()) if (o.timer) clearTimeout(o.timer);
+					unsub();
+					unsubData();
+				},
+			};
+			return handle;
+		};
+		fn.hot = (key: string, fn: (message: ChannelMessage) => void, s: string = this.s, m: string = this.m, r: string = this.r, ): () => void => {
+				const channel = this.mesh_store[key]
+				const streamLink: StreamLink = { fn, prev: channel.streamTail, next: undefined, };
+				if (channel.streamTail !== undefined) {channel.streamTail.next = streamLink;}
+				else {channel.streamHead = streamLink;}
+				channel.streamTail = streamLink;
+				return () => {
+					const previous = streamLink.prev;
+					const next = streamLink.next;
+		
+					if (next !== undefined) next.prev = previous;
+					else channel.streamTail = previous;
+		
+					if (previous !== undefined) previous.next = next;
+					else channel.streamHead = next;
+				};
+		}
+		return fn;
+	})();
+	public handler = (() => {
+		const fn = (handler: (d: A) => A, k: S = this.k, s: S = '_globalThis', m: S = this.m, r: S = this.r, binary = false): (() => V) => {
+			return this.sub(
+				async (inboundReq: any) => {
+					if (!inboundReq || !inboundReq.streamId) return;
+					const streamId = inboundReq.streamId;
+					let isCancelled = false;
+					let closeControlSubscription: (() => void) | null = null;
+					try {// 1. Await the control stream cancellation listener safely
+						closeControlSubscription = this.sub( () => { isCancelled = true; }, `stream.${streamId}:cancel`, s, m, r, );
+						const result = await handler(inboundReq);
+						let data = result;
+						if (result && typeof result === "object" && "ok" in result && "data" in result) { data = result.data; }
+						if (typeof data === "function") { data = data(); }
+						
+						if (data && typeof data[Symbol.asyncIterator] === "function") {// Core Async Generator Stream Loop
+							for await (const chunk of data) {
+								if (isCancelled) { if (typeof data.return === "function") { await data.return(); } break; }
+								await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
+							}
+							if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+							if (closeControlSubscription) closeControlSubscription();
+							return;
+						}// Sync Generator Stream Loop
+						if (data && typeof data[Symbol.iterator] === "function" && !Array.isArray(data)) {
+							for (const chunk of data) {
+								if (isCancelled) break;
+								await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
+							}
+							if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+							if (closeControlSubscription) closeControlSubscription();
+							return;
+						}// Array Handling Stream Loop
+						if (Array.isArray(data)) {
+							for (const chunk of data) {
+								if (isCancelled) break;
+								await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
+							}
+							if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+							if (closeControlSubscription) closeControlSubscription();
+							return;
+						}// Fallback Single Value Response
+						if (!isCancelled) {
+							await this.send({type: "chunk", data: data}, k, `stream.${streamId}`, m, r);
+							await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+						}
+						if (closeControlSubscription) closeControlSubscription();
+					} catch (err: any) {
+						if (closeControlSubscription) closeControlSubscription();
+						//SE.deadLetters.push({id: streamId, r: r || this.r, p: inboundReq, ts: Date.now(), error: err.message});
+						this.send({type: "error", error: err.message}, k, `stream.${streamId}`, m, r);
+					}
+				}, k, s, m, r,
+			);
+		};
+		fn.native = (k?: S, s = '_globalThis', m = this.m, r = this.r) => {
+			let unsubscribe: (() => void) | null = null;
+			return new ReadableStream({
+				start: (controller) => { unsubscribe = this.sub( (data) => { try { controller.enqueue(data); } catch {}  }, k, s, m, r, ); },
+				cancel: () => { if (unsubscribe) { unsubscribe(); unsubscribe = null; } },
+			});
+		};
+		fn.openSync = (handler: (chunk: A, seq: N) => Promise<V> | V, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r): (() => V) => {
+			const expectedSeqMap = new Map<S, N>();
+			const bufferMap = new Map<S, Map<N, A>>();
+
+			return this.sub(
+				async (inbound: A) => {
+					if (!inbound?.streamId) return;
+					const {streamId, seq, data} = inbound;
+
+					if (!expectedSeqMap.has(streamId)) {
+						expectedSeqMap.set(streamId, 0);
+						bufferMap.set(streamId, new Map());
+					}
+					const expectedSeq = expectedSeqMap.get(streamId)!;
+					const buffer = bufferMap.get(streamId)!;
+
+					if (seq === expectedSeq) {
+						await handler(data, seq);
+						expectedSeqMap.set(streamId, expectedSeq + 1);
+						await this.send({seq}, k, `sync.${streamId}:ack`, m, r);
+
+						let next = expectedSeq + 1;
+						while (buffer.has(next)) {
+							await handler(buffer.get(next), next);
+							buffer.delete(next);
+							next++;
+							expectedSeqMap.set(streamId, next);
+							await this.send({seq: next - 1}, k, `sync.${streamId}:ack`, m, r);
+						}
+					} else if (seq > expectedSeq) {
+						buffer.set(seq, data);
+						for (let missing = expectedSeq; missing < seq; missing++) {
+							if (!buffer.has(missing)) {
+								await this.send({seq: missing}, k, `sync.${streamId}:retransmit`, m, r);
+							}
+						}
+					} else {
+						await this.send({seq}, k, `sync.${streamId}:ack`, m, r); // duplicate — re-ack, no reprocess
+					}
+				},
+				k,
+				s,
+				m,
+				r,
+			);
+		};
+		fn.sync = (k: string, s = '_globalThis', m = this.m, r = this.r): SyncStreamHandler => {
+			const seqs = new Map<number, unknown>();
+			const waiters = new Set<(p: unknown, seq: number) => void>();
+			const completes = new Set<() => void>();
+			let nextDeliver = 0;
+			let done = false;
+
+			const deliver = (): void => {
+				while (seqs.has(nextDeliver)) {
+					const p = seqs.get(nextDeliver)!;
+					seqs.delete(nextDeliver);
+					for (const cb of [...waiters]) {
+						try {
+							cb(p, nextDeliver);
+						} catch {
+							/* Consumable errors isolated */
+						}
+					}
+					nextDeliver++;
+				}
+			};
+
+			const unsub = this.sub(
+				(data: unknown) => {
+					const d = data as {sync?: boolean; seq?: number; p?: unknown; complete?: boolean} | null;
+					if (!d || d.sync !== true) return;
+					if (d.complete === true) {
+						done = true;
+						for (const cb of [...completes]) {
+							try {
+								cb();
+							} catch {
+								/* ignore */
+							}
+						}
+						return;
+					}
+					if (typeof d.seq !== "number") return;
+					if (d.seq >= nextDeliver && !seqs.has(d.seq)) {
+						seqs.set(d.seq, d.p);
+						deliver();
+					}
+				},
+				k,
+				s,
+				m,
+				r,
+			);
+
+			return {
+				onOrdered(cb) {
+					waiters.add(cb);
+				},
+				onComplete(cb) {
+					completes.add(cb);
+				},
+				close() {
+					unsub();
+					waiters.clear();
+					completes.clear();
+				},
+			};
+		};
+		return fn;
+	})();
+	public duplex = (() => {
+		const fn = async <A = any, B = any>(k: string, s = '_globalThis', m = this.m, r = this.r) => {
+			const hub = {k, s, m, r}
+			return  new this.duplexPlus(this, this, { k: k, s: s, m: m, r: r})
+		}	 
+		fn.stream = (
+			readConfig: { k: S; sl?: S; ms?: S; rt?: S },
+			writeConfig: { k?: S; sl?: S; ms?: S; rt?: S },
+		): { readable: ReadableStream; writable: WritableStream } => {
+			return {
+				readable: this.handler.native(readConfig.k,readConfig.sl,readConfig.ms,readConfig.rt,),
+				writable: this.stream.native(writeConfig.k,writeConfig.sl,writeConfig.ms,writeConfig.rt,),
+			};
+		};
+		fn.sx = <TUp = any, TDown = any>(k: string, s?: string, m?: string, r?: string, opts?: {windowSize?: number; livenessId?: string}) => {
+			const windowSize = opts?.windowSize ?? 32;
+			const up = this.stream.openSync(k, `${s}:up`, m, r, {windowSize});
+			const downHandlers = new Set<(chunk: TDown, seq: number) => void>();
+			const errorHandlers = new Set<(err: DuplexError) => void>();
+			const closeHandlers = new Set<() => void>();
+	
+			let upClosed = false;
+			let downClosed = false;
+			let fatallyErrored = false;
+	
+			let lastSeqSeen = -1;
+	
+			const down = this.handler.openSync(
+				(chunk: TDown, seq: number) => {
+					if (fatallyErrored) return;
+					if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
+						reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
+					}
+					lastSeqSeen = seq;
+					downHandlers.forEach(h => h(chunk, seq));
+				},
+				k,
+				`${s}:down`,
+				m,
+				r,
+			);
+	
+			// remote-reported errors arrive here — this is what makes error propagation BILATERAL,
+			// not just local: the other side explicitly tells us when something broke on their end
+			const errorSub = this.sub(
+				(err: DuplexError) => {
+					errorHandlers.forEach(h => h(err));
+					if (err.fatal) {
+						fatallyErrored = true;
+						teardown();
+					}
+				},
+				k,
+				`${s}:error`,
+				m,
+				r,
+			);
+	
+			// remote-reported half-close — lets THIS side know the peer will send no more, so onData
+			// consumers can know to expect a natural end rather than silence-as-ambiguity
+			const remoteCloseSub = this.sub(
+				(dir: "up" | "down") => {
+					if (dir === "up") downClosed = true; // peer's up = our down, from our perspective
+					closeHandlers.forEach(h => h());
+				},
+				k,
+				`${s}:remote-close`,
+				m,
+				r,
+			);
+	
+			const reportError = (err: DuplexError) => {
+				errorHandlers.forEach(h => h(err));
+				this.send(err, k, `${s}:error`, m, r); // propagate to the OTHER side too — bilateral, not local-only
+				if (err.fatal) {
+					fatallyErrored = true;
+					teardown();
+				}
+			};
+	
+			let tornDown = false;
+			const teardown = () => {
+				if (tornDown) return;
+				tornDown = true;
+				up.close();
+				down();
+				errorSub();
+				remoteCloseSub();
+				downHandlers.clear();
+				errorHandlers.clear();
+				closeHandlers.clear();
+			};
+	
+			return {
+				send: (p: TUp) => {
+					if (upClosed) {
+						reportError({dir: "up", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
+						return;
+					}
+					if (fatallyErrored) return;
+					try {
+						up.push(p);
+					} catch (err: any) {
+						reportError({dir: "up", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
+					}
+				},
+				onData: (handler: (chunk: TDown, seq: number) => void) => {
+					downHandlers.add(handler);
+					return () => downHandlers.delete(handler);
+				},
+				onError: (handler: (err: DuplexError) => void) => {
+					errorHandlers.add(handler);
+					return () => errorHandlers.delete(handler);
+				},
+				onRemoteClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => closeHandlers.delete(handler);
+				},
+				/** Half-close: stop sending, but keep receiving. Peer is notified so they know THIS side is done sending. */
+				closeUp: () => {
+					if (upClosed) return;
+					up.close();
+					upClosed = true;
+					this.send("up", k, `${s}:remote-close`, m, r);
+				},
+				/** Full close of both directions, notifies peer, tears down liveness tracking. */
+				close: () => {
+					if (!upClosed) this.send("up", k, `${s}:remote-close`, m, r);
+					upClosed = true;
+					downClosed = true;
+					teardown();
+				},
+				isFullyClosed: () => upClosed && downClosed,
+				isFatallyErrored: () => fatallyErrored,
+			};
+		};
+		fn.async = <TUp = any, TDown = any>(k = this.k, s = this.s, m = this.m, r = this.r, opts?: {windowSize?: number}) => {
+			const windowSize = opts?.windowSize ?? 32;
+	
+			const up = this.stream.sync(k, `${s}:up`, m, r, {windowSize});
+	
+			const downHandlers = new Set<(chunk: TDown, seq: number) => void>();
+			const errorHandlers = new Set<(err: DuplexError) => void>();
+			const closeHandlers = new Set<() => void>();
+	
+			let upClosed = false;
+			let downClosed = false;
+			let fatallyErrored = false;
+			let tornDown = false;
+	
+			let lastSeqSeen = -1;
+			let downUnsub: any;
+			let errorUnsub: any;
+			let remoteCloseUnsub: any;
+	
+			const down = () => {
+				const stream = this.handler.sync(k, `${s}:down`, m, r); // Accept p as unknown, then cast to TDown
+				stream.onOrdered((p: unknown, seq: number) => {
+					if (fatallyErrored) return;
+					const chunk = p as TDown;
+					if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
+						reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
+					}
+	
+					lastSeqSeen = seq;
+					downHandlers.forEach(h => h(chunk, seq));
+				});
+	
+				downUnsub = () => stream.close();
+			};
+			const errorSub = () => {
+				errorUnsub = this.sub(
+					(err: DuplexError) => {
+						errorHandlers.forEach(h => h(err));
+						if (err.fatal) {
+							fatallyErrored = true;
+							teardown();
+						}
+					},
+					k,
+					`${m}:error`,
+					m,
+					r,
+				);
+			};
+			const remoteCloseSub = () => {
+				remoteCloseUnsub = this.sub(
+					(dir: "up" | "down") => {
+						if (dir === "up") downClosed = true;
+						closeHandlers.forEach(h => h());
+					},
+					k,
+					`${s}:remote-close`,
+					m,
+					r,
+				);
+			};
+			const reportError = (err: DuplexError) => {
+				errorHandlers.forEach(h => h(err));
+				this.send(err, k, `${s}:error`, m, r);
+				if (err.fatal) {
+					fatallyErrored = true;
+					teardown();
+				}
+			};
+			const teardown = () => {
+				if (tornDown) return;
+				tornDown = true;
+				up.close();
+				downUnsub?.();
+				errorUnsub?.();
+				remoteCloseUnsub?.();
+	
+				downHandlers.clear();
+				errorHandlers.clear();
+				closeHandlers.clear();
+			};
+			down();
+			errorSub();
+			remoteCloseSub();
+			const dx = {
+				send: (p: TUp) => {
+					if (upClosed) {
+						reportError({dir: "up", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
+						return;
+					}
+					if (fatallyErrored) return;
+					try {
+						up.push(p);
+					} catch (err: any) {
+						reportError({dir: "up", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
+					}
+				},
+				onData: (handler: (chunk: TDown, seq: number) => void) => {
+					downHandlers.add(handler);
+					return () => downHandlers.delete(handler);
+				},
+				onError: (handler: (err: DuplexError) => void) => {
+					errorHandlers.add(handler);
+					return () => errorHandlers.delete(handler);
+				},
+				onRemoteClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => closeHandlers.delete(handler);
+				},
+				closeUp: () => {
+					if (upClosed) return;
+					up.close();
+					upClosed = true;
+					this.send("up", k, `${s}:remote-close`, m, r);
+				},
+				close: () => {
+					if (!upClosed) {
+						this.send("up", k, `${s}:remote-close`, m, r);
+					}
+					upClosed = true;
+					downClosed = true;
+					teardown();
+				},
+				isFullyClosed: () => upClosed && downClosed,
+				isFatallyErrored: () => fatallyErrored,
+			};
+			return dx;
+		};
+		fn.open = <T = any,>(opts = {highWaterMark: 32}, k: string, s = this.s, m = this.m, r = this.r) => {
+			const streamId = this.root.reg._sid()
+	
+			const highWaterMark = opts?.highWaterMark ?? 32;
+	
+			const queue: T[] = [];
+			const handlers = new Set<(chunk: T) => void>();
+			const drainHandlers = new Set<() => void>();
+			const closeHandlers = new Set<() => void>();
+			const errorHandlers = new Set<(err: any) => void>();
+	
+			let writable = true;
+			let readable = true;
+			let draining = false;
+	
+			const write = async (chunk: T): Promise<void> => {
+				if (!writable) { throw new Error("Stream is not writable"); }
+				queue.push(chunk);
+				if (queue.length >= highWaterMark) {
+					await new Promise<void>(resolve => {
+						const check = () => {
+							if (queue.length < highWaterMark) {
+								drainHandlers.delete(check);
+								resolve();
+							}
+						};
+	
+						drainHandlers.add(check);
+						check();
+					});
+				}
+	
+				await drain();
+			};
+			const drain = async () => {
+				if (draining) return;
+				draining = true;
+				try {
+					while (queue.length > 0 && writable) {
+						const chunk = queue.shift()!;
+						await this.send({streamId, data: chunk}, k, s, m, r);
+						drainHandlers.forEach(handler => handler());
+					}
+				} finally {
+					draining = false;
+				}
+			};
+			const unsubscribe = this.sub( async (packet: any) => {
+					if (packet?.streamId !== streamId) return;
+					if (packet.type === "data") { handlers.forEach(handler => { handler(packet.data); }); }
+					if (packet.type === "close") { readable = false; closeHandlers.forEach(handler => handler()); }
+					if (packet.type === "error") { errorHandlers.forEach(handler => { handler(packet.error); }); }
+			}, k, s, m, r, );
+			return {
+				write,
+				onData: (handler: (chunk: T) => void) => {
+					handlers.add(handler);
+					return () => { handlers.delete(handler); };
+				},
+				onDrain: (handler: () => void) => {
+					drainHandlers.add(handler);
+					return () => { drainHandlers.delete(handler); };
+				},
+				onClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => { closeHandlers.delete(handler); };
+				},
+				onError: (handler: (err: any) => void) => {
+					errorHandlers.add(handler);
+					return () => { errorHandlers.delete(handler); };
+				},
+				close: async () => {
+					if (!writable && !readable) return;
+					writable = false;
+					await this.send({streamId, type: "close"}, k, s, m, r);
+					unsubscribe();
+					closeHandlers.forEach(handler => handler());
+				},
+				abort: async (reason?: any) => {
+					writable = false;
+					readable = false;
+					await this.send({streamId, type: "error", error: reason}, k, s, m, r);
+					unsubscribe();
+					errorHandlers.forEach(handler => handler(reason));
+				},
+				writable: () => writable,
+				readable: () => readable,
+				buffered: () => queue.length,
+			};
+		};
+		return fn;
+	})();
+	public d_handler = (() => {
+		const fn = () => {}
+		fn.sx = <TUp = any, TDown = any>(k: string, s?: string, m?: string, r?: string, opts?: {windowSize?: number; livenessId?: string}) => {
+			const windowSize = opts?.windowSize ?? 32;
+			const down = this.stream.openSync(k, `${s}:down`, m, r, {windowSize});
+			const upHandlers = new Set<(chunk: TUp, seq: number) => void>();
+			const errorHandlers = new Set<(err: DuplexError) => void>();
+			const closeHandlers = new Set<() => void>();
+
+			let downClosed = false;
+			let upClosed = false;
+			let fatallyErrored = false;
+
+			let lastSeqSeen = -1;
+			const up = this.handler.openSync(
+				(chunk: TUp, seq: number) => {
+					if (fatallyErrored) return;
+					if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
+						reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
+					}
+					lastSeqSeen = seq;
+					upHandlers.forEach(h => h(chunk, seq));
+				},
+				k,
+				`${s}:up`,
+				m,
+				r,
+			);
+
+			const errorSub = this.sub(
+				(err: DuplexError) => {
+					errorHandlers.forEach(h => h(err));
+					if (err.fatal) {
+						fatallyErrored = true;
+						teardown();
+					}
+				},
+				k,
+				`${s}:error`,
+				m,
+				r,
+			);
+
+			const remoteCloseSub = this.sub(
+				(dir: "up" | "down") => {
+					if (dir === "up") upClosed = true; // peer's up = our up, from THIS side's receiving perspective
+					closeHandlers.forEach(h => h());
+				},
+				k,
+				`${s}:remote-close`,
+				m,
+				r,
+			);
+
+			const reportError = (err: DuplexError) => {
+				errorHandlers.forEach(h => h(err));
+				this.send(err, k, `${s}:error`, m, r);
+				if (err.fatal) {
+					fatallyErrored = true;
+					teardown();
+				}
+			};
+
+			let tornDown = false;
+			const teardown = () => {
+				if (tornDown) return;
+				tornDown = true;
+				down.close();
+				up();
+				errorSub();
+				remoteCloseSub();
+				upHandlers.clear();
+				errorHandlers.clear();
+				closeHandlers.clear();
+			};
+
+			return {
+				send: (p: TDown) => {
+					if (downClosed) {
+						reportError({dir: "down", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
+						return;
+					}
+					if (fatallyErrored) return;
+					try {
+						down.push(p);
+					} catch (err: any) {
+						reportError({dir: "down", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
+					}
+				},
+				onData: (handler: (chunk: TUp, seq: number) => void) => {
+					upHandlers.add(handler);
+					return () => upHandlers.delete(handler);
+				},
+				onError: (handler: (err: DuplexError) => void) => {
+					errorHandlers.add(handler);
+					return () => errorHandlers.delete(handler);
+				},
+				onRemoteClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => closeHandlers.delete(handler);
+				},
+				closeDown: () => {
+					if (downClosed) return;
+					down.close();
+					downClosed = true;
+					this.send("down", k, `${s}:remote-close`, m, r);
+				},
+
+				close: () => {
+					if (!downClosed) this.send("down", k, `${s}:remote-close`, m, r);
+					downClosed = true;
+					upClosed = true;
+					teardown();
+				},
+
+				isFullyClosed: () => downClosed && upClosed,
+				isFatallyErrored: () => fatallyErrored,
+			};
+		};
+		return fn;
+	})();	
+	public duplexPlus = class duplex {
+		public r: A = "THE_WIZARD_ROOT_REG";
+		public m: A = "SAURON_MASTER_REG";
+		public s: A = "SAURON_SLAVE_REG";
+		public k: A = "__SAURON__";
+		public hub: SITH
+		public abus: A
+		public bbus: A
+		constructor(
+			abus: A, bbus: A, 
+			hub: { k: S; s: S; m: S; r: S } = { k: "__SAURON__", s: "SAURON_SLAVE_REG", m: "SAURON_MASTER_REG", r: "THE_WIZARD_ROOT_REG", }) {
+			this.r = hub.r;
+			this.m = hub.m;
+			this.s = hub.s;
+			this.k = hub.k;
+			this.abus = abus //new MAREK(SITH);
+			this.bbus = bbus //new this.MAREK(SITH);
+		}
+		public stream = (() => {
+			const fn = (k?: S, s = this.s, m = this.m, r = this.r) => {
+				return {
+					send: <T, P>(p: P, sendOpts?: { timeoutMs?: N }) => this.abus.stream( k, s, m, r),
+					sub: <P, R>(handler: hdr<P, R>) => this.abus.handler(k, s, m, r),
+				}
+			};
+			return fn;
+		})();
+		public handler = (() => {
+			const fn = (k?: S, s = this.s, m = this.m, r = this.r) => {
+				return {
+					send: <T, P>(p: P, sendOpts?: { timeoutMs?: N }) => this.abus.stream( k, s, m, r),
+					sub: <P, R>(handler: hdr<P, R>) => this.abus.handler(k, s, m, r),
+				}
+			};
+			return fn;
+		})();
+	};
+	public g_bus = new (class G_BUS<Z extends string = string, S extends string = string> {// 3.03B OPS/SEC
+		/**
+		Several peak runs followed by usage paths
+		Peak:                                       1_228.50 M ops/sec
+		Peak:                                       3_103.41 M ops/sec
+		Peak:                                       2_370.05 M ops/sec
+		Peak:                                       2_325.32 M ops/sec
+		These runs were all
+
+		FELKOR2.send
+		sec   |   M writes/s   |   best M/s   |   avg M/s   |    CPU %
+		12    |   1146.44      |   1146.44    |   1146.44   |    100.0
+		
+		FELKOR2.stream
+		sec   |   M writes/s   |   best M/s   |   avg M/s   |    CPU %
+		12    |   1319.94      |   1319.94    |   1319.94   |    100.0
+		PS F:\mq\src> bun run aa.ts
+		
+		FELKOR2.iterator.publish
+		sec   |   M writes/s   |   best M/s   |   avg M/s   |    CPU %
+		12    |     540.61     |   540.61     |  540.61     |    100.3
+		PS F:\mq\src> bun run aa.ts
+		
+		FELKOR2.duplex
+		sec | M writes/s | best M/s | avg M/s | CPU %
+		12 |     898.32 |   898.32 |  898.32 | 100.0
+		*/
+		public s: S;
+		public m: S;
+		public r: S;
+		public k: S;
+		public channels: Record<S, BUS_CHANNEL>;
+		hot_path_test: BUS_HANDLER
+		constructor() { }
+		// const msg: SIG_BUS_Message1 = { r, m, s, k, p: { p }, ts: Date.now(), _ack: false, };
+		// const result = handler(p, msg);
+		public send<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | P<T> | UD {
+			const channel = this.channels[k];
+			const handler = channel?.handler;
+			if (!handler) return undefined;
+			return handler(p, { r, m, s, k, p: p });
+		}
+		public hot_send<T = U>(p: U, k: S,  path: S ): T | P<T> | UD {
+			return this.channels[k]?.handler({ p: p });
+		}
+		public sendStream<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | P<T> | UD {
+			const channel = this.channels[k];
+			const handler = channel?.handler;
+			if (!handler) return undefined;
+			const msg: SIG_BUS_Message1 = { r, m, s, k, p: p, _ack: false };
+			const result = handler(p, msg);
+			const listeners = channel.push;
+			if (listeners) {
+				for (const listener of listeners) listener(msg);
+			}
+			return result as T | P<T> | UD;
+		}
+		public sub<P = U, T = U>(handler: BUS_HANDLER<P, T>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): () => V {
+			const channel = (this.channels[k] ??= {});
+			channel.handler = handler;
+			return () => {
+				if (channel.handler === handler) {
+					channel.handler = undefined;
+				}
+			};
+		}
+		public stream(handler: (msg: SIG_BUS_Message1) => V, k: S, s: S, m?: S, r?: S): () => V;
+		public stream(k: S, s: S, m?: S, r?: S): AsyncIterableIterator<SIG_BUS_Message1>;
+		public stream(handlerOrSlave: ((msg: SIG_BUS_Message1) => V) | S, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) | AsyncIterableIterator<SIG_BUS_Message1> {
+			const handler = typeof handlerOrSlave === "function" ? handlerOrSlave : undefined;
+			const global = globalThis as any;
+			const channel = (this.channels[k] ??= {});
+
+			if (!channel) throw new Error("Channel does not exist");
+
+			const listeners = (channel.push ??= new Set());
+
+			if (handler) {
+				listeners.add(handler);
+
+				return () => {
+					listeners.delete(handler);
+					if (!listeners.size) channel.push = undefined;
+				};
+			}
+
+			const queue: SIG_BUS_Message1[] = [];
+			const waiters: Array<{ resolve: (value: IteratorResult<SIG_BUS_Message1>) => void }> = [];
+
+			let offset = 0;
+			let closed = false;
+
+			const listener = (msg: SIG_BUS_Message1) => {
+				if (waiters.length) {
+					waiters.shift()!.resolve({ value: msg, done: false });
+				} else {
+					queue.push(msg);
+				}
+			};
+
+			listeners.add(listener);
+
+			const close = () => {
+				if (closed) return;
+				closed = true;
+
+				listeners.delete(listener);
+				if (!listeners.size) channel.push = undefined;
+
+				for (const waiter of waiters) {
+					waiter.resolve({ value: undefined, done: true });
+				}
+
+				waiters.length = 0;
+				queue.length = 0;
+				offset = 0;
+			};
+
+			const iterator: AsyncIterableIterator<SIG_BUS_Message1> = {
+				next: (): Promise<IteratorResult<SIG_BUS_Message1>> => {
+					if (offset < queue.length) {
+						const value = queue[offset++];
+
+						if (offset === queue.length) {
+							queue.length = 0;
+							offset = 0;
+						}
+
+						return Promise.resolve({ value, done: false });
+					}
+
+					if (closed) {
+						return Promise.resolve({ value: undefined, done: true });
+					}
+
+					return new Promise((resolve) => waiters.push({ resolve }));
+				},
+
+				return: async () => {
+					close();
+					return { value: undefined, done: true };
+				},
+
+				[Symbol.asyncIterator](): AsyncIterableIterator<SIG_BUS_Message1> {
+					return iterator;
+				},
+			};
+
+			return iterator;
+		}
+		public duplex(k: S, s: S = this.s, m: S = this.m, r: S = this.r) {
+			return {
+				send: <T = U, P = U>(p: P) => this.sendStream<T>(p, k, s, m, r),
+				sub: <P = U, T = U>(handler: BUS_HANDLER<P, T>) => this.sub<P, T>(handler, k, s, m, r),
+				stream: (handler?: (msg: SIG_BUS_Message1) => V) => (handler ? this.stream(handler, k, s, m, r) : this.stream(k, s, m, r)),
+			};
+		}
+	})();
+	public drs = new (class DRS {// DISTRIBUTED REACTIVE STATE
+		public r: S = "THE_WIZARD_ROOT_REG";
+		public m: S = "SAURON_MASTER_REG";
+		public s: S = "SAURON_SLAVE_REG";
+		public k: S = "__SAURON__";
+		public root: DEATH_STAR;
+		public hub: SITH;
+		public state:  RAVEN["state"] 
+		public bus: SITH 
+		constructor() { }
+		public state_setter(v: U, k: S = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) {
+			const existing = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
+			if (existing !== undefined) return existing;
+			const t = UF(v)
+			this.hub.root.state.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
+			return t;
+		}
+		public cell: SIG_BUS_CELL_FN = (() => {
+			const fn = <T = A,>(k: S, s: S = this.s, m: S = this.m, r: S = this.r, v?: T) => {
+				const [value, setValue] = darkState(() => { return this.state_setter(v, k, s, m, r); });
+
+				this.bus.sub( (i: A) => {
+						const incoming = i.p;
+						this.hub.root.state.set(k, incoming, false, s, m, r);
+					}, k, s, m, r, );
+					this.hub.root.state.sub(k, (newValue: any) => setValue(newValue), s, m, r);
+
+				return value; // still no setter — this one was never meant to write
+			};
+			fn.send = async (p: U, k: S, s = this.s, m = this.m, r = this.r): P<U> => {
+				const msgId = this.hub.root.reg._sid()
+				const msg = {id: msgId, r: r, m: m, s: s, k: k, p: {p}, _ack: false};
+
+				await this.root.mesh.DISPATCH({id: msgId, r: r, m: m, s: s, k: k, p: {p}, _ack: false});
+				const rr = this.cell(`${k}${this.root.RTRN_TO_SDR}`, s, m, r);
+
+				await this.root.mesh.BACK_END.run.afterSend(msg, rr);
+
+				return rr
+
+				//if (!(await this.BACK_END.run.beforeSend(msg))) return { success: false, blocked: true }
+
+				// ── TRANSPORT SELECTION — most specific live boundary at this address ──
+				// const boundary = this.boundaries.select(msg)
+
+				// ── 'same-app' (or no subs) — normal path, unchanged ──
+				/**  if (!this.online || this.BACK_END.SHOULD_BACKPRESSURE()) {
+					await this.DISPATCH.enqueue(msg)
+					log(`[SIGNALS][ENCRPYTION][CONFIGURE]`, { type: 'sendsub', r: r, m: m, s: s, k: k, id: msgId, p: msg, ttl: ttl, _ack: 'UNKNOWN', _adapter: 'UNKNOWN', priority: this.defaultPriority, tags: 'UNKNOWN', streamId: 'UNKNOWN', token: 'UNKNOWN', binary: binary, error: 'NONE', adapter_id: 'UNKNOWN', detail: '[!this.online || this.shouldBackpressure()]' }, t.deep)
+					return { success: false, queued: true }
+				} */
+			};
+			fn.cell = <T = A,>(k: S, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "cell", chain?: CHAIN, v?: T) => {
+				const cellKey = `${k}:${this.root.RTRN_TO_SDR}`;
+
+				const [value, setValue] = darkState(() => {return this.state_setter(v, k, s, m, r);});
+
+				this.bus.sub( (i: A) => {
+						const incoming = i.p;
+						setDark(k, incoming, false, s, m, r);
+				}, k, s, m, r, );
+				subDark( (newValue: any) => setValue(newValue), k, s, m, r);
+
+				let rr: any;
+				if (type === "waitFor") {
+					this.bus.send({cmd: "waitFor", k, s, m, r}, k, s, m, r);
+					this.bus.sub((m: any) => setValue(m.p), cellKey, s, m, r);
+				} else if (type === "sub") {
+					this.bus.send({cmd: "subscribe", k, s, m, r}, k, s, m, r);
+					this.bus.sub((m: any) => setValue(m.p), cellKey, s, m, r);
+				} else if (type === "cell") {
+					r = this.cell(cellKey, s, m, r);
+				}
+
+				darkEffect(() => {
+					if (rr) setValue(rr);
+				}, [rr]);
+
+				return MCR_Combo(value, chain); // still no setter — this one was never meant to write
+			};
+			fn.crdt = <T = A,>(k: A = this.k, s: S = this.s, m: S = this.m, r: S = this.r, chain?: CHAIN, v?: T) => {
+				const [value, setValue] = darkState(() => {return this.state_setter(v, k, s, m, r)	});
+
+				this.bus.sub( (i: A) => {
+						const incoming = i.p;
+						setDark(k, incoming, true, s, m, r);
+					}, k, s, 	m, 	r, );
+					subDark((newValue: any) => setValue(newValue),k, s, m, r);
+
+				return MCR_Combo(value, chain); // still no setter — this one was never meant to write
+			};
+			return fn;
+		})();
+		public useCell = (() => {
+			const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none",  options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.root.reg._sid() ) => {
+				const cellKey = `${k}:${this.root.RTRN_TO_SDR}`;
+
+				const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
+
+				const senderTokenRef = this.root.signals.signals.atom(this.root.reg._sid()); // this.root._id.b();
+
+				if (type === "none") {
+					this.bus.sub( (i: A) => {
+							const incoming = i.p;
+							if (incoming?.from === senderTokenRef.value) return;
+							this.root.state.set(k, incoming.value, false, s, m, r);
+							setState(incoming.value);
+					}, k, s, m, r, ); // stay in sync with local writes too (including our own setLive below)
+					sub( (newValue: any) => setState(newValue),k, s, m, r);
+				}
+
+				const setLive = (next: any) => {
+					const newValue = typeof next === "function" ? next(getDark(k, s, m, r)) : next;
+					setState(newValue);
+					setDark(k, newValue,  true, s, m , r); // local write
+					this.bus.send({value: newValue, from: senderTokenRef.value}, k, s, m, r,); // broadcast to the bus
+				};
+
+				let rr: any;
+				if (type === "waitFor") {
+					this.bus.send({cmd: "waitFor", k: cellKey, s, m, r}, k, s, m, r);
+					this.bus.sub((m: any) => setLive(m), cellKey, s, m, r);
+				} else if (type === "sub") {
+					this.bus.send({cmd: "subscribe", k: cellKey, s, m, r}, k, s, m, r);
+					this.bus.sub((m: any) => setLive(m), cellKey, s, m, r);
+				} else if (type === "cell") {
+					rr = this.cell(cellKey, s, m, r);
+					darkEffect(() => {
+						if (rr !== undefined) {
+							setDark(k, rr, false, s, m, r);
+							setState(rr);
+						}
+					}, [rr]);
+				}
+				return [state, setLive] as const;
+			}
+			fn.obj = <T extends Record<PropertyKey, any> = Record<string, any>>(v: T = {} as T, k: A = `_USECELL_OBJ`, s: S = this.s, m: S = this.m, r: S = this.r) => {
+				const [state, setLive] = fn(v, k, s, m, r, );
+				const value = state && typeof state === "object" && !Array.isArray(state) ? (state as T) : v;
+				const actions = {
+					get<K extends keyof T>(key: K): T[K] | undefined { return value[key]; },
+					set<K extends keyof T>(key: K, next: T[K]) {
+						setLive((previous: T | undefined) => {
+							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
+							if (Object.is(current[key], next)) { return current; }
+							return {...current, [key]: next};
+						});
+					},
+					delete<K extends keyof T>(key: K) {
+						setLive((previous: T | undefined) => {
+							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
+							if (!(key in current)) return current;
+							const next = {...current};
+							delete next[key];
+							return next;
+						});
+					},
+					merge(next: Partial<T>) {
+						setLive((previous: T | undefined) => {
+							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
+							return {...current, ...next};
+						});
+					},
+					patch<K extends keyof T>(key: K, updater: (value: T[K]) => T[K]) {
+						setLive((previous: T | undefined) => {
+							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
+							return {...current, [key]: updater(current[key])};
+						});
+					},
+					pick<K extends keyof T>(...keys: K[]): Pick<T, K> {
+						const next = {} as Pick<T, K>;
+						for (const key of keys) { if (key in value) { next[key] = value[key]; } }
+						return next;
+					},
+					reset() { setLive(() => v); },
+				};
+				return [value, actions] as const;
+			};
+			fn.mailbox = ( v?: A,k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.root.reg._sid(),		) => {
+				return root.state.createHookCell("useCell.mailbox",__sauron_id__,() => ({
+						value: {
+							current: this.state_setter(v, k, s, m, r),
+							derived: undefined as A,
+						},
+					}),
+					(state, key, notify) => {
+						const st = state.value;
+
+						const senderToken = this.root.signals.signals.atom(this.root.reg._sid());
+						const queueRef = this.root.signals.signals.atom<Queue | null>(null);
+
+						if (!queueRef.current) {
+							queueRef.current = new Queue(1);
+						}
+
+						const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
+						const selector = options.selector ?? null;
+						const derive = options.derive ?? null;
+
+						const getValue = (): any => (selector ? selector(st.current) : st.current);
+
+						const setValue = (next: A) => {
+							const prevSelected = getValue();
+							const nextSelected = selector ? selector(next) : next;
+							if (!equals(prevSelected, nextSelected)) {
+								st.current = next;
+								if (derive) { st.derived = derive(next); }
+								notify(key);
+							}
+							return next;
+						};
+
+						this.bus.sub((i: A) => {
+							const incoming = i.p;
+							if (incoming?.from === senderToken.value) return;
+							queueRef.current!.run(async () => {
+								const current = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
+								const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
+								this.hub.root.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+								return next;
+							});
+						}, k, s, m, r);
+
+						this.hub.root.state.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+
+						const setLive = (next: any) => {
+							const t = typeof next === "function" ? next() : next;
+							this.bus.send({ value: t, from: senderToken.value }, k, s, m, r);
+						};
+
+						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
+						if (derive) { return [getValue(), setLive, st.derived] as const; }
+
+						return [getValue(), setLive] as const;
+					},
+				);
+			};
+
+			return fn;
+		})();
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		public useAntiMsgQ = (() => {
+			const fn = ( v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.root.reg._sid(),		) => {
+				return root.state.createHookCell( "useAntiMsgQ", __sauron_id__, () => ({
+						value: {
+							current: this.state_setter(v, k, s, m, r),
+							derived: undefined as A,
+						},
+					}),
+					(state, key, notify) => {
+						const st = state.value;
+
+						const senderToken = this.root.signals.signals.atom(this.root.reg._sid());
+
+						const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
+						const selector = options.selector ?? null;
+						const derive = options.derive ?? null;
+
+						const getValue = (): any => (selector ? selector(st.current) : st.current);
+
+						const setValue = (next: A) => {
+							const prevSelected = getValue();
+							const nextSelected = selector ? selector(next) : next;
+							if (!equals(prevSelected, nextSelected)) {
+								st.current = next;
+								if (derive) { st.derived = derive(next); }
+								notify(key);
+							}
+							return next;
+						};
+
+						this.bus.sub((i: A) => {
+							const incoming = i.p;
+							if (incoming?.from === senderToken.value) return;
+							setDark(k, incoming.value, false, s, m, r);
+							setValue(incoming.value);
+						}, k, s, m, r);
+
+						subDark((newValue: any) => setValue(newValue),k ,s ,m ,r);
+
+						const setLive = (next: any) => {
+							const newValue = typeof next === "function" ? next(getDark(k, s, m, r)) : next;
+							setValue(newValue);
+							setDark(k, newValue,true ,s, m , r);
+							this.bus.send({ value: newValue, from: senderToken.value }, k, s, m, r);
+						};
+
+						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
+						if (derive) { return [getValue(), setLive, st.derived] as const; }
+
+						return [getValue(), setLive] as const;
+					},
+				);
+			};
+			fn.mailbox = ( v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.root.reg._sid(),		) => {
+
+				const senderToken = this.hub.root.signals.signals.atom(this.hub.root.reg._sid());
+				const queueRef = this.hub.root.signals.signals.atom<Queue | null>(null);
+
+				return root.state.createHookCell( "useAntiMsgQ.mailbox", __sauron_id__, () => ({
+						value: {
+							current: this.state_setter(v, k, s, m, r),
+							derived: undefined as A,
+						},
+					}),
+					(state, key, notify) => {
+						const st = state.value;
+						if (!queueRef.current) { queueRef.current = new Queue(1); }
+
+						const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
+						const selector = options.selector ?? null;
+						const derive = options.derive ?? null;
+
+						const getValue = (): any => (selector ? selector(st.current) : st.current);
+
+						const setValue = (next: A) => {
+							const prevSelected = getValue();
+							const nextSelected = selector ? selector(next) : next;
+							if (!equals(prevSelected, nextSelected)) {
+								st.current = next;
+								if (derive) { st.derived = derive(next); }
+								notify(key);
+							}
+							return next;
+						};
+
+						this.bus.sub((i: A) => {
+							const incoming = i.p;
+							if (incoming?.from === senderToken.value) return;
+							queueRef.current!.run(async () => {
+								const current = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
+								const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
+								this.hub.root.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+								return next;
+							});
+						}, k, s, m, r);
+
+						this.hub.root.state.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+
+						const setLive = (next: any) => {
+							const t = typeof next === "function" ? next() : next;
+							this.hub.root.bus.send({ value: t, from: senderToken.value }, k, s, m, r);
+						};
+
+						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
+						if (derive) { return [getValue(), setLive, st.derived] as const; }
+
+						return [getValue(), setLive] as const;
+					},
+				);
+			};
+			return fn;
+		})();
+		// #endregion
+	})();
+	public spreadsheet = new (class SPREADSHEET_NGIN {
+		public r: A = "THE_WIZARD_ROOT_REG";
+		public m: A = "SAURON_MASTER_REG";
+		public s: A = "SAURON_SLAVE_REG";
+		public k: A = "__SAURON__";
+		public root: DEATH_STAR;
+		public hub: SITH;
+		//                                                                                                                  SPREADSHEET
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		public spreadsheet = (() => {
+			const fn = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r, chain?: "chain" | "rechain") => MCR_Combo(this.hub.drs.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.computed ?? 0, chain);
+			fn.raw = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.hub.drs.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.raw;
+			fn.range = (sheet: S, ref: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.spreadsheet.rangeKeys(ref, sheet).map(row => row.map(k => this.hub.drs.cell(this.spreadsheet.envKeyOf(k), s, m, r)?.computed ?? 0));
+			// HELPERS
+			fn.HISTORY_CAP = 200;
+			fn.envKey = (sheet: S, cell: S) => `${sheet}::${normalizeCellRef(cell)}`;
+			fn.rangeKeys = (ref: S, sheet?: S): S[][] => {
+				const [a, b = a] = ref.split(":"); // "A1:B3" -> "A1", "B3" (single cell works too)
+				const s = parseCellRef(a, sheet),
+					e = parseCellRef(b, sheet);
+				const [c1, c2] = [colToIndex(s.col), colToIndex(e.col)].sort((x, y) => x - y);
+				const [r1, r2] = [s.row, e.row].sort((x, y) => x - y);
+				const rows: S[][] = [];
+				for (let r = r1; r <= r2; r++) {
+					const row: S[] = [];
+					for (let c = c1; c <= c2; c++) row.push(cellKey(indexToCol(c), r, s.sheet));
+					rows.push(row);
+				}
+				return rows;
+			};
+			// "sheet!B3" (graph key) -> "sheet::B3" (the state key where the envelope lives)
+			fn.envKeyOf = (graphKey: S) => {
+				const {sheet, col, row} = parseCellRef(graphKey);
+				return `${sheet}::${col}${row}`;
+			};
+			// state key for "who reads this cell": "sheet::B3#dependents"
+			fn.dk = (graphKey: S) => `${this.spreadsheet.envKeyOf(graphKey)}#dependents`;
+			fn.vk = (sheet: S) => `${sheet}::#volatile`;
+			fn.rk = (sheet: S) => `${sheet}::#ranges`; // [{ t: "sheet!B3", box }] range formulas reading this sheet
+			fn.xk = (sheet: S) => `${sheet}::#extent`; // { r: lastUsedRow }
+			// get() with the MaybePromise quirk removed: a missing key returns undefined, not a Promise
+			fn.peek = <X =A>(k: A, s: S, m: S, r: S) => {
+				const v = getDark(k, s, m, r);
+				return v instanceof Promise ? undefined : (v as X);
+			};
+			// what a cell currently shows: computed if it's a formula, else its raw value
+			fn.visible = (g: SpreadsheetGraphState, key: A) => g.computed.get(key) ?? g.cells.get(key)?.raw;
+			// prepend "=" if missing
+			fn.spreadsheetFormula = (expression: string) => (expression.startsWith("=") ? expression : `=${expression}`);
+			fn.load = (g: SpreadsheetGraphState, seen: Set<S>, key: A, s: S, m: S, r: S) => {
+				if (seen.has(key)) return false;
+				seen.add(key);
+				const env = this.spreadsheet.peek(this.spreadsheet.envKeyOf(key), s, m, r);
+				if (env && env.raw !== undefined) {
+					const cell: SpreadsheetCell = {raw: env.raw};
+					if (isFormula(env.raw)) {
+						try {
+							cell.ast = qualifyAst(parseFormula(env.raw), parseCellRef(key).sheet);
+							cell.volatile = isVolatileAst(cell.ast);
+						} catch {}
+						cell.computed = env.computed;
+						g.computed.set(key, env.computed);
+					}
+					g.cells.set(key, cell);
+					if (env.deps?.length) g.deps.set(key, new Set(env.deps));
+					if (env.ranges?.length) g.ranges.set(key, env.ranges);
+				}
+				const ds = this.spreadsheet.peek(this.spreadsheet.dk(key), s, m, r);
+				if (ds?.length) g.dependents.set(key, new Set(ds));
+				return true;
+			};
+			fn.syncRangeIndex = (that: A, key: A, oldBoxes: RangeBox[], newBoxes: RangeBox[], s: S, m: S, r: S) => {
+				for (const sh of new Set([...oldBoxes, ...newBoxes].map(b => b.sheet ?? ""))) {
+					const idx: RangeEntry[] = (this.spreadsheet.peek(this.spreadsheet.rk(sh), s, m, r) ?? []).filter((e: RangeEntry) => e.t !== key);
+					for (const box of newBoxes) if ((box.sheet ?? "") === sh) idx.push({t: key, box});
+					that.writeCell(this.spreadsheet.rk(sh), idx, s, m, r);
+				}
+			};
+			fn.loadSlice = (g: SpreadsheetGraphState, seen: Set<S>, roots: S[], newDeps: I<S>, s: S, m: S, r: S) => {
+				const idx = new Map<S, RangeEntry[]>();
+				const rangeDependents = (key: S): S[] => {
+					const sheet = parseCellRef(key).sheet ?? "";
+					if (!idx.has(sheet)) idx.set(sheet, this.spreadsheet.peek(this.spreadsheet.rk(sheet), s, m, r) ?? []);
+					return idx
+						.get(sheet)!
+						.filter(e => boxContains(e.box, key))
+						.map(e => e.t);
+				};
+
+				for (const r of roots) this.spreadsheet.load(g, seen, r, s, m, r);
+				for (const r of roots) for (const d of g.deps.get(r) ?? []) this.spreadsheet.load(g, seen, d, s, m, r); // old inputs
+				for (const d of newDeps) this.spreadsheet.load(g, seen, d, s, m, r); // new inputs
+
+				const queued = new Set(roots); // separate from `seen`: a cell loaded as an input must still be queued as a dependent
+				const queue = [...roots];
+				for (let i = 0; i < queue.length; i++) {
+					const cur = queue[i];
+					for (const dep of new Set([...(g.dependents.get(cur) ?? []), ...rangeDependents(cur)])) {
+						this.spreadsheet.load(g, seen, dep, s, m, r);
+						if (queued.has(dep)) continue;
+						queued.add(dep);
+						queue.push(dep);
+						for (const input of g.deps.get(dep) ?? []) this.spreadsheet.load(g, seen, input, s, m, r);
+					}
+				}
+			};
+			fn.tick = (that: A, sheet: S, s: S, m: S, r: S) => {
+				const vols: S[] = this.spreadsheet.peek(this.spreadsheet.vk(sheet), s, m, r) ?? [];
+				if (!vols.length) return;
+				const {g, seen} = this.spreadsheet.openGraph(s, m, r);
+				this.spreadsheet.loadSlice(g, seen, vols, [], s, m, r);
+				this.spreadsheet.persist(that, g, sheet, recalculateDirty(g, vols, []), [], false, s, m, r);
+			};
+			fn.commit = (that: A, sheet: S, ref: S, raw: A, s: S, m: S, r: S) => {
+				const key = normalizeCellRef(ref, sheet);
+				let newDeps = new Set<string>();
+				if (isFormula(raw)) { try { newDeps = collectDependencies(qualifyAst(parseFormula(raw), sheet)); } catch {} }
+				const vols: string[] = this.spreadsheet.peek(this.spreadsheet.vk(sheet), s, m, r) ?? [];
+
+				const {g, seen} = this.spreadsheet.openGraph(s, m, r);
+				this.spreadsheet.loadSlice(g, seen, [key, ...vols], newDeps, s, m, r);
+
+				const oldDeps = new Set(g.deps.get(key) ?? []);
+				const changed = raw === undefined ? clearGraphCellInPlace(g, ref, sheet) : writeGraphCellInPlace(g, ref, raw, sheet);
+
+				for (const k of changed) {
+					const env = {raw: g.cells.get(k)?.raw, computed: this.spreadsheet.visible(g, k) ?? 0, deps: [...(g.deps.get(k) ?? [])], t: Date.now()};
+					that.writeCell(this.spreadsheet.envKeyOf(k), env, s, m, r);
+					const h = this.spreadsheet.peek(`${this.spreadsheet.envKeyOf(k)}#h`, s, m, r) ?? [];
+					that.writeCell(`${this.spreadsheet.envKeyOf(k)}#h`, [...h, {raw: env.raw, computed: env.computed, t: env.t}].slice(-this.spreadsheet.HISTORY_CAP), s, m, r);
+				}
+
+				this.syncNumeric(g, changed); 
+
+				for (const d of new Set([...oldDeps, ...(g.deps.get(key) ?? [])])) {
+					that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);
+				}
+			};
+			fn.persist = (that: A, g: SpreadsheetGraphState, sheet: S, changed: Set<S>, depKeys: I<S>, history: B, s: S, m: S, r: S) => {
+				const rows = new Map<S, N>();
+				for (const k of changed) {
+					const cell = g.cells.get(k);
+					const env = {raw: cell?.raw, computed: this.spreadsheet.visible(g, k) ?? 0, deps: [...(g.deps.get(k) ?? [])], ranges: g.ranges.get(k) ?? [], volatile: !!cell?.volatile, t: Date.now()};
+					that.writeCell(this.spreadsheet.envKeyOf(k), env, s, m, r);
+					if (history && !env.volatile) {
+						const h = this.spreadsheet.peek(`${this.spreadsheet.envKeyOf(k)}#h`, s, m, r) ?? [];
+						that.writeCell(`${this.spreadsheet.envKeyOf(k)}#h`, [...h, {raw: env.raw, computed: env.computed, t: env.t}].slice(-this.spreadsheet.HISTORY_CAP), s, m, r);
+					}
+					if (cell) {
+						const p = parseCellRef(k),
+							sh = p.sheet ?? "";
+						rows.set(sh, Math.max(rows.get(sh) ?? 0, p.row));
+					}
+				}
+				this.syncNumeric(g, changed);
+				for (const d of depKeys) that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);
+				const rt = r
+				for (const [sh, r] of rows) {                                       // used-row extent per sheet (grow only)
+					if (r > (this.spreadsheet.peek(this.spreadsheet.xk(sh), s, m, rt)?.r ?? 0)) that.writeCell(this.spreadsheet.xk(sh), { r }, s, m, rt)
+				}
+
+				const before: S[] = this.spreadsheet.peek(this.spreadsheet.vk(sheet), s, m, r) ?? [];
+				const vols = new Set(before);
+				for (const k of changed) g.cells.get(k)?.volatile ? vols.add(k) : vols.delete(k);
+				if (vols.size !== before.length || before.some(k => !vols.has(k))) that.writeCell(this.spreadsheet.vk(sheet), [...vols], s, m, r);
+			};
+			fn.openGraph = (s: S, m: S, r: S) => {
+				const g = createSpreadsheetGraph(),
+					seen = new Set<S>();
+				g.fetch = k => {
+					this.spreadsheet.load(g, seen, k, s, m, r);
+					return g.cells.get(k);
+				}; // INDIRECT / OFFSET / range members
+				g.extent = sheet => this.spreadsheet.peek(this.spreadsheet.xk(sheet ?? ""), s, m, r)?.r ?? 0;
+				return {g, seen};
+			};
+			return fn;
+		})();
+		// #endregion
+		//                                                                                                              USE SPREADSHEET
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		public useSpreadsheet = (() => {
+			const commit = (that: A, sheet: S, ref: S, raw: A, s: S, m: S, r: S) => {
+				const key = normalizeCellRef(ref, sheet);
+
+				let newDeps = new Set<string>();
+				if (isFormula(raw)) { try { newDeps = collectDependencies(qualifyAst(parseFormula(raw), sheet)); } catch {} }
+				const vols: string[] = this.spreadsheet.peek<string[]>(this.spreadsheet.vk(sheet), s, m, r) ?? [];
+		
+				const {g, seen} = this.spreadsheet.openGraph(s, m, r);
+				this.spreadsheet.loadSlice(g, seen, [key, ...vols], newDeps, s, m, r);
+		
+				const oldDeps = new Set(g.deps.get(key) ?? []);
+				const changed = raw === undefined ? clearGraphCellInPlace(g, ref, sheet) : writeGraphCellInPlace(g, ref, raw, sheet);
+		
+				for (const k of changed) {
+					const env = {raw: g.cells.get(k)?.raw, computed: this.spreadsheet.visible(g, k) ?? 0, deps: [...(g.deps.get(k) ?? [])], t: Date.now()};
+					that.writeCell(this.spreadsheet.envKeyOf(k), env, s, m, r);
+					const h = this.spreadsheet.peek<A[]>(`${this.spreadsheet.envKeyOf(k)}#h`, s, m, r) ?? [];
+					that.writeCell(`${this.spreadsheet.envKeyOf(k)}#h`, [...h, {raw: env.raw, computed: env.computed, t: env.t}].slice(-this.spreadsheet.HISTORY_CAP), s, m, r);
+				}
+		
+				this.syncNumeric(g, changed);
+		
+				for (const d of new Set([...oldDeps, ...(g.deps.get(key) ?? [])])) {
+					that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);
+				}
+			};
+			const fn = (sheet: S, cell: S, v?: A, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none", chain?: CHAIN) => {
+				const seed =
+					v === undefined ? undefined : (
+						() => {
+							commit(this, sheet, cell, typeof v === "function" ? v() : v, s, m, r);
+							return this.spreadsheet.peek(this.spreadsheet.envKey(sheet, cell), s, m, r);
+						}
+					);
+				const [getter, setter] = this.hub.drs.useCell(this.spreadsheet.envKey(sheet, cell), seed, s, m, r, type);
+
+				const read = (ref: S) => this.spreadsheet.peek(this.spreadsheet.envKey(sheet, ref), s, m, r);
+				const write = (ref: S, raw: A) => commit(this, sheet, ref, raw, s, m, r);
+
+
+				return [getter, setter] as const;
+			};
+			fn.grid = (sheet: S, cell: S, v?: A, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none", chain?: CHAIN) => {
+				const seed =
+					v === undefined ? undefined : (
+						() => {
+							commit(this, sheet, cell, typeof v === "function" ? v() : v, s, m, r);
+							return this.spreadsheet.peek(this.spreadsheet.envKey(sheet, cell), s, m, r);
+						}
+					);
+				const [getter, setter] = this.hub.drs.useCell(seed, this.spreadsheet.envKey(sheet, cell), s, m, r, type);
+
+				const read = (ref: S) => this.spreadsheet.peek(this.spreadsheet.envKey(sheet, ref), s, m, r);
+				const write = (ref: S, raw: A) => commit(this, sheet, ref, raw, s, m, r);
+				const rt = r
+				// opts: the bag of tricks
+				const opts = {
+					sheet,
+					cell,
+					envelope: getter, //env, // { raw, computed, deps, t }
+					raw: getter, //env?.raw, // this cell's raw: "=SUM(B1:B2)" or literal
+					deps: getter, //env?.deps ?? [],
+					dependents: this.spreadsheet.peek(this.spreadsheet.dk(normalizeCellRef(cell, sheet)), s, m, r) ?? [],
+
+					get: (ref: S) => read(ref)?.computed, // any cell, computed
+					getRaw: (ref: S) => read(ref)?.raw,
+					set: write, // opts.set("B1", 500)
+					formula: (ref: S, expr: S) => write(ref, this.spreadsheet.spreadsheetFormula(expr)),
+					clear: (ref: S) => write(ref, undefined),
+					setMany: (edits: Iterable<readonly [S, A]>) => {
+						for (const [r, raw] of edits) write(r, raw);
+					},
+					fill: (anchor: S, block: A[][]) => {
+						const a = parseCellRef(anchor, sheet);
+						block.forEach((row, ri) => row.forEach((raw, ci) => write(`${indexToCol(colToIndex(a.col) + ci)}${a.row + ri}`, raw)));
+					},
+					range: (ref: string) => this.spreadsheet.rangeKeys(ref, sheet).map(r => r.map(k => this.spreadsheet.peek(this.spreadsheet.envKeyOf(k), s, m, rt)?.computed ?? 0)),
+					rawRange: (ref: string) => this.spreadsheet.rangeKeys(ref, sheet).map(r => r.map(k => this.spreadsheet.peek(this.spreadsheet.envKeyOf(k), s, m, rt)?.raw)),
+					history: (ref: S = cell) => this.spreadsheet.peek(`${this.spreadsheet.envKey(sheet, ref)}#h`, s, m, r) ?? [],
+				};
+
+				return [getter, setter, opts] as const;
+			};
+			return fn;
+		})();
+		// #endregion 
+		//                                                                                                                  [CONSTANTS] 
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		public compile(ast: ASTNode): Program | undefined {
+			const code: N[] = [];
+			const consts: N[] = [];
+			const ranges: Int32Array[] = [];
+			let ok = true;
+
+			const rangePids = (node: ASTNode): N[] | undefined => {
+				if (node.type === "CellRef") return [this.pids.intern(cellKey(node.col, node.row, node.sheet))];
+				if (node.type !== "Range") return undefined;
+				const c1 = colToIndex(node.start.col), c2 = colToIndex(node.end.col);
+				const r1 = node.start.row, r2 = node.end.row;
+				const out: N[] = [];
+				for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++)
+					for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++)
+						out.push(this.pids.intern(cellKey(indexToCol(c), r, node.sheet)));
+				return out;
+			};
+			const AGG: Partial<Record<S, N>> = {
+				SUM: VM_OP.SUM_RANGE, AVERAGE: VM_OP.AVG_RANGE,
+				MIN: VM_OP.MIN_RANGE, MAX: VM_OP.MAX_RANGE, COUNT: VM_OP.COUNT_RANGE,
+			};
+
+			const emit = (node: ASTNode): V => {
+				if (!ok) return;
+				switch (node.type) {
+					case "Number": code.push(VM_OP.PUSH_CONST, consts.length); consts.push(node.value); return;
+					case "CellRef": code.push(VM_OP.PUSH_CELL, this.pids.intern(cellKey(node.col, node.row, node.sheet))); return;
+					case "BinOp": {
+						const op = { "+": VM_OP.ADD, "-": VM_OP.SUB, "*": VM_OP.MUL, "/": VM_OP.DIV }[node.op];
+						if (op === undefined) { ok = false; return; } // comparisons, &, ^ — outside this VM
+						emit(node.left); emit(node.right); code.push(op, 0); return;
+					}
+					case "FunctionCall": {
+						const opcode = node.args.length === 1 && AGG[node.name];
+						const pidList = opcode && rangePids(node.args[0]);
+						if (!opcode || !pidList) { ok = false; return; } // VLOOKUP, text fns, SUMIF, lambdas, etc.
+						code.push(opcode, ranges.length);
+						ranges.push(Int32Array.from(pidList));
+						return;
+					}
+					default: ok = false;
+				}
+			};
+
+			emit(ast);
+			if (!ok) return undefined;
+			code.push(VM_OP.RET, 0);
+			return { code: Int32Array.from(code), consts: Float64Array.from(consts), ranges };
+		}
+		public capacity: N;
+		public mask: N;
+		public pidCapacity: N;
+		public schedule: readonly N[];
+		public shared: B;
+		public rings: I32[] = [];
+		public CTRL = 16;
+		public ctrl: I32;
+		public available: I32[] = [];
+		public clock: I32;
+		public phaseIndex: I32;
+		public running: I32;
+		public pidToSlot: I32;
+		public dirty: U32;
+		public f64: F64;
+		public u32: U32;
+		public i32: I32;
+		public bytes: U8;
+		public f64Tail = 0;
+		public u32Tail = 0;
+		public i32Tail = 0;
+		public byteTail = 0;
+		public maxBatch: N;
+		public wait: WaitStrategy;
+		public handlers: AR< | ((ring: I32, from: N, to: N, epoch: N, d: this ) => V) | NU > = [];
+		constructor() { }
+		// #endregion
+		//                                                                                                                   [HANDLERS] 
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		public sub( op: OpKind, handler: ( ring: I32, from: N, to: N, epoch: N, d: this ) => V  ): this {
+		this.handlers[op] = handler;
+		return this;
+		}
+	/*======================================================================
+		MULTI-PRODUCER CLAIM / PUBLISH
+		Claim the next sequence for a lane. This is a true multi-producer sequencer: - CAS reserves a unique sequence. - The availability buffer marks that exact sequence published. - Consumers never rely on a single global “highest published” value.
+		====================================================================== */
+		public ctrlAt(lane: N, field: number): number { return lane * this.CTRL + field;  }
+		public claim(lane: number): number {
+		const next = this.ctrlAt(lane, 0);
+		const stall = this.ctrlAt(lane, 4);
+		const claimed = this.ctrlAt(lane, 5);
+	
+		let spin = 0;
+	
+		for (;;) {
+			const seq = Atomics.load(this.ctrl, next);
+			const wrap = seq - this.capacity;
+			const gate = Atomics.load(this.ctrl, this.ctrlAt(lane, 1));
+	
+			if (gate > wrap) {
+			if (Atomics.compareExchange(this.ctrl, next, seq, seq + 1) === seq) {
+				Atomics.add(this.ctrl, claimed, 1);
+				return seq;
+			}
+			continue;
+			}
+	
+			Atomics.add(this.ctrl, stall, 1);
+	
+			if (this.wait === "spin") {
+			spin++;
+			continue;
+			}
+	
+			if (this.wait === "yield") {
+			this.yieldNow();
+			continue;
+			}
+	
+			Atomics.wait(this.ctrl, next, seq, 1);
+			spin = 0;
+		}
+		}
+		// Publish a claimed record. The record must be fully written BEFORE this call. The availability buffer is the publication barrier.
+		public publish(lane: number, seq: number): void {
+		const avail = this.available[lane];
+		Atomics.store(avail, seq & this.mask, seq + 1);
+	
+		const pub = this.ctrlAt(lane, 6);
+		Atomics.add(this.ctrl, pub, 1);
+	
+		const waiting = this.ctrlAt(lane, 0);
+		Atomics.notify(this.ctrl, waiting);
+		}
+		// One-shot enqueue. Returns: >= 0 — published sequence  -1  — nonblocking mode and lane was full
+		public emit( op: OpKind, pid: N, slot: N, a = 0, b = 0, c = 0, ext = 0, block = true  ): N {
+		const lane = this.laneFor(op);
+		const ring = this.rings[lane];
+	
+		if (!block && this.isFull(lane)) return -1;
+	
+		const seq = this.claim(lane);
+		const base = (seq & this.mask) * REC;
+		const epoch = Atomics.load(this.clock, 0);
+	
+		ring[base + F_OP] = op;
+		ring[base + F_PID] = pid;
+		ring[base + F_SLOT] = slot;
+		ring[base + F_A] = a;
+		ring[base + F_B] = b;
+		ring[base + F_C] = c;
+		ring[base + F_EPOCH] = epoch;
+		ring[base + F_EXT] = ext;
+	
+		this.publish(lane, seq);
+		return seq;
+		}
+		// #endregion
+		//                                                                                                         [PID / SLOT / DIRTY] 
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		public bind(pid: N, slot: N): V { Atomics.store(this.pidToSlot, pid, slot); }
+		public unbind(pid: N): V { Atomics.store(this.pidToSlot, pid, -1); }
+		public slot(pid: N): N { return Atomics.load(this.pidToSlot, pid); }
+		public dirtyMark(pid: N): V { this.dirty[pid >>> 5] |= 1 << (pid & 31);  }
+		public dirtyPeek(pid: N): B { return (this.dirty[pid >>> 5] & (1 << (pid & 31))) !== 0;  }
+		public dirtyTake(pid: N): B {
+		const w = pid >>> 5;
+		const bit = 1 << (pid & 31);
+		const word = this.dirty[w];
+	
+		if ((word & bit) === 0) return false;
+	
+		this.dirty[w] = word & ~bit;
+		return true;
+		}
+		public pids = new PidTable();           
+		public ensureNumericSlot(pid: N): N {
+			const existing = this.slot(pid);
+			if (existing >= 0) return existing;
+			const s = this.allocF64Slot();
+			this.bind(pid, s);
+			return s;
+		}
+		public releaseNumericSlot(pid: N): V {
+			const s = this.slot(pid);
+			if (s < 0) return;
+			this.unbind(pid);
+			this.freeF64Slot(s);
+		}
+		syncNumeric(g: SpreadsheetGraphState, changed: Set<S>): V {
+			for (const k of changed) {
+				const computed = this.spreadsheet.visible(g, k);
+				const pid = this.pids.intern(k);
+				if (typeof computed === "number" && Number.isFinite(computed)) {
+					this.storeComputed(this.ensureNumericSlot(pid), computed);
+				} else {
+					this.releaseNumericSlot(pid);
+				}
+			}
+		}
+		// #endregion
+		//                                                                                                                 [SOA ARENAS] 
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		public f64Free: N[] = [];
+		public f64Bits: BigInt64Array;          // init in constructor, right after this.f64 is created:
+		public scratchF = new Float64Array(1);
+		public scratchI = new BigInt64Array(this.scratchF.buffer);
+		public allocF64Slot(): N {//                           reuse a freed slot before growing the tail
+			if (this.f64Free.length) return this.f64Free.pop()!;
+			const at = this.f64Tail++;
+			if (at >= this.f64.length) throw new Error("f64 arena exhausted — raise f64Capacity");
+			return at;
+		}
+		public freeF64Slot(at: N): V { this.f64Free.push(at); }
+		public storeComputed(slot: N, value: N): V { this.f64[slot] = value; }
+		public loadComputed(slot: N): N { return this.f64[slot]; }
+		public allocF64(value: N): N {
+		const at = this.f64Tail++;
+		this.f64[at] = value;
+		return at;
+		}
+		public allocU32(value: N): N {
+		const at = this.u32Tail++;
+		this.u32[at] = value;
+		return at;
+		}
+		public allocI32(value: N): N {
+		const at = this.i32Tail++;
+		this.i32[at] = value;
+		return at;
+		}
+		public allocBytes(data: U8): N {
+		const at = this.byteTail;
+		this.bytes.set(data, at);
+		this.byteTail += data.length;
+		return at;
+		}
+		public f64At(offset: N): N {    return this.f64[offset];  }
+		public u32At(offset: N): N {    return this.u32[offset];  }
+		public i32At(offset: N): N {    return this.i32[offset];  }
+		public bytesAt(offset: N, length: N): U8 {    return this.bytes.subarray(offset, offset + length);  }
+		public exportBuffers() {
+			return {
+				rings: this.rings.map(r => r.buffer), ctrl: this.ctrl.buffer,
+				available: this.available.map(a => a.buffer), clock: this.clock.buffer,
+				phaseIndex: this.phaseIndex.buffer, running: this.running.buffer,
+				pidToSlot: this.pidToSlot.buffer, dirty: this.dirty.buffer,
+				f64: this.f64.buffer, u32: this.u32.buffer, i32: this.i32.buffer, bytes: this.bytes.buffer,
+				capacity: this.capacity, pidCapacity: this.pidCapacity, schedule: this.schedule, maxBatch: this.maxBatch,
+			};
+		}
+		static fromBuffers(buf: ReturnType<InstanceType<typeof SITH>["spreadsheet"]["exportBuffers"]>): SITH {
+			const self = Object.create(SITH.prototype); //        bypass the allocating constructor entirely
+			self.capacity = buf.capacity; self.mask = buf.capacity - 1; self.pidCapacity = buf.pidCapacity;
+			self.schedule = buf.schedule; self.maxBatch = buf.maxBatch; self.wait = "yield"; self.shared = true;
+			self.rings = buf.rings.map((b: SharedArrayBuffer) => new Int32Array(b));
+			self.ctrl = new Int32Array(buf.ctrl);
+			self.available = buf.available.map((b: SharedArrayBuffer) => new Int32Array(b));
+			self.clock = new Int32Array(buf.clock); self.phaseIndex = new Int32Array(buf.phaseIndex);
+			self.running = new Int32Array(buf.running); self.pidToSlot = new Int32Array(buf.pidToSlot);
+			self.dirty = new Uint32Array(buf.dirty);
+			self.f64 = new Float64Array(buf.f64); self.f64Bits = new BigInt64Array(buf.f64);
+			self.u32 = new Uint32Array(buf.u32); self.i32 = new Int32Array(buf.i32); self.bytes = new Uint8Array(buf.bytes);
+			self.f64Tail = 0; self.f64Free = []; self.scratchF = new Float64Array(1);
+			self.scratchI = new BigInt64Array(self.scratchF.buffer);
+			self.handlers = [];
+			return self;
+		}
+		public exportArena() {
+			return { f64: this.f64.buffer, pidToSlot: this.pidToSlot.buffer, levelCounter: this.levelCounter.buffer };
+		}
+		// #endregion
+		//                                                                                                           [CONSUMER BARRIER] 
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	/*======================================================================
+		Return the highest contiguous available sequence for a lane. This scans only the availability window, then caches the result. It avoids the classic problem of a slow producer blocking visibility of later producers.
+		====================================================================== */
+		public availableThrough(lane: number): number {
+		const ctrlBase = this.ctrlAt(lane, 0);
+		const gateField = this.ctrlAt(lane, 1);
+		const cacheField = this.ctrlAt(lane, 2);
+	
+		const next = Atomics.load(this.ctrl, ctrlBase);
+		let gate = Atomics.load(this.ctrl, gateField);
+		let cached = Atomics.load(this.ctrl, cacheField);
+	
+		if (cached >= gate) {
+			const avail = this.available[lane];
+			const cap = this.capacity;
+	
+			let scan = cached;
+			const limit = Math.min(next, cached + this.maxBatch);
+	
+			while (scan < limit) {
+			const flag = Atomics.load(avail, scan & (cap - 1));
+			if (flag <= scan) break;
+			scan++;
+			}
+	
+			cached = scan;
+			Atomics.store(this.ctrl, cacheField, cached);
+		}
+	
+		return cached;
+		}
+		// #endregion
+		//                                                                                                     [PHASE-LOCKED EXECUTION] 
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		/*======================================================================
+		Drain exactly one scheduled phase. A phase is homogeneous: READ only, WRITE only, DELETE only, etc.
+		====================================================================== */
+		public drainPhase(limit = this.maxBatch): number {
+		const schedule = this.schedule;
+		const lane = schedule[Atomics.load(this.phaseIndex, 0)];
+		const handler = this.handlers[lane];
+	
+		if (!handler) {
+			this.nextPhase();
+			return 0;
+		}
+	
+		const ring = this.rings[lane];
+		const gateField = this.ctrlAt(lane, 1);
+	
+		const available = this.availableThrough(lane);
+		const head = Atomics.load(this.ctrl, gateField);
+	
+		const end = Math.min(available, head + limit);
+	
+		if (end <= head) {
+			this.nextPhase();
+			return 0;
+		}
+	
+		const epoch = Atomics.load(this.clock, 0);
+	
+		// Batch boundary is handed to the handler.
+		// The handler can specialize contiguous execution.
+		handler(ring, head, end, epoch, this);
+	
+		Atomics.store(this.ctrl, gateField, end);
+	
+		const consumedField = this.ctrlAt(lane, 7);
+		const batchField = this.ctrlAt(lane, 8);
+		const maxBatchField = this.ctrlAt(lane, 9);
+	
+		const count = end - head;
+	
+		Atomics.add(this.ctrl, consumedField, count);
+		Atomics.add(this.ctrl, batchField, 1);
+	
+		const prevMax = Atomics.load(this.ctrl, maxBatchField);
+		if (count > prevMax) Atomics.store(this.ctrl, maxBatchField, count);
+	
+		this.nextPhase();
+		return count;
+		} 
+		public revolution(limit = this.maxBatch): number {
+		let total = 0;
+	
+		for (let i = 0; i < this.schedule.length; i++) {
+			total += this.drainPhase(limit);
+		}
+	
+		Atomics.add(this.clock, 0, 1);
+		return total;
+		} 
+		public drainAll(limit = this.maxBatch): number {
+		let total = 0;
+	
+		for (;;) {
+			const before = total;
+			total += this.revolution(limit);
+			if (total === before) break;
+		}
+	
+		return total;
+		}
+		public levelCounter = new Int32Array(new SharedArrayBuffer(4));
+		public workers: { post: (msg: A, transfer?: A[]) => V }[] = [];
+		ownerOf(pid: N): N { return pid % this.workers.length; }
+		registerWorker(post: (msg: A, transfer?: A[]) => V): V { this.workers.push({ post }); }
+		sendProgram(pid: N, program: Program): V {
+			this.workers[this.ownerOf(pid)].post({ type: "register", pid, program });
+		}
+		dispatchLevel(readyPids: N[]): V {
+			const byWorker = new Map<N, N[]>();  
+			for (const pid of readyPids) {
+				const w = this.ownerOf(pid);
+				(byWorker.get(w) ?? byWorker.set(w, []).get(w)!).push(pid);
+			}
+			Atomics.store(this.levelCounter, 0, readyPids.length);
+			for (const [w, pids] of byWorker) {
+				const buf = Int32Array.from(pids);
+				this.workers[w].post({ type: "computeLevel", pids: buf }, [buf.buffer]);  
+			}
+		}
+		recalcParallel(levels: N[][]): V {
+			for (const level of levels) {
+				this.dispatchLevel(level);
+				while (Atomics.load(this.levelCounter, 0) > 0) {
+					Atomics.wait(this.levelCounter, 0, Atomics.load(this.levelCounter, 0));
+				}
+			}
+		}
+		// #endregion
+		//                                                                                                            [CLOCK / CONTROL] 
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		public tick(): number { return Atomics.load(this.clock, 0);  }
+		public currentPhase(): OpKind { return this.schedule[Atomics.load(this.phaseIndex, 0)] as OpKind;  }
+		public start(): void {    Atomics.store(this.running, 0, 1);  }
+		public stop(): void {
+		Atomics.store(this.running, 0, 0);
+		Atomics.notify(this.running, 0);
+		}
+		public isRunning(): boolean {    return Atomics.load(this.running, 0) === 1;  }
+		// #endregion
+		//                                                                                                                      [STATS] 
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		public stats(lane: number): LANE_STATS {
+		const b = lane * this.CTRL;
+	
+		return {
+			claimed: Atomics.load(this.ctrl, b + 5),
+			published: Atomics.load(this.ctrl, b + 6),
+			consumed: Atomics.load(this.ctrl, b + 7),
+			batches: Atomics.load(this.ctrl, b + 8),
+			maxBatch: Atomics.load(this.ctrl, b + 9),
+			fullStalls: Atomics.load(this.ctrl, b + 4),
+		};
+		}
+		public pending(lane: number): number {
+		const published = Atomics.load(this.ctrl, this.ctrlAt(lane, 6));
+		const consumed = Atomics.load(this.ctrl, this.ctrlAt(lane, 7));
+		return published - consumed;
+		}
+		// #endregion
+		//                                                                                                                   [INTERNAL] 
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		private laneFor(op: OpKind): number {    return op;  }
+		private isFull(lane: number): boolean {
+		const next = Atomics.load(this.ctrl, this.ctrlAt(lane, 0));
+		const gate = Atomics.load(this.ctrl, this.ctrlAt(lane, 1));
+		return next - gate >= this.capacity;
+		}
+		private nextPhase(): void {
+		const next = (Atomics.load(this.phaseIndex, 0) + 1) % this.schedule.length;
+		Atomics.store(this.phaseIndex, 0, next);
+		}
+		private yieldNow(): void {
+		if (typeof scheduler !== "undefined" && "yield" in scheduler) {
+			scheduler.yield();
+		} else if (typeof setImmediate === "function") {
+			setImmediate(() => {});
+		} else {
+			setTimeout(() => {}, 0);
+		}
+		}
+		// #endregion
+	})();
+
+
+
+    public batching_raptor = new (class PALPATINE {// BATCHING NGIN: 1.5B OPS/SEC
 		public hub: SITH;
 		public root: DEATH_STAR;
 		/*
@@ -9234,8 +14702,7 @@ export class SITH {
 		private wait: WaitStrategy;
 		private handlers: AR< | ((ring: I32, from: N, to: N, epoch: N, d: this ) => V) | NU > = [];
 		constructor(SITH: SITH) {
-			this.hub = SITH;
-			this.root = SITH.root;
+			
 			const capacity = SITH.capacity ?? 1 << 18;
 		  	const pidCapacity = SITH.pidCapacity ?? 1 << 20;
 			if (!pow2(capacity)) throw new Error("capacity must be a power of two");
@@ -9556,20 +15023,20 @@ export class SITH {
 		}
 		// #endregion
 	})(this);
-    public vader = new (class VADER {// DISRUPTOR STREAMING AND DUPLEXING: 2.03B OPS/SEC
+    public stream_raptor = new (class VADER {// DISRUPTOR STREAMING AND DUPLEXING: 2.03B OPS/SEC
 		//                                                                                                                  [CONSTANTS]
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		public r: A = "THE_WIZARD_ROOT_REG";
 		public m: A = "SAURON_MASTER_REG";
 		public s: A = "SAURON_SLAVE_REG";
 		public k: A = "__SAURON__";
-		private capacity: number;
-		private hub: SITH;
-		private root: DEATH_STAR;
+		public capacity: number;
+		public hub: SITH;
+		public root: DEATH_STAR;
 		// ======================================================================
 		// Channel table: open-addressed hash of (r, m, s, k)
 		// ======================================================================
-		private channelMask: number;
+		public channelMask: number;
 		private channelKey: Int32Array; // hash bucket -> channel id or -1
 		private channelState: Uint8Array; // 0 = empty, 1 = used, 2 = deleted
 		private channelHash: Int32Array; // stored hash to speed probing
@@ -9830,9 +15297,9 @@ export class SITH {
 				}
 			}
 			fn.switch = <T = A> (p: U, k: A, s: S = this.s, m: S = this.m, r: S = this.r,  adapter = "ws") => {
-				const msg: SIG_BUS_Message = { id: this.hub.root.REGISTRY._sid(), r: r, m: m, s: s, k: k, p: { p }, ts: Date.now(), _ack: false };
+				const msg: SIG_BUS_Message = { id: this.hub.root.reg._sid(), r: r, m: m, s: s, k: k, p: { p }, ts: Date.now(), _ack: false };
 	
-				let v: A = this.DISPATCH(msg, adapter);
+				let v: A = this.root.mesh.DISPATCH(msg, adapter);
 				if (v !== undefined && !(v instanceof Promise)) {
 					return MaybePromise<T>(v);
 				} else {
@@ -10214,1393 +15681,7 @@ export class SITH {
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	
 	})(this);
-	public MAREK = class MAREK {
-		public r: S = "THE_WIZARD_ROOT_REG";
-		public m: S = "SAURON_MASTER_REG";
-		public s: S = "SAURON_SLAVE_REG";
-		public k: S = "__SAURON__";
-		public mesh_store: THE_MESH_STORE;
-		public root: DEATH_STAR;
-		public hub: SITH;
-		public state: RAVEN["state"] 
-		public bus: SITH["marek"] 
-		constructor(hub: SITH) {
-			this.root = hub.root;
-			this.hub = hub;
-			this.r = hub.r;
-			this.m = hub.m;
-			this.s = hub.s;
-			this.k = hub.k;
-			this.state = hub.root.state.state
-			this.bus = hub.root.bus.marek
-		}
-		
-		public send = (() => {
-				//const msg: SIG_BUS_Message = { id: this.hub.REGISTRY._sid(), r: r, m: m, s: s, k: k,  p: p, ts: Date.now(), _ack: false };
-			const fn = <T = A>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, adapter = "ws") => {
-				let v: A = this.DISPATCH({ id: this.hub.root.REGISTRY._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
-				if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
-				else {
-					const tMs = 5000;
-					return MaybePromise( (() => {
-							return new P<T>((resolve, reject) => {
-								let timer: RT<typeof setTimeout> | UD;
-								if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
-								if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
-							});
-						})(),
-					);
-				}
-			};
-			fn.gt = (() => {
-				const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
-					const root = c === 'globalThis' ? globalThis as any : this.hub.mesh_store.THE_MESH_CACHE;
-					const rL = (root[r] ??= Object.create(null));
-					const mL = (rL[m] ??= Object.create(null));
-					const channel = mL[s] ??= Object.create(null);
-					const handler = channel[k]?.handler;
-					if (!handler) return undefined;
-					const v: A = handler(p, { r, m, s, k, p: p });
-					if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
-					else {
-						const tMs = 5000;
-						return MaybePromise( (() => {
-								return new P<T>((resolve, reject) => {
-									let timer: RT<typeof setTimeout> | UD;
-									if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
-									if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
-								});
-							})(),
-						);
-					}
-				}
-				fn.hot = (() => {
-					const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
-						const handler = this.hub.mesh_store[k]._handlers;
-						if (!handler) return undefined;
-						const v: A = handler(p, { r, m, s, k, p: p });
-						if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
-						else {
-							const tMs = 5000;
-							return MaybePromise( (() => {
-									return new P<T>((resolve, reject) => {
-										let timer: RT<typeof setTimeout> | UD;
-										if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
-										if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
-									});
-								})(),
-							);
-						}
-					}
-					return fn;
-				})();
-				return fn;
-			})();
-			fn.adapter = (() => {
-				const fn =()  => { }
-				fn.hot = (() => {
-					const fn = () =>{ }
-					return fn;
-				})();
-				return fn;
-			})();
-			fn.stream=<T = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'): T | P<T> | UD =>{
-				const root =  c === 'globalThis' ? globalThis as any : this.hub.mesh_store.THE_MESH_CACHE;
-				const rL = (root[r] ??= Object.create(null));
-				const mL = (rL[m] ??= Object.create(null));
-				const _listeners = mL[s] ??= Object.create(null);
-				const handler = _listeners[k]?.handler;
-				if (!handler) return undefined;
-				const msg: SIG_BUS_Message1 = { r, m, s, k, p: p, _ack: false };
-				const result = handler(p, msg);
-				if (handler) { for (const listener of handler) listener(msg); }
-				return result as T | P<T> | UD;
-			}
-			fn.nested = (() => {
-				const fn =(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
-					const root =  c === 'globalThis' ? globalThis as any : this.hub.mesh_store.THE_MESH_CACHE;
-					const rL = (root[r] ??= Object.create(null));
-					const mL = (rL[m] ??= Object.create(null));
-					const _listeners = mL[s] ??= Object.create(null);
-					const set = _listeners[k]?.handler;
-					if (!set) return;
-					for (const fn of set) { fn(p); }
-				 }
-				fn.hot = (() => {
-					const fn = (p: P, k: S, s: S = '_globalThis') =>{
-						const set = this.hub.mesh_store._handlers[k]?.handler;
-						if (!set) return;
-						for (const fn of set) { fn(p); }
-					 }
-					return fn;
-				})();
-				return fn;
-			})();
-			return fn;
-		})();
-		public sub = (() => {
-			const fn = ( handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh" ): () => V => {
-				// CHANNEL LEVEL
-				const channelSet = (this.mesh_store.getR(r, c)[r] ??= new Set<A>()) as Set<A>;
-				channelSet.add(handler);
-		
-				// SUB_CHANNEL LEVEL
-				const subMap = this.mesh_store.getM(m, r, c);
-				const subSet = (subMap[r] ??= new Set<A>()) as Set<A>;
-				subSet.add(handler);
-		
-				// TRIP_CHANNEL LEVEL
-				const tripMap = this.mesh_store.getS(s, m, r, c);
-				const tripSet = (tripMap[m] ??= new Set<A>()) as Set<A>;
-				tripSet.add(handler);
-		
-				// QUAD_CHANNEL LEVEL
-				const quadMap = (tripMap[k] ??= Object.create(null)) as Record<S, Set<A>>;
-				const quadSet = (quadMap[s] ??= new Set<A>()) as Set<A>;
-				quadSet.add(handler);
-		
-				return () => {
-					// QUAD_CHANNEL
-					quadSet.delete(handler);
-					if (!quadSet.size) delete quadMap[s];
-					if (!Object.keys(quadMap).length) delete tripMap[k];
-		
-					// TRIP_CHANNEL
-					tripSet.delete(handler);
-					if (!tripSet.size) delete tripMap[m];
-		
-					// SUB_CHANNEL
-					subSet.delete(handler);
-					if (!subSet.size) delete subMap[r];
-		
-					// CHANNEL
-					channelSet.delete(handler);
-					if (!channelSet.size) delete this.mesh_store.getR(r, c)[r];
-		
-					// Remove empty hierarchy nodes
-					if (!Object.keys(subMap).length) { delete this.mesh_store.getR(c, r)[m]; }
-					if (!Object.keys(tripMap).length) { delete this.mesh_store.getR(c, r)[m]; }
-				};
-			};
-			fn.hot = (handler: A, k: S ) => {
-				const root = this.mesh_store._handlers;
-				let handlers = root[k] as Set<A> | undefined;
-				if (!handlers) { handlers = new Set<A>(); root[k] = handlers as A; }
-				handlers.add(handler);
-				return () => { handlers!.delete(handler); if (handlers!.size === 0) { delete root[k]; } };
-			}
-			fn.gt = (() => {
-				const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'): () => V=> {
-					const root =  c === 'globalThis' ? globalThis as any : this.hub.mesh_store.THE_MESH_CACHE;
-					const rL = (root[r] ??= O.create(null));
-					const mL = (rL[m] ??= O.create(null));
-					const sl = mL[s] ??= O.create(null); 
-					  const channel = (sl[k] ??= Object.create(null));
-					channel.handler = handler;
-						return () => {
-							if (channel.handler === handler) {
-								channel.handler = undefined;
-							}
-						};
-				 }
-				fn.hot = (() => {
-					const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis'): () => V =>{
-						const channel =  this.hub.mesh_store._handlers[k]?.handler;
-						channel.handler = handler;
-						return () => {
-							if (channel.handler === handler) {
-								channel.handler = undefined;
-							}
-						};
-					}
-					return fn;
-				})();
-				return fn;
-			})();
-			fn.adapter = (() => {
-				const fn =( handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh")  => { }
-				fn.hot = (() => {
-					const fn = () =>{ }
-					return fn;
-				})();
-				return fn;
-			})();
-			fn.nested = (handler: (data: any) => void, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
-				if (r === this.r && m === this.m && s === this.s) {
-					const root =  this.hub.mesh_store._handlers[k]?.handler; 
-					const _listeners = root[k];
-					if (!_listeners.has(k)) {
-						_listeners.set(k, new Set());
-					}
-					_listeners[k]!.add(handler);
-					return () => {
-						const set = _listeners.get(k);
-						if (set) {
-							set.delete(handler);
-							if (set.size === 0) _listeners.delete(k);
-						}
-					};
-				} else {
-					const root = c === 'globalThis' ? globalThis as any : this.hub.mesh_store.THE_MESH_CACHE;
-					const rL = (root[r] ??= Object.create(null));
-					const mL = (rL[m] ??= Object.create(null));
-					let _listeners = mL[s] ??= Object.create(null);
-					_listeners = _listeners[k]
-					if (!_listeners.has(k)) {
-						_listeners.set(k, new Set());
-					}
-					_listeners.get(k)!.add(handler);
-					return () => {
-						const set = _listeners.get(k);
-						if (set) {
-							set.delete(handler);
-							if (set.size === 0) _listeners.delete(k);
-						}
-					};
-				}
-			};
-			fn.nested3 = (p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r) => {
-				if (r === this.r && m === this.m && s === this.s) {
-				} else {
-				}
-			};
-			return fn;
-		})();
-		async *streamGen<P = A, R = A>(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, opts: { adapter?: S } = {}): AG<R, V, U> {
-			const replyTo = this.hub.root.REGISTRY._sid();
-			const queue: R[] = [];
-			let closed = false;
-			let failure: U;
-			let wake: (() => V) | UD;
-			const handlers = this.mesh_store.getS(s, m, r).get(k);
-			if (!handlers || !handlers.size) { throw new Error(`[rift] no subscriber for k="${k}"`); }
-			const reply = (value: R | Promise<R> | typeof END) => {
-				if (value === END) { closed = true; } 
-				else if (value instanceof Error) { failure = value; }
-				else { queue.push(value as R); }
-				wake?.();
-				wake = undefined;
-			};
-			for (const handler of handlers) {
-				handler({ id: this.hub.root.REGISTRY._sid(), r: r ?? this.r, m: m ?? this.m, s: s ?? this.s, k, p: { p }, ts: Date.now(), _ack: false, replyTo, stream: true }, reply);
-			}
-			while (true) {
-				if (queue.length) { yield queue.shift()!; continue; }
-				if (failure) throw failure;
-				if (closed) return;
-				await new P<V>((resolveWake) => { wake = resolveWake; });
-			}
-		}
-		public stream = (() => {
-			function stream(handler: (msg: SIG_BUS_Message1) => V, k: S, s: S, m?: S, r?: S): () => V;
-			function stream(k: S, s: S, m?: S, r?: S): AsyncIterableIterator<SIG_BUS_Message1>;
-			function stream(handlerOrSlave: ((msg: SIG_BUS_Message1) => V) | S, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) | AsyncIterableIterator<SIG_BUS_Message1> {
-					const handler = typeof handlerOrSlave === "function" ? handlerOrSlave : undefined;
-					const global = globalThis as any;
-					const channel = (this.channels[k] ??= {});
-					if (!channel) throw new Error("Channel does not exist");
-					const listeners = (channel.push ??= new Set());
-			
-					if (handler) {
-						listeners.add(handler);
-						return () => { listeners.delete(handler); if (!listeners.size) channel.push = undefined; };
-					}
-			
-					const queue: SIG_BUS_Message1[] = [];
-					const waiters: Array<{ resolve: (value: IteratorResult<SIG_BUS_Message1>) => void }> = [];
-					let offset = 0;
-					let closed = false;
-					const listener = (msg: SIG_BUS_Message1) => {
-						if (waiters.length) { waiters.shift()!.resolve({ value: msg, done: false }); } 
-						else { queue.push(msg); }
-					};
-					listeners.add(listener);
-					const close = () => {
-						if (closed) return;
-						closed = true;
-						listeners.delete(listener);
-						if (!listeners.size) channel.push = undefined;
-						for (const waiter of waiters) { waiter.resolve({ value: undefined, done: true }); }
-						waiters.length = 0;
-						queue.length = 0;
-						offset = 0;
-					};
-			
-					const iterator: AsyncIterableIterator<SIG_BUS_Message1> = {
-						next: (): Promise<IteratorResult<SIG_BUS_Message1>> => {
-							if (offset < queue.length) {
-								const value = queue[offset++];
-								if (offset === queue.length) { queue.length = 0; offset = 0; }
-								return Promise.resolve({ value, done: false });
-							}
-							if (closed) { return Promise.resolve({ value: undefined, done: true }); }
-							return new Promise((resolve) => waiters.push({ resolve }));
-						},
-						return: async () => { close(); return { value: undefined, done: true }; },
-						[Symbol.asyncIterator](): AsyncIterableIterator<SIG_BUS_Message1> { return iterator; },
-					};
-			
-					return iterator;
-			}
-			const fn = () => stream
-			fn.request = (p: A, onChunk: (chunk: A) => V, k: S, s: S = this.s, m: S = this.m, r: S = this.r): P<V> => {
-				const streamId = this.hub.root.REGISTRY._sid();// `[${r}][${m}][${s}][${k}][${_sid()}]`.replace(/[.\[\]]/g, match => (match === "." ? "_" : ""));
-				const result = new Promise<void>((resolve, reject) => {
-					let closed = false;
-					let closeSubscription: (() => V) | UD;
-					const finish = (error?: unknown) => {
-						if (closed) return;
-						closed = true;
-						closeSubscription?.();
-						if (error) { reject(error instanceof Error ? error : new Error(String(error))); }
-						else { resolve(); }
-					};
-					closeSubscription = this.sub(
-						(data: StreamEvent) => {
-							if (closed) return;
-		
-							switch (data.type) {
-								case "chunk": onChunk(data.data); break;
-								case "done": finish(); break;
-								case "error": finish(data.error); break;
-							}
-						}, k, s, m, r, );
-		
-					try { this.send({streamId, ...p}, k, s, m, r); }
-					catch (error) { finish(error); }
-				});
-				return result;
-			};
-			fn.native = (k?: string, s = this.s, m = this.m, r = this.r): WritableStream => {
-				return new WritableStream({ write: (chunk) => { this.send(chunk, k, s, m, r) }, });
-			};
-			fn.openSync = (k: S, s?: S, m?: S, r = this.r, opts?: {windowSize?: N}) => {
-				// Like syncStream, but for continuous/unbounded emission — no known chunk count up front. Adds a bounded in-flight window so a fast sender backs off instead of flooding a slow receiver.
-				const cleanChannel = r.replace(/[\[\]]/g, "");
-				const streamId = this.hub.root.REGISTRY._sid()//`${cleanChannel}-${m}-${Math.random().toString(36).slice(2)}`.replace(/\./g, "-");
-				const windowSize = opts?.windowSize ?? 32;
-		
-				const unacked = new Map<number, {p: any; retries: number}>();
-				let nextSeq = 0;
-				let acknowledgedUpTo = -1;
-				const sendQueue: any[] = [];
-				let draining = false;
-		
-				const closeAckSub = this.sub((ackData: any) => {
-						if (typeof ackData?.seq !== "number") return;
-						unacked.delete(ackData.seq);
-						if (ackData.seq > acknowledgedUpTo) acknowledgedUpTo = ackData.seq;
-						drain(); // an ack frees a window slot — try sending more
-					},k, `sync.${streamId}:ack`, m, r, );
-		
-				const closeRetransmitSub = this.sub(async (reqData: any) => {
-						const missing = unacked.get(reqData?.seq);
-						if (missing) {missing.retries++;await this.send.gt.hot({streamId, seq: reqData.seq, data: missing.p, isRetry: true}, k, s, m, r);}
-					}, k, `sync.${streamId}:retransmit`, m, r, );
-		
-				const drain = async () => {
-					if (draining) return;
-					draining = true;
-					while (sendQueue.length > 0 && unacked.size < windowSize) {
-						const p = sendQueue.shift();
-						const seq = nextSeq++;
-						unacked.set(seq, {p, retries: 0});
-						await this.send({streamId, seq, data: p, isRetry: false}, k, s, m, r);
-					}
-					draining = false;
-				};
-		
-				return {/** Queue an op for send. Backs off automatically if the receiver hasn't acked enough of the window yet. */
-					push: (p: any) => {sendQueue.push(p);drain();},
-					pendingCount: () => unacked.size + sendQueue.length,
-					close: () => {closeAckSub();closeRetransmitSub();},
-				};
-			}; 
-			fn.sync = (k: S, s = this.s, m = this.m, r = this.r, opts: SyncStreamOptions = {}): SyncStreamSendHandle => {
-				const windowSize = opts.windowSize ?? 8;
-				const retransmitMs = opts.retransmitMs ?? 5000;
-				const inFlight = new Map<number, Outbound>();
-				let nextSeq = 0;
-				let closed = false;
-				self;
-				const unsub = this.sub( (data: unknown) => {
-						const d = data as {seq?: number} | null;
-						if (!d || typeof d.seq !== "number") return;
-						const o = inFlight.get(d.seq);
-						if (o && !o.acked) {
-							o.acked = true;
-							if (o.timer) clearTimeout(o.timer);
-							inFlight.delete(d.seq);
-						}
-					},`${k}:syncAck`,s,m,r,);
-				const unsubData = this.sub( (data: unknown) => {
-						const d = data as {sync?: boolean; seq?: number} | null;
-						if (d && d.sync === true && typeof d.seq === "number") {
-							this.send({seq: d.seq}, `${k}:syncAck`, s, m, r);
-						}
-					}, k, s, m, r, );
-		
-				const push = (p: unknown): void => {
-					if (closed) throw new Error(`syncStream ${r}: push after close`);
-					if (inFlight.size >= windowSize) { throw new Error(`syncStream ${r}: window full (${windowSize})`); }
-					const o: Outbound = {seq: nextSeq++, p, acked: false, sentAt: Date.now()};
-					inFlight.set(o.seq, o);
-					const send = () => this.send({sync: true, seq: o.seq, p: o.p}, k, s, m, r);
-					send();
-					const arm = () => {o.timer = setTimeout(() => {if (!o.acked) { send(); arm(); } }, retransmitMs); };
-					arm();
-				};
-		
-				const handle: SyncStreamSendHandle = {
-					push,
-					pendingCount: () => inFlight.size,
-					close: () => {
-						closed = true;
-						for (const o of inFlight.values()) if (o.timer) clearTimeout(o.timer);
-						unsub();
-						unsubData();
-					},
-				};
-				return handle;
-			};
-			fn.hot = (key: string, fn: (message: ChannelMessage) => void, s: string = this.s, m: string = this.m, r: string = this.r, ): () => void => {
-					const channel = this._hot[key]
-					const streamLink: StreamLink = { fn, prev: channel.streamTail, next: undefined, };
-					if (channel.streamTail !== undefined) {channel.streamTail.next = streamLink;}
-					else {channel.streamHead = streamLink;}
-					channel.streamTail = streamLink;
-					return () => {
-						const previous = streamLink.prev;
-						const next = streamLink.next;
-			
-						if (next !== undefined) next.prev = previous;
-						else channel.streamTail = previous;
-			
-						if (previous !== undefined) previous.next = next;
-						else channel.streamHead = next;
-					};
-			}
-			return fn;
-		})();
-		public handler = (() => {
-			const fn = (handler: (d: A) => A, k: S = this.k, s: S = '_globalThis', m: S = this.m, r: S = this.r, binary = false): (() => V) => {
-				return this.sub(
-					async (inboundReq: any) => {
-						if (!inboundReq || !inboundReq.streamId) return;
-						const streamId = inboundReq.streamId;
-						let isCancelled = false;
-						let closeControlSubscription: (() => void) | null = null;
-						try {// 1. Await the control stream cancellation listener safely
-							closeControlSubscription = this.sub( () => { isCancelled = true; }, `stream.${streamId}:cancel`, s, m, r, );
-							const result = await handler(inboundReq);
-							let data = result;
-							if (result && typeof result === "object" && "ok" in result && "data" in result) { data = result.data; }
-							if (typeof data === "function") { data = data(); }
-							
-							if (data && typeof data[Symbol.asyncIterator] === "function") {// Core Async Generator Stream Loop
-								for await (const chunk of data) {
-									if (isCancelled) { if (typeof data.return === "function") { await data.return(); } break; }
-									await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
-								}
-								if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
-								if (closeControlSubscription) closeControlSubscription();
-								return;
-							}// Sync Generator Stream Loop
-							if (data && typeof data[Symbol.iterator] === "function" && !Array.isArray(data)) {
-								for (const chunk of data) {
-									if (isCancelled) break;
-									await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
-								}
-								if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
-								if (closeControlSubscription) closeControlSubscription();
-								return;
-							}// Array Handling Stream Loop
-							if (Array.isArray(data)) {
-								for (const chunk of data) {
-									if (isCancelled) break;
-									await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
-								}
-								if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
-								if (closeControlSubscription) closeControlSubscription();
-								return;
-							}// Fallback Single Value Response
-							if (!isCancelled) {
-								await this.send({type: "chunk", data: data}, k, `stream.${streamId}`, m, r);
-								await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
-							}
-							if (closeControlSubscription) closeControlSubscription();
-						} catch (err: any) {
-							if (closeControlSubscription) closeControlSubscription();
-							//SE._deadLetters().push({id: streamId, r: r || this.r, p: inboundReq, ts: Date.now(), error: err.message});
-							this.send({type: "error", error: err.message}, k, `stream.${streamId}`, m, r);
-						}
-					}, k, s, m, r,
-				);
-			};
-			fn.native = (k?: S, s = '_globalThis', m = this.m, r = this.r) => {
-				let unsubscribe: (() => void) | null = null;
-				return new ReadableStream({
-					start: (controller) => { unsubscribe = this.sub( (data) => { try { controller.enqueue(data); } catch {}  }, k, s, m, r, ); },
-					cancel: () => { if (unsubscribe) { unsubscribe(); unsubscribe = null; } },
-				});
-			};
-			fn.openSync = (handler: (chunk: A, seq: N) => Promise<V> | V, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r): (() => V) => {
-				const expectedSeqMap = new Map<S, N>();
-				const bufferMap = new Map<S, Map<N, A>>();
-		
-				return this.sub(
-					async (inbound: A) => {
-						if (!inbound?.streamId) return;
-						const {streamId, seq, data} = inbound;
-		
-						if (!expectedSeqMap.has(streamId)) {
-							expectedSeqMap.set(streamId, 0);
-							bufferMap.set(streamId, new Map());
-						}
-						const expectedSeq = expectedSeqMap.get(streamId)!;
-						const buffer = bufferMap.get(streamId)!;
-		
-						if (seq === expectedSeq) {
-							await handler(data, seq);
-							expectedSeqMap.set(streamId, expectedSeq + 1);
-							await this.send({seq}, k, `sync.${streamId}:ack`, m, r);
-		
-							let next = expectedSeq + 1;
-							while (buffer.has(next)) {
-								await handler(buffer.get(next), next);
-								buffer.delete(next);
-								next++;
-								expectedSeqMap.set(streamId, next);
-								await this.send({seq: next - 1}, k, `sync.${streamId}:ack`, m, r);
-							}
-						} else if (seq > expectedSeq) {
-							buffer.set(seq, data);
-							for (let missing = expectedSeq; missing < seq; missing++) {
-								if (!buffer.has(missing)) {
-									await this.send({seq: missing}, k, `sync.${streamId}:retransmit`, m, r);
-								}
-							}
-						} else {
-							await this.send({seq}, k, `sync.${streamId}:ack`, m, r); // duplicate — re-ack, no reprocess
-						}
-					},
-					k,
-					s,
-					m,
-					r,
-				);
-			};
-			fn.sync = (k: string, s = '_globalThis', m = this.m, r = this.r): SyncStreamHandler => {
-				const seqs = new Map<number, unknown>();
-				const waiters = new Set<(p: unknown, seq: number) => void>();
-				const completes = new Set<() => void>();
-				let nextDeliver = 0;
-				let done = false;
-		
-				const deliver = (): void => {
-					while (seqs.has(nextDeliver)) {
-						const p = seqs.get(nextDeliver)!;
-						seqs.delete(nextDeliver);
-						for (const cb of [...waiters]) {
-							try {
-								cb(p, nextDeliver);
-							} catch {
-								/* Consumable errors isolated */
-							}
-						}
-						nextDeliver++;
-					}
-				};
-		
-				const unsub = this.sub(
-					(data: unknown) => {
-						const d = data as {sync?: boolean; seq?: number; p?: unknown; complete?: boolean} | null;
-						if (!d || d.sync !== true) return;
-						if (d.complete === true) {
-							done = true;
-							for (const cb of [...completes]) {
-								try {
-									cb();
-								} catch {
-									/* ignore */
-								}
-							}
-							return;
-						}
-						if (typeof d.seq !== "number") return;
-						if (d.seq >= nextDeliver && !seqs.has(d.seq)) {
-							seqs.set(d.seq, d.p);
-							deliver();
-						}
-					},
-					k,
-					s,
-					m,
-					r,
-				);
-		
-				return {
-					onOrdered(cb) {
-						waiters.add(cb);
-					},
-					onComplete(cb) {
-						completes.add(cb);
-					},
-					close() {
-						unsub();
-						waiters.clear();
-						completes.clear();
-					},
-				};
-			};
-			return fn;
-		})();
-		public duplex = (() => {
-			const fn = async <A = any, B = any>(k: string, s = '_globalThis', m = this.m, r = this.r) => {
-				const hub = {k, s, m, r}
-				return new this.hub.duplex(this, this, { k: k, s: s, m: m, r: r})
-			}	 
-			fn.stream = (
-				readConfig: { k: S; sl?: S; ms?: S; rt?: S },
-				writeConfig: { k?: S; sl?: S; ms?: S; rt?: S },
-			): { readable: ReadableStream; writable: WritableStream } => {
-				return {
-					readable: this.handler.native(readConfig.k,readConfig.sl,readConfig.ms,readConfig.rt,),
-					writable: this.stream.native(writeConfig.k,writeConfig.sl,writeConfig.ms,writeConfig.rt,),
-				};
-			};
-			fn.sx = <TUp = any, TDown = any>(k: string, s?: string, m?: string, r?: string, opts?: {windowSize?: number; livenessId?: string}) => {
-				const windowSize = opts?.windowSize ?? 32;
-				const up = this.stream.openSync(k, `${s}:up`, m, r, {windowSize});
-				const downHandlers = new Set<(chunk: TDown, seq: number) => void>();
-				const errorHandlers = new Set<(err: DuplexError) => void>();
-				const closeHandlers = new Set<() => void>();
-		 
-				let upClosed = false;
-				let downClosed = false;
-				let fatallyErrored = false;
-		 
-				let lastSeqSeen = -1;
-		 
-				const down = this.handler.openSync(
-					(chunk: TDown, seq: number) => {
-						if (fatallyErrored) return;
-						if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
-							reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
-						}
-						lastSeqSeen = seq;
-						downHandlers.forEach(h => h(chunk, seq));
-					},
-					k,
-					`${s}:down`,
-					m,
-					r,
-				);
-		 
-				// remote-reported errors arrive here — this is what makes error propagation BILATERAL,
-				// not just local: the other side explicitly tells us when something broke on their end
-				const errorSub = this.sub(
-					(err: DuplexError) => {
-						errorHandlers.forEach(h => h(err));
-						if (err.fatal) {
-							fatallyErrored = true;
-							teardown();
-						}
-					},
-					k,
-					`${s}:error`,
-					m,
-					r,
-				);
-		 
-				// remote-reported half-close — lets THIS side know the peer will send no more, so onData
-				// consumers can know to expect a natural end rather than silence-as-ambiguity
-				const remoteCloseSub = this.sub(
-					(dir: "up" | "down") => {
-						if (dir === "up") downClosed = true; // peer's up = our down, from our perspective
-						closeHandlers.forEach(h => h());
-					},
-					k,
-					`${s}:remote-close`,
-					m,
-					r,
-				);
-		 
-				const reportError = (err: DuplexError) => {
-					errorHandlers.forEach(h => h(err));
-					this.send(err, k, `${s}:error`, m, r); // propagate to the OTHER side too — bilateral, not local-only
-					if (err.fatal) {
-						fatallyErrored = true;
-						teardown();
-					}
-				};
-		 
-				let tornDown = false;
-				const teardown = () => {
-					if (tornDown) return;
-					tornDown = true;
-					up.close();
-					down();
-					errorSub();
-					remoteCloseSub();
-					downHandlers.clear();
-					errorHandlers.clear();
-					closeHandlers.clear();
-				};
-		 
-				return {
-					send: (p: TUp) => {
-						if (upClosed) {
-							reportError({dir: "up", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
-							return;
-						}
-						if (fatallyErrored) return;
-						try {
-							up.push(p);
-						} catch (err: any) {
-							reportError({dir: "up", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
-						}
-					},
-					onData: (handler: (chunk: TDown, seq: number) => void) => {
-						downHandlers.add(handler);
-						return () => downHandlers.delete(handler);
-					},
-					onError: (handler: (err: DuplexError) => void) => {
-						errorHandlers.add(handler);
-						return () => errorHandlers.delete(handler);
-					},
-					onRemoteClose: (handler: () => void) => {
-						closeHandlers.add(handler);
-						return () => closeHandlers.delete(handler);
-					},
-					/** Half-close: stop sending, but keep receiving. Peer is notified so they know THIS side is done sending. */
-					closeUp: () => {
-						if (upClosed) return;
-						up.close();
-						upClosed = true;
-						this.send("up", k, `${s}:remote-close`, m, r);
-					},
-					/** Full close of both directions, notifies peer, tears down liveness tracking. */
-					close: () => {
-						if (!upClosed) this.send("up", k, `${s}:remote-close`, m, r);
-						upClosed = true;
-						downClosed = true;
-						teardown();
-					},
-					isFullyClosed: () => upClosed && downClosed,
-					isFatallyErrored: () => fatallyErrored,
-				};
-			};
-			fn.async = <TUp = any, TDown = any>(k = this.k, s = this.s, m = this.m, r = this.r, opts?: {windowSize?: number}) => {
-				const windowSize = opts?.windowSize ?? 32;
-		 
-				const up = this.stream.sync(k, `${s}:up`, m, r, {windowSize});
-		 
-				const downHandlers = new Set<(chunk: TDown, seq: number) => void>();
-				const errorHandlers = new Set<(err: DuplexError) => void>();
-				const closeHandlers = new Set<() => void>();
-		 
-				let upClosed = false;
-				let downClosed = false;
-				let fatallyErrored = false;
-				let tornDown = false;
-		 
-				let lastSeqSeen = -1;
-				let downUnsub: any;
-				let errorUnsub: any;
-				let remoteCloseUnsub: any;
-		 
-				const down = () => {
-					const stream = this.handler.sync(k, `${s}:down`, m, r); // Accept p as unknown, then cast to TDown
-					stream.onOrdered((p: unknown, seq: number) => {
-						if (fatallyErrored) return;
-						const chunk = p as TDown;
-						if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
-							reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
-						}
-		 
-						lastSeqSeen = seq;
-						downHandlers.forEach(h => h(chunk, seq));
-					});
-		 
-					downUnsub = () => stream.close();
-				};
-				const errorSub = () => {
-					errorUnsub = this.sub(
-						(err: DuplexError) => {
-							errorHandlers.forEach(h => h(err));
-							if (err.fatal) {
-								fatallyErrored = true;
-								teardown();
-							}
-						},
-						k,
-						`${m}:error`,
-						m,
-						r,
-					);
-				};
-				const remoteCloseSub = () => {
-					remoteCloseUnsub = this.sub(
-						(dir: "up" | "down") => {
-							if (dir === "up") downClosed = true;
-							closeHandlers.forEach(h => h());
-						},
-						k,
-						`${s}:remote-close`,
-						m,
-						r,
-					);
-				};
-				const reportError = (err: DuplexError) => {
-					errorHandlers.forEach(h => h(err));
-					this.send(err, k, `${s}:error`, m, r);
-					if (err.fatal) {
-						fatallyErrored = true;
-						teardown();
-					}
-				};
-				const teardown = () => {
-					if (tornDown) return;
-					tornDown = true;
-					up.close();
-					downUnsub?.();
-					errorUnsub?.();
-					remoteCloseUnsub?.();
-		 
-					downHandlers.clear();
-					errorHandlers.clear();
-					closeHandlers.clear();
-				};
-				down();
-				errorSub();
-				remoteCloseSub();
-				const dx = {
-					send: (p: TUp) => {
-						if (upClosed) {
-							reportError({dir: "up", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
-							return;
-						}
-						if (fatallyErrored) return;
-						try {
-							up.push(p);
-						} catch (err: any) {
-							reportError({dir: "up", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
-						}
-					},
-					onData: (handler: (chunk: TDown, seq: number) => void) => {
-						downHandlers.add(handler);
-						return () => downHandlers.delete(handler);
-					},
-					onError: (handler: (err: DuplexError) => void) => {
-						errorHandlers.add(handler);
-						return () => errorHandlers.delete(handler);
-					},
-					onRemoteClose: (handler: () => void) => {
-						closeHandlers.add(handler);
-						return () => closeHandlers.delete(handler);
-					},
-					closeUp: () => {
-						if (upClosed) return;
-						up.close();
-						upClosed = true;
-						this.send("up", k, `${s}:remote-close`, m, r);
-					},
-					close: () => {
-						if (!upClosed) {
-							this.send("up", k, `${s}:remote-close`, m, r);
-						}
-						upClosed = true;
-						downClosed = true;
-						teardown();
-					},
-					isFullyClosed: () => upClosed && downClosed,
-					isFatallyErrored: () => fatallyErrored,
-				};
-				return dx;
-			};
-			fn.open = <T = any,>(opts = {highWaterMark: 32}, k: string, s = this.s, m = this.m, r = this.r) => {
-				const streamId = this.hub.root.REGISTRY._sid()
-		 
-				const highWaterMark = opts?.highWaterMark ?? 32;
-		 
-				const queue: T[] = [];
-				const handlers = new Set<(chunk: T) => void>();
-				const drainHandlers = new Set<() => void>();
-				const closeHandlers = new Set<() => void>();
-				const errorHandlers = new Set<(err: any) => void>();
-		 
-				let writable = true;
-				let readable = true;
-				let draining = false;
-		 
-				const write = async (chunk: T): Promise<void> => {
-					if (!writable) { throw new Error("Stream is not writable"); }
-					queue.push(chunk);
-					if (queue.length >= highWaterMark) {
-						await new Promise<void>(resolve => {
-							const check = () => {
-								if (queue.length < highWaterMark) {
-									drainHandlers.delete(check);
-									resolve();
-								}
-							};
-		 
-							drainHandlers.add(check);
-							check();
-						});
-					}
-		 
-					await drain();
-				};
-				const drain = async () => {
-					if (draining) return;
-					draining = true;
-					try {
-						while (queue.length > 0 && writable) {
-							const chunk = queue.shift()!;
-							await this.send({streamId, data: chunk}, k, s, m, r);
-							drainHandlers.forEach(handler => handler());
-						}
-					} finally {
-						draining = false;
-					}
-				};
-				const unsubscribe = this.sub( async (packet: any) => {
-						if (packet?.streamId !== streamId) return;
-						if (packet.type === "data") { handlers.forEach(handler => { handler(packet.data); }); }
-						if (packet.type === "close") { readable = false; closeHandlers.forEach(handler => handler()); }
-						if (packet.type === "error") { errorHandlers.forEach(handler => { handler(packet.error); }); }
-				}, k, s, m, r, );
-				return {
-					write,
-					onData: (handler: (chunk: T) => void) => {
-						handlers.add(handler);
-						return () => { handlers.delete(handler); };
-					},
-					onDrain: (handler: () => void) => {
-						drainHandlers.add(handler);
-						return () => { drainHandlers.delete(handler); };
-					},
-					onClose: (handler: () => void) => {
-						closeHandlers.add(handler);
-						return () => { closeHandlers.delete(handler); };
-					},
-					onError: (handler: (err: any) => void) => {
-						errorHandlers.add(handler);
-						return () => { errorHandlers.delete(handler); };
-					},
-					close: async () => {
-						if (!writable && !readable) return;
-						writable = false;
-						await this.send({streamId, type: "close"}, k, s, m, r);
-						unsubscribe();
-						closeHandlers.forEach(handler => handler());
-					},
-					abort: async (reason?: any) => {
-						writable = false;
-						readable = false;
-						await this.send({streamId, type: "error", error: reason}, k, s, m, r);
-						unsubscribe();
-						errorHandlers.forEach(handler => handler(reason));
-					},
-					writable: () => writable,
-					readable: () => readable,
-					buffered: () => queue.length,
-				};
-			};
-			return fn;
-		})();
-		public d_handler = (() => {
-			const fn = () => {}
-			fn.sx = <TUp = any, TDown = any>(k: string, s?: string, m?: string, r?: string, opts?: {windowSize?: number; livenessId?: string}) => {
-				const windowSize = opts?.windowSize ?? 32;
-				const down = this.stream.openSync(k, `${s}:down`, m, r, {windowSize});
-				const upHandlers = new Set<(chunk: TUp, seq: number) => void>();
-				const errorHandlers = new Set<(err: DuplexError) => void>();
-				const closeHandlers = new Set<() => void>();
-		
-				let downClosed = false;
-				let upClosed = false;
-				let fatallyErrored = false;
-		
-				let lastSeqSeen = -1;
-				const up = this.handler.openSync(
-					(chunk: TUp, seq: number) => {
-						if (fatallyErrored) return;
-						if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
-							reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
-						}
-						lastSeqSeen = seq;
-						upHandlers.forEach(h => h(chunk, seq));
-					},
-					k,
-					`${s}:up`,
-					m,
-					r,
-				);
-		
-				const errorSub = this.sub(
-					(err: DuplexError) => {
-						errorHandlers.forEach(h => h(err));
-						if (err.fatal) {
-							fatallyErrored = true;
-							teardown();
-						}
-					},
-					k,
-					`${s}:error`,
-					m,
-					r,
-				);
-		
-				const remoteCloseSub = this.sub(
-					(dir: "up" | "down") => {
-						if (dir === "up") upClosed = true; // peer's up = our up, from THIS side's receiving perspective
-						closeHandlers.forEach(h => h());
-					},
-					k,
-					`${s}:remote-close`,
-					m,
-					r,
-				);
-		
-				const reportError = (err: DuplexError) => {
-					errorHandlers.forEach(h => h(err));
-					this.send(err, k, `${s}:error`, m, r);
-					if (err.fatal) {
-						fatallyErrored = true;
-						teardown();
-					}
-				};
-		
-				let tornDown = false;
-				const teardown = () => {
-					if (tornDown) return;
-					tornDown = true;
-					down.close();
-					up();
-					errorSub();
-					remoteCloseSub();
-					upHandlers.clear();
-					errorHandlers.clear();
-					closeHandlers.clear();
-				};
-		
-				return {
-					send: (p: TDown) => {
-						if (downClosed) {
-							reportError({dir: "down", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
-							return;
-						}
-						if (fatallyErrored) return;
-						try {
-							down.push(p);
-						} catch (err: any) {
-							reportError({dir: "down", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
-						}
-					},
-					onData: (handler: (chunk: TUp, seq: number) => void) => {
-						upHandlers.add(handler);
-						return () => upHandlers.delete(handler);
-					},
-					onError: (handler: (err: DuplexError) => void) => {
-						errorHandlers.add(handler);
-						return () => errorHandlers.delete(handler);
-					},
-					onRemoteClose: (handler: () => void) => {
-						closeHandlers.add(handler);
-						return () => closeHandlers.delete(handler);
-					},
-					closeDown: () => {
-						if (downClosed) return;
-						down.close();
-						downClosed = true;
-						this.send("down", k, `${s}:remote-close`, m, r);
-					},
-		
-					close: () => {
-						if (!downClosed) this.send("down", k, `${s}:remote-close`, m, r);
-						downClosed = true;
-						upClosed = true;
-						teardown();
-					},
-		
-					isFullyClosed: () => downClosed && upClosed,
-					isFatallyErrored: () => fatallyErrored,
-				};
-			};
-			return fn;
-		})();	
-		DISPATCH<T = A>(msg:A, replyTo:A, handlers:A, timeoutMs:A): P<T> {
-			// ── ASYNC PATH: QUEUE, NOT LOOP ──────────────────────
-			let settled = false;
-			let resolveFn: (v: T) => V;
-			let rejectFn: (e: U) => V;
-			let timer: A;
-			const settle = (value?: T, error?: U) => {
-				if (settled) return; // first settlement wins
-				settled = true;
-				this.hub.root.REGISTRY.delete(replyTo);
-				if (timer) clearTimeout(timer);
-				if (error !== undefined) rejectFn(error);
-				else resolveFn(value as T);
-			};
-			const promise = new Promise<T>((resolve, reject) => {
-				resolveFn = resolve;
-				rejectFn = reject;
-				if (timeoutMs) {
-					timer = setTimeout(() => {
-						settle(undefined, new Error(`[rift] wait() timed out after ${timeoutMs}ms`));
-					}, timeoutMs);
-				}
-			});
-			this.hub.root.REGISTRY.set(replyTo, {
-				// Register BEFORE queueing — a synchronous reply()inside a queued task still lands correctly.
-				resolve: (v: T) => settle(v),
-				reject: (e: unknown) => settle(undefined, e),
-				timer,
-			});
-			const reply = (value: T | Promise<T>) => {
-				if (value instanceof Promise) {
-					value.then(
-						(v) => settle(v),
-						(e) => settle(undefined, e),
-					);
-				} else {
-					settle(value);
-				}
-			};
-			const tasks = [...handlers].map((handler) => () => {
-				// Queue EVERY handler — no early return, no skipped handlers.
-				const result = handler(msg, reply);
-	
-				// Sync return → settle immediately (first wins).
-				if (result !== undefined && !(result instanceof Promise)) {
-					settle(result as T);
-				}
-				// Promise return → adopt into settle.
-				else if (result instanceof Promise) {
-					result.then(
-						(v) => settle(v as T),
-						(e) => settle(undefined, e),
-					);
-				}
-	
-				return result;
-			});
-			queue({ concurrent: 100 })(tasks).catch(() => {});
-			return MaybePromise(promise);
-		}
-	};
-	public marek = new (this.MAREK)(this);
-	public duplex = class duplex {
-		public r: A = "THE_WIZARD_ROOT_REG";
-		public m: A = "SAURON_MASTER_REG";
-		public s: A = "SAURON_SLAVE_REG";
-		public k: A = "__SAURON__";
-		public hub: SITH
-		public abus: A
-		public bbus: A
-		constructor(
-			abus: A, bbus: A, 
-			hub: { k: S; s: S; m: S; r: S } = { k: "__SAURON__", s: "SAURON_SLAVE_REG", m: "SAURON_MASTER_REG", r: "THE_WIZARD_ROOT_REG", }) {
-			this.r = hub.r;
-			this.m = hub.m;
-			this.s = hub.s;
-			this.k = hub.k;
-			this.abus = abus //new MAREK(SITH);
-			this.bbus = bbus //new this.MAREK(SITH);
-		}
-		public stream = (() => {
-			const fn = (k?: S, s = this.s, m = this.m, r = this.r) => {
-				return {
-					send: <T, P>(p: P, sendOpts?: { timeoutMs?: N }) => this.abus.stream( k, s, m, r),
-					sub: <P, R>(handler: hdr<P, R>) => this.abus.handler(k, s, m, r),
-				}
-			};
-			return fn;
-		})();
-		public handler = (() => {
-			const fn = (k?: S, s = this.s, m = this.m, r = this.r) => {
-				return {
-					send: <T, P>(p: P, sendOpts?: { timeoutMs?: N }) => this.abus.stream( k, s, m, r),
-					sub: <P, R>(handler: hdr<P, R>) => this.abus.handler(k, s, m, r),
-				}
-			};
-			return fn;
-		})();
-	};
-	public g_bus = new (class G_BUS<Z extends string = string, S extends string = string> {// 3.03B OPS/SEC
-		/**
-		Several peak runs followed by usage paths
-		Peak:                                       1_228.50 M ops/sec
-		Peak:                                       3_103.41 M ops/sec
-		Peak:                                       2_370.05 M ops/sec
-		Peak:                                       2_325.32 M ops/sec
-		These runs were all
-	
-		FELKOR2.send
-		sec   |   M writes/s   |   best M/s   |   avg M/s   |    CPU %
-		12    |   1146.44      |   1146.44    |   1146.44   |    100.0
-		
-		FELKOR2.stream
-		sec   |   M writes/s   |   best M/s   |   avg M/s   |    CPU %
-		12    |   1319.94      |   1319.94    |   1319.94   |    100.0
-		PS F:\mq\src> bun run aa.ts
-		
-		FELKOR2.iterator.publish
-		sec   |   M writes/s   |   best M/s   |   avg M/s   |    CPU %
-		12    |     540.61     |   540.61     |  540.61     |    100.3
-		PS F:\mq\src> bun run aa.ts
-		
-		FELKOR2.duplex
-		sec | M writes/s | best M/s | avg M/s | CPU %
-		12 |     898.32 |   898.32 |  898.32 | 100.0
-		 */
-		public s: S;
-		public m: S;
-		public r: S;
-		public k: S;
-		private channels: Record<S, BUS_CHANNEL>;
-		hot_path_test: BUS_HANDLER
-		constructor(k: A =  "__SAURON__",s: S = "SAURON_SLAVE_REG" as S, m: S = "SAURON_MASTER_REG" as S, r: S = "THE_WIZARD_ROOT_REG" as S) {
-			this.s = s;
-			this.m = m;
-			this.r = r;
-			this.k = k;
-	
-			const root = globalThis as any;
-	
-			const rL = (root[r] ??= Object.create(null));
-			const mL = (rL[m] ??= Object.create(null));
-			this.channels = mL[s] ??= Object.create(null);
-		}
-		// const msg: SIG_BUS_Message1 = { r, m, s, k, p: { p }, ts: Date.now(), _ack: false, };
-		// const result = handler(p, msg);
-		public send<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | P<T> | UD {
-			const channel = this.channels[k];
-			const handler = channel?.handler;
-			if (!handler) return undefined;
-			return handler(p, { r, m, s, k, p: p });
-		}
-		public hot_send<T = U>(p: U, k: S,  path: S ): T | P<T> | UD {
-			return this.channels[k]?.handler({ p: p });
-		}
-		public sendStream<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | P<T> | UD {
-			const channel = this.channels[k];
-			const handler = channel?.handler;
-			if (!handler) return undefined;
-			const msg: SIG_BUS_Message1 = { r, m, s, k, p: p, _ack: false };
-			const result = handler(p, msg);
-			const listeners = channel.push;
-			if (listeners) {
-				for (const listener of listeners) listener(msg);
-			}
-			return result as T | P<T> | UD;
-		}
-		public sub<P = U, T = U>(handler: BUS_HANDLER<P, T>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): () => V {
-			const channel = (this.channels[k] ??= {});
-			channel.handler = handler;
-			return () => {
-				if (channel.handler === handler) {
-					channel.handler = undefined;
-				}
-			};
-		}
-		public stream(handler: (msg: SIG_BUS_Message1) => V, k: S, s: S, m?: S, r?: S): () => V;
-		public stream(k: S, s: S, m?: S, r?: S): AsyncIterableIterator<SIG_BUS_Message1>;
-		public stream(handlerOrSlave: ((msg: SIG_BUS_Message1) => V) | S, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) | AsyncIterableIterator<SIG_BUS_Message1> {
-			const handler = typeof handlerOrSlave === "function" ? handlerOrSlave : undefined;
-			const global = globalThis as any;
-			const channel = (this.channels[k] ??= {});
-	
-			if (!channel) throw new Error("Channel does not exist");
-	
-			const listeners = (channel.push ??= new Set());
-	
-			if (handler) {
-				listeners.add(handler);
-	
-				return () => {
-					listeners.delete(handler);
-					if (!listeners.size) channel.push = undefined;
-				};
-			}
-	
-			const queue: SIG_BUS_Message1[] = [];
-			const waiters: Array<{ resolve: (value: IteratorResult<SIG_BUS_Message1>) => void }> = [];
-	
-			let offset = 0;
-			let closed = false;
-	
-			const listener = (msg: SIG_BUS_Message1) => {
-				if (waiters.length) {
-					waiters.shift()!.resolve({ value: msg, done: false });
-				} else {
-					queue.push(msg);
-				}
-			};
-	
-			listeners.add(listener);
-	
-			const close = () => {
-				if (closed) return;
-				closed = true;
-	
-				listeners.delete(listener);
-				if (!listeners.size) channel.push = undefined;
-	
-				for (const waiter of waiters) {
-					waiter.resolve({ value: undefined, done: true });
-				}
-	
-				waiters.length = 0;
-				queue.length = 0;
-				offset = 0;
-			};
-	
-			const iterator: AsyncIterableIterator<SIG_BUS_Message1> = {
-				next: (): Promise<IteratorResult<SIG_BUS_Message1>> => {
-					if (offset < queue.length) {
-						const value = queue[offset++];
-	
-						if (offset === queue.length) {
-							queue.length = 0;
-							offset = 0;
-						}
-	
-						return Promise.resolve({ value, done: false });
-					}
-	
-					if (closed) {
-						return Promise.resolve({ value: undefined, done: true });
-					}
-	
-					return new Promise((resolve) => waiters.push({ resolve }));
-				},
-	
-				return: async () => {
-					close();
-					return { value: undefined, done: true };
-				},
-	
-				[Symbol.asyncIterator](): AsyncIterableIterator<SIG_BUS_Message1> {
-					return iterator;
-				},
-			};
-	
-			return iterator;
-		}
-		public duplex(k: S, s: S = this.s, m: S = this.m, r: S = this.r) {
-			return {
-				send: <T = U, P = U>(p: P) => this.sendStream<T>(p, k, s, m, r),
-				sub: <P = U, T = U>(handler: BUS_HANDLER<P, T>) => this.sub<P, T>(handler, k, s, m, r),
-				stream: (handler?: (msg: SIG_BUS_Message1) => V) => (handler ? this.stream(handler, k, s, m, r) : this.stream(k, s, m, r)),
-			};
-		}
-	})();
-    public ro2 = new (class RULE_OF_2 {// 2.03B OPS/SEC
+	public ro2 = new (class RULE_OF_2 {// 2.03B OPS/SEC
 		public r: A = "THE_WIZARD_ROOT_REG";
 		public m: A = "SAURON_MASTER_REG";
 		public s: A = "SAURON_SLAVE_REG";
@@ -11617,15 +15698,6 @@ export class SITH {
 		public root: DEATH_STAR;
 		public hub: SITH;
 		constructor(hub: SITH) {
-		this.root = hub.root;
-		this.hub = hub;
-		this.r = hub.r;
-		this.m = hub.m;
-		this.s = hub.s;
-		this.k = hub.k;
-		   if ((hub.capacity & (hub.capacity - 1)) !== 0) { throw new Error("Disruptor capacity must be a power of two."); }
-		   this.capacity = hub.capacity;
-		   this.mask = hub.capacity - 1;
 		   this.pids = new Int32Array(hub.capacity); 
 		   this.values = new Float64Array(hub.capacity);
 		   this.flags = new Uint8Array(hub.capacity);
@@ -11662,1157 +15734,6 @@ export class SITH {
 		   this.flags.fill(0);
 	   }
     })(this);
-	public drs = new (class DRS {// DISTRIBUTED REACTIVE STATE
-		public r: S = "THE_WIZARD_ROOT_REG";
-		public m: S = "SAURON_MASTER_REG";
-		public s: S = "SAURON_SLAVE_REG";
-		public k: S = "__SAURON__";
-		public root: DEATH_STAR;
-		public hub: SITH;
-		public state:  RAVEN["state"] 
-		public bus: SITH["marek"]  
-		constructor(hub: SITH) {
-			this.root = hub.root;
-			this.hub = hub;
-			this.r = hub.r;
-			this.m = hub.m;
-			this.s = hub.s;
-			this.k = hub.k;
-			this.state = hub.root.state.state
-			this.bus = hub.root.bus.marek
-		}
-		public state_setter(v: U, k: S = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) {
-			const existing = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
-			if (existing !== undefined) return existing;
-			const t = UF(v)
-			this.hub.root.state.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
-			return t;
-		}
-		public cell: SIG_BUS_CELL_FN = (() => {
-			const fn = <T = A,>(k: S, s: S = this.s, m: S = this.m, r: S = this.r, v?: T) => {
-				const [value, setValue] = darkState(() => { return this.state_setter(v, k, s, m, r); });
-	
-				this.hub.marek.sub( (i: A) => {
-						const incoming = i.p;
-						this.hub.root.state.set(k, incoming, false, s, m, r);
-					}, k, s, m, r, );
-					this.hub.root.state.sub(k, (newValue: any) => setValue(newValue), s, m, r);
-	
-				return value; // still no setter — this one was never meant to write
-			};
-			fn.send = async (p: U, k: S, s = this.s, m = this.m, r = this.r): P<U> => {
-				const msgId = this.hub.root.REGISTRY._sid()
-				const msg = {id: msgId, r: r, m: m, s: s, k: k, p: {p}, _ack: false};
-	
-				await this.hub.marek.DISPATCH({id: msgId, r: r, m: m, s: s, k: k, p: {p}, _ack: false});
-				const rr = this.cell(`${k}${this.root.RTRN_TO_SDR}`, s, m, r);
-	
-				await this.hub.marek.BACK_END.run.afterSend(msg, rr);
-	
-				return rr
-	
-				//if (!(await this.BACK_END.run.beforeSend(msg))) return { success: false, blocked: true }
-	
-				// ── TRANSPORT SELECTION — most specific live boundary at this address ──
-				// const boundary = this.boundaries.select(msg)
-	
-				// ── 'same-app' (or no subs) — normal path, unchanged ──
-				/**  if (!this.online || this.BACK_END.SHOULD_BACKPRESSURE()) {
-					await this.DISPATCH.enqueue(msg)
-					log(`[SIGNALS][ENCRPYTION][CONFIGURE]`, { type: 'sendsub', r: r, m: m, s: s, k: k, id: msgId, p: msg, ttl: ttl, _ack: 'UNKNOWN', _adapter: 'UNKNOWN', priority: this.defaultPriority, tags: 'UNKNOWN', streamId: 'UNKNOWN', token: 'UNKNOWN', binary: binary, error: 'NONE', adapter_id: 'UNKNOWN', detail: '[!this.online || this.shouldBackpressure()]' }, t.deep)
-					return { success: false, queued: true }
-				  } */
-			};
-			fn.cell = <T = A,>(k: S, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "cell", chain?: CHAIN, v?: T) => {
-				const cellKey = `${k}:${this.root.RTRN_TO_SDR}`;
-	
-				const [value, setValue] = darkState(() => {return this.state_setter(v, k, s, m, r);});
-	
-				this.hub.marek.sub( (i: A) => {
-						const incoming = i.p;
-						setDark(k, incoming, false, s, m, r);
-				}, k, s, m, r, );
-				subDark( (newValue: any) => setValue(newValue), k, s, m, r);
-	
-				let rr: any;
-				if (type === "waitFor") {
-					this.hub.marek.send({cmd: "waitFor", k, s, m, r}, k, s, m, r);
-					this.hub.marek.sub((m: any) => setValue(m.p), cellKey, s, m, r);
-				} else if (type === "sub") {
-					this.hub.marek.send({cmd: "subscribe", k, s, m, r}, k, s, m, r);
-					this.hub.marek.sub((m: any) => setValue(m.p), cellKey, s, m, r);
-				} else if (type === "cell") {
-					r = this.cell(cellKey, s, m, r);
-				}
-	
-				darkEffect(() => {
-					if (rr) setValue(rr);
-				}, [rr]);
-	
-				return MCR_Combo(value, chain); // still no setter — this one was never meant to write
-			};
-			fn.crdt = <T = A,>(k: A = this.k, s: S = this.s, m: S = this.m, r: S = this.r, chain?: CHAIN, v?: T) => {
-				const [value, setValue] = darkState(() => {return this.state_setter(v, k, s, m, r)	});
-	
-				this.hub.marek.sub( (i: A) => {
-						const incoming = i.p;
-						setDark(k, incoming, true, s, m, r);
-					}, k, s, 	m, 	r, );
-					subDark((newValue: any) => setValue(newValue),k, s, m, r);
-	
-				return MCR_Combo(value, chain); // still no setter — this one was never meant to write
-			};
-			return fn;
-		})();
-		public useCell = (() => {
-			const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none",  options: StateOptions<A, any> = {}, __sauron_id__ = _sid() ) => {
-				const cellKey = `${k}:${this.root.RTRN_TO_SDR}`;
-	
-				const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
-	
-				const senderTokenRef = this.root.signals.signals.atom(this.root.REGISTRY._sid()); // this.root._id.b();
-	
-				if (type === "none") {
-					this.hub.marek.sub( (i: A) => {
-							const incoming = i.p;
-							if (incoming?.from === senderTokenRef.value) return;
-							this.root.state.set(k, incoming.value, false, s, m, r);
-							setState(incoming.value);
-					}, k, s, m, r, ); // stay in sync with local writes too (including our own setLive below)
-					sub( (newValue: any) => setState(newValue),k, s, m, r);
-				}
-	
-				const setLive = (next: any) => {
-					const newValue = typeof next === "function" ? next(getDark(k, s, m, r)) : next;
-					setState(newValue);
-					setDark(k, newValue,  true, s, m , r); // local write
-					this.hub.marek.send({value: newValue, from: senderTokenRef.value}, k, s, m, r,); // broadcast to the bus
-				};
-	
-				let rr: any;
-				if (type === "waitFor") {
-					this.hub.marek.send({cmd: "waitFor", k: cellKey, s, m, r}, k, s, m, r);
-					this.hub.marek.sub((m: any) => setLive(m), cellKey, s, m, r);
-				} else if (type === "sub") {
-					this.hub.marek.send({cmd: "subscribe", k: cellKey, s, m, r}, k, s, m, r);
-					this.hub.marek.sub((m: any) => setLive(m), cellKey, s, m, r);
-				} else if (type === "cell") {
-					rr = this.cell(cellKey, s, m, r);
-					darkEffect(() => {
-						if (rr !== undefined) {
-							setDark(k, rr, false, s, m, r);
-							setState(rr);
-						}
-					}, [rr]);
-				}
-				return [state, setLive] as const;
-			}
-			fn.obj = <T extends Record<PropertyKey, any> = Record<string, any>>(v: T = {} as T, k: A = `_USECELL_OBJ`, s: S = this.s, m: S = this.m, r: S = this.r) => {
-				const [state, setLive] = fn(v, k, s, m, r, );
-				const value = state && typeof state === "object" && !Array.isArray(state) ? (state as T) : v;
-				const actions = {
-					get<K extends keyof T>(key: K): T[K] | undefined { return value[key]; },
-					set<K extends keyof T>(key: K, next: T[K]) {
-						setLive((previous: T | undefined) => {
-							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
-							if (Object.is(current[key], next)) { return current; }
-							return {...current, [key]: next};
-						});
-					},
-					delete<K extends keyof T>(key: K) {
-						setLive((previous: T | undefined) => {
-							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
-							if (!(key in current)) return current;
-							const next = {...current};
-							delete next[key];
-							return next;
-						});
-					},
-					merge(next: Partial<T>) {
-						setLive((previous: T | undefined) => {
-							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
-							return {...current, ...next};
-						});
-					},
-					patch<K extends keyof T>(key: K, updater: (value: T[K]) => T[K]) {
-						setLive((previous: T | undefined) => {
-							const current = previous && typeof previous === "object" && !Array.isArray(previous) ? previous : v;
-							return {...current, [key]: updater(current[key])};
-						});
-					},
-					pick<K extends keyof T>(...keys: K[]): Pick<T, K> {
-						const next = {} as Pick<T, K>;
-						for (const key of keys) { if (key in value) { next[key] = value[key]; } }
-						return next;
-					},
-					reset() { setLive(() => v); },
-				};
-				return [value, actions] as const;
-			};
-			fn.mailbox = ( v?: A,k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.root.REGISTRY._sid(),		) => {
-				return root.state.createHookCell("useCell.mailbox",__sauron_id__,() => ({
-						value: {
-							current: this.state_setter(v, k, s, m, r),
-							derived: undefined as A,
-						},
-					}),
-					(state, key, notify) => {
-						const st = state.value;
-	
-						const senderToken = this.root.signals.signals.atom(this.root.REGISTRY._sid());
-						const queueRef = this.root.signals.signals.atom<Queue | null>(null);
-	
-						if (!queueRef.current) {
-							queueRef.current = new Queue(1);
-						}
-	
-						const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
-						const selector = options.selector ?? null;
-						const derive = options.derive ?? null;
-	
-						const getValue = (): any => (selector ? selector(st.current) : st.current);
-	
-						const setValue = (next: A) => {
-							const prevSelected = getValue();
-							const nextSelected = selector ? selector(next) : next;
-							if (!equals(prevSelected, nextSelected)) {
-								st.current = next;
-								if (derive) { st.derived = derive(next); }
-								notify(key);
-							}
-							return next;
-						};
-	
-						this.hub.marek.sub((i: A) => {
-							const incoming = i.p;
-							if (incoming?.from === senderToken.value) return;
-							queueRef.current!.run(async () => {
-								const current = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
-								const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-								this.hub.root.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
-								return next;
-							});
-						}, k, s, m, r);
-	
-						this.hub.root.state.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
-	
-						const setLive = (next: any) => {
-							const t = typeof next === "function" ? next() : next;
-							this.hub.marek.send({ value: t, from: senderToken.value }, k, s, m, r);
-						};
-	
-						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
-						if (derive) { return [getValue(), setLive, st.derived] as const; }
-	
-						return [getValue(), setLive] as const;
-					},
-				);
-			};
-	
-			return fn;
-		})();
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public useAntiMsgQ = (() => {
-			const fn = ( v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.root.REGISTRY._sid(),		) => {
-				return root.state.createHookCell( "useAntiMsgQ", __sauron_id__, () => ({
-						value: {
-							current: this.state_setter(v, k, s, m, r),
-							derived: undefined as A,
-						},
-					}),
-					(state, key, notify) => {
-						const st = state.value;
-	
-						const senderToken = this.root.signals.signals.atom(this.root.REGISTRY._sid());
-	
-						const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
-						const selector = options.selector ?? null;
-						const derive = options.derive ?? null;
-	
-						const getValue = (): any => (selector ? selector(st.current) : st.current);
-	
-						const setValue = (next: A) => {
-							const prevSelected = getValue();
-							const nextSelected = selector ? selector(next) : next;
-							if (!equals(prevSelected, nextSelected)) {
-								st.current = next;
-								if (derive) { st.derived = derive(next); }
-								notify(key);
-							}
-							return next;
-						};
-	
-						this.hub.marek.sub((i: A) => {
-							const incoming = i.p;
-							if (incoming?.from === senderToken.value) return;
-							setDark(k, incoming.value, false, s, m, r);
-							setValue(incoming.value);
-						}, k, s, m, r);
-	
-						subDark((newValue: any) => setValue(newValue),k ,s ,m ,r);
-	
-						const setLive = (next: any) => {
-							const newValue = typeof next === "function" ? next(getDark(k, s, m, r)) : next;
-							setValue(newValue);
-							setDark(k, newValue,true ,s, m , r);
-							this.hub.marek.send({ value: newValue, from: senderToken.value }, k, s, m, r);
-						};
-	
-						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
-						if (derive) { return [getValue(), setLive, st.derived] as const; }
-	
-						return [getValue(), setLive] as const;
-					},
-				);
-			};
-			fn.mailbox = ( v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.root.REGISTRY._sid(),		) => {
-
-				const senderToken = this.hub.root.signals.signals.atom(this.hub.root.REGISTRY._sid());
-				const queueRef = this.hub.root.signals.signals.atom<Queue | null>(null);
-
-				return root.state.createHookCell( "useAntiMsgQ.mailbox", __sauron_id__, () => ({
-						value: {
-							current: this.state_setter(v, k, s, m, r),
-							derived: undefined as A,
-						},
-					}),
-					(state, key, notify) => {
-						const st = state.value;
-						if (!queueRef.current) { queueRef.current = new Queue(1); }
-	
-						const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
-						const selector = options.selector ?? null;
-						const derive = options.derive ?? null;
-	
-						const getValue = (): any => (selector ? selector(st.current) : st.current);
-	
-						const setValue = (next: A) => {
-							const prevSelected = getValue();
-							const nextSelected = selector ? selector(next) : next;
-							if (!equals(prevSelected, nextSelected)) {
-								st.current = next;
-								if (derive) { st.derived = derive(next); }
-								notify(key);
-							}
-							return next;
-						};
-	
-						this.hub.marek.sub((i: A) => {
-							const incoming = i.p;
-							if (incoming?.from === senderToken.value) return;
-							queueRef.current!.run(async () => {
-								const current = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
-								const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-								this.hub.root.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
-								return next;
-							});
-						}, k, s, m, r);
-	
-						this.hub.root.state.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
-	
-						const setLive = (next: any) => {
-							const t = typeof next === "function" ? next() : next;
-							this.hub.root.bus.marek.send({ value: t, from: senderToken.value }, k, s, m, r);
-						};
-	
-						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
-						if (derive) { return [getValue(), setLive, st.derived] as const; }
-	
-						return [getValue(), setLive] as const;
-					},
-				);
-			};
-			return fn;
-		})();
-		// #endregion
-	})(this);
-	public spreadsheet = new (class SPREADSHEET_NGIN {
-		public r: A = "THE_WIZARD_ROOT_REG";
-		public m: A = "SAURON_MASTER_REG";
-		public s: A = "SAURON_SLAVE_REG";
-		public k: A = "__SAURON__";
-		public root: DEATH_STAR;
-		public hub: SITH;
-		//                                                                                                                  SPREADSHEET
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public spreadsheet = (() => {
-			const fn = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r, chain?: "chain" | "rechain") => MCR_Combo(this.hub.drs.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.computed ?? 0, chain);
-			fn.raw = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.hub.drs.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.raw;
-			fn.range = (sheet: S, ref: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.spreadsheet.rangeKeys(ref, sheet).map(row => row.map(k => this.hub.drs.cell(this.spreadsheet.envKeyOf(k), s, m, r)?.computed ?? 0));
-			// HELPERS
-			fn.HISTORY_CAP = 200;
-			fn.envKey = (sheet: S, cell: S) => `${sheet}::${normalizeCellRef(cell)}`;
-			fn.rangeKeys = (ref: S, sheet?: S): S[][] => {
-				const [a, b = a] = ref.split(":"); // "A1:B3" -> "A1", "B3" (single cell works too)
-				const s = parseCellRef(a, sheet),
-					e = parseCellRef(b, sheet);
-				const [c1, c2] = [colToIndex(s.col), colToIndex(e.col)].sort((x, y) => x - y);
-				const [r1, r2] = [s.row, e.row].sort((x, y) => x - y);
-				const rows: S[][] = [];
-				for (let r = r1; r <= r2; r++) {
-					const row: S[] = [];
-					for (let c = c1; c <= c2; c++) row.push(cellKey(indexToCol(c), r, s.sheet));
-					rows.push(row);
-				}
-				return rows;
-			};
-			// "sheet!B3" (graph key) -> "sheet::B3" (the state key where the envelope lives)
-			fn.envKeyOf = (graphKey: S) => {
-				const {sheet, col, row} = parseCellRef(graphKey);
-				return `${sheet}::${col}${row}`;
-			};
-			// state key for "who reads this cell": "sheet::B3#dependents"
-			fn.dk = (graphKey: S) => `${this.spreadsheet.envKeyOf(graphKey)}#dependents`;
-			fn.vk = (sheet: S) => `${sheet}::#volatile`;
-			fn.rk = (sheet: S) => `${sheet}::#ranges`; // [{ t: "sheet!B3", box }] range formulas reading this sheet
-			fn.xk = (sheet: S) => `${sheet}::#extent`; // { r: lastUsedRow }
-			// get() with the MaybePromise quirk removed: a missing key returns undefined, not a Promise
-			fn.peek = <X =A>(k: A, s: S, m: S, r: S) => {
-				const v = getDark(k, s, m, r);
-				return v instanceof Promise ? undefined : (v as X);
-			};
-			// what a cell currently shows: computed if it's a formula, else its raw value
-			fn.visible = (g: SpreadsheetGraphState, key: A) => g.computed.get(key) ?? g.cells.get(key)?.raw;
-			// prepend "=" if missing
-			fn.spreadsheetFormula = (expression: string) => (expression.startsWith("=") ? expression : `=${expression}`);
-			fn.load = (g: SpreadsheetGraphState, seen: ST<S>, key: A, s: S, m: S, r: S) => {
-				if (seen.has(key)) return false;
-				seen.add(key);
-				const env = this.spreadsheet.peek(this.spreadsheet.envKeyOf(key), s, m, r);
-				if (env && env.raw !== undefined) {
-					const cell: SpreadsheetCell = {raw: env.raw};
-					if (isFormula(env.raw)) {
-						try {
-							cell.ast = qualifyAst(parseFormula(env.raw), parseCellRef(key).sheet);
-							cell.volatile = isVolatileAst(cell.ast);
-						} catch {}
-						cell.computed = env.computed;
-						g.computed.set(key, env.computed);
-					}
-					g.cells.set(key, cell);
-					if (env.deps?.length) g.deps.set(key, new Set(env.deps));
-					if (env.ranges?.length) g.ranges.set(key, env.ranges);
-				}
-				const ds = this.spreadsheet.peek(this.spreadsheet.dk(key), s, m, r);
-				if (ds?.length) g.dependents.set(key, new Set(ds));
-				return true;
-			};
-			fn.syncRangeIndex = (that: A, key: A, oldBoxes: RangeBox[], newBoxes: RangeBox[], s: S, m: S, r: S) => {
-				for (const sh of new Set([...oldBoxes, ...newBoxes].map(b => b.sheet ?? ""))) {
-					const idx: RangeEntry[] = (this.spreadsheet.peek(this.spreadsheet.rk(sh), s, m, r) ?? []).filter((e: RangeEntry) => e.t !== key);
-					for (const box of newBoxes) if ((box.sheet ?? "") === sh) idx.push({t: key, box});
-					that.writeCell(this.spreadsheet.rk(sh), idx, s, m, r);
-				}
-			};
-			fn.loadSlice = (g: SpreadsheetGraphState, seen: ST<S>, roots: S[], newDeps: I<S>, s: S, m: S, r: S) => {
-				const idx = new Map<S, RangeEntry[]>();
-				const rangeDependents = (key: S): S[] => {
-					const sheet = parseCellRef(key).sheet ?? "";
-					if (!idx.has(sheet)) idx.set(sheet, this.spreadsheet.peek(this.spreadsheet.rk(sheet), s, m, r) ?? []);
-					return idx
-						.get(sheet)!
-						.filter(e => boxContains(e.box, key))
-						.map(e => e.t);
-				};
-	
-				for (const r of roots) this.spreadsheet.load(g, seen, r, s, m, r);
-				for (const r of roots) for (const d of g.deps.get(r) ?? []) this.spreadsheet.load(g, seen, d, s, m, r); // old inputs
-				for (const d of newDeps) this.spreadsheet.load(g, seen, d, s, m, r); // new inputs
-	
-				const queued = new Set(roots); // separate from `seen`: a cell loaded as an input must still be queued as a dependent
-				const queue = [...roots];
-				for (let i = 0; i < queue.length; i++) {
-					const cur = queue[i];
-					for (const dep of new Set([...(g.dependents.get(cur) ?? []), ...rangeDependents(cur)])) {
-						this.spreadsheet.load(g, seen, dep, s, m, r);
-						if (queued.has(dep)) continue;
-						queued.add(dep);
-						queue.push(dep);
-						for (const input of g.deps.get(dep) ?? []) this.spreadsheet.load(g, seen, input, s, m, r);
-					}
-				}
-			};
-			fn.tick = (that: A, sheet: S, s: S, m: S, r: S) => {
-				const vols: S[] = this.spreadsheet.peek(this.spreadsheet.vk(sheet), s, m, r) ?? [];
-				if (!vols.length) return;
-				const {g, seen} = this.spreadsheet.openGraph(s, m, r);
-				this.spreadsheet.loadSlice(g, seen, vols, [], s, m, r);
-				this.spreadsheet.persist(that, g, sheet, recalculateDirty(g, vols, []), [], false, s, m, r);
-			};
-			fn.commit = (that: A, sheet: S, ref: S, raw: A, s: S, m: S, r: S) => {
-				const key = normalizeCellRef(ref, sheet);
-				let newDeps = new Set<string>();
-				if (isFormula(raw)) { try { newDeps = collectDependencies(qualifyAst(parseFormula(raw), sheet)); } catch {} }
-				const vols: string[] = this.spreadsheet.peek(this.spreadsheet.vk(sheet), s, m, r) ?? [];
-
-				const {g, seen} = this.spreadsheet.openGraph(s, m, r);
-				this.spreadsheet.loadSlice(g, seen, [key, ...vols], newDeps, s, m, r);
-
-				const oldDeps = new Set(g.deps.get(key) ?? []);
-				const changed = raw === undefined ? clearGraphCellInPlace(g, ref, sheet) : writeGraphCellInPlace(g, ref, raw, sheet);
-
-				for (const k of changed) {
-					const env = {raw: g.cells.get(k)?.raw, computed: this.spreadsheet.visible(g, k) ?? 0, deps: [...(g.deps.get(k) ?? [])], t: Date.now()};
-					that.writeCell(this.spreadsheet.envKeyOf(k), env, s, m, r);
-					const h = this.spreadsheet.peek(`${this.spreadsheet.envKeyOf(k)}#h`, s, m, r) ?? [];
-					that.writeCell(`${this.spreadsheet.envKeyOf(k)}#h`, [...h, {raw: env.raw, computed: env.computed, t: env.t}].slice(-this.spreadsheet.HISTORY_CAP), s, m, r);
-				}
-
-				this.syncNumeric(g, changed); 
-
-				for (const d of new Set([...oldDeps, ...(g.deps.get(key) ?? [])])) {
-					that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);
-				}
-			};
-			fn.persist = (that: A, g: SpreadsheetGraphState, sheet: S, changed: ST<S>, depKeys: I<S>, history: B, s: S, m: S, r: S) => {
-				const rows = new Map<S, N>();
-				for (const k of changed) {
-					const cell = g.cells.get(k);
-					const env = {raw: cell?.raw, computed: this.spreadsheet.visible(g, k) ?? 0, deps: [...(g.deps.get(k) ?? [])], ranges: g.ranges.get(k) ?? [], volatile: !!cell?.volatile, t: Date.now()};
-					that.writeCell(this.spreadsheet.envKeyOf(k), env, s, m, r);
-					if (history && !env.volatile) {
-						const h = this.spreadsheet.peek(`${this.spreadsheet.envKeyOf(k)}#h`, s, m, r) ?? [];
-						that.writeCell(`${this.spreadsheet.envKeyOf(k)}#h`, [...h, {raw: env.raw, computed: env.computed, t: env.t}].slice(-this.spreadsheet.HISTORY_CAP), s, m, r);
-					}
-					if (cell) {
-						const p = parseCellRef(k),
-							sh = p.sheet ?? "";
-						rows.set(sh, Math.max(rows.get(sh) ?? 0, p.row));
-					}
-				}
-				this.syncNumeric(g, changed);
-				for (const d of depKeys) that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);
-				const rt = r
-				for (const [sh, r] of rows) {                                       // used-row extent per sheet (grow only)
-					if (r > (this.spreadsheet.peek(this.spreadsheet.xk(sh), s, m, rt)?.r ?? 0)) that.writeCell(this.spreadsheet.xk(sh), { r }, s, m, rt)
-				}
-	
-				const before: S[] = this.spreadsheet.peek(this.spreadsheet.vk(sheet), s, m, r) ?? [];
-				const vols = new Set(before);
-				for (const k of changed) g.cells.get(k)?.volatile ? vols.add(k) : vols.delete(k);
-				if (vols.size !== before.length || before.some(k => !vols.has(k))) that.writeCell(this.spreadsheet.vk(sheet), [...vols], s, m, r);
-			};
-			fn.openGraph = (s: S, m: S, r: S) => {
-				const g = createSpreadsheetGraph(),
-					seen = new Set<S>();
-				g.fetch = k => {
-					this.spreadsheet.load(g, seen, k, s, m, r);
-					return g.cells.get(k);
-				}; // INDIRECT / OFFSET / range members
-				g.extent = sheet => this.spreadsheet.peek(this.spreadsheet.xk(sheet ?? ""), s, m, r)?.r ?? 0;
-				return {g, seen};
-			};
-			return fn;
-		})();
-		// #endregion
-		//                                                                                                              USE SPREADSHEET
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public useSpreadsheet = (() => {
-			const commit = (that: A, sheet: S, ref: S, raw: A, s: S, m: S, r: S) => {
-				const key = normalizeCellRef(ref, sheet);
-	
-				let newDeps = new Set<string>();
-				if (isFormula(raw)) {try {newDeps = collectDependencies(qualifyAst(parseFormula(raw), sheet));} catch {}}
-				const vols: string[] = this.spreadsheet.peek(this.spreadsheet.vk(sheet), s, m, r) ?? [];
-	
-				const {g, seen} = this.spreadsheet.openGraph(s, m, r);
-				this.spreadsheet.loadSlice(g, seen, [key, ...vols], newDeps, s, m, r);
-	
-				const oldDeps = new Set(g.deps.get(key) ?? []);
-				const changed = raw === undefined ? clearGraphCellInPlace(g, ref, sheet) : writeGraphCellInPlace(g, ref, raw, sheet);
-	
-				for (const k of changed) {
-					const env = {raw: g.cells.get(k)?.raw, computed: this.spreadsheet.visible(g, k) ?? 0, deps: [...(g.deps.get(k) ?? [])], t: Date.now()};
-					that.writeCell(this.spreadsheet.envKeyOf(k), env, s, m, r);
-					const h = this.spreadsheet.peek(`${this.spreadsheet.envKeyOf(k)}#h`, s, m, r) ?? [];
-					that.writeCell(`${this.spreadsheet.envKeyOf(k)}#h`, [...h, {raw: env.raw, computed: env.computed, t: env.t}].slice(-this.spreadsheet.HISTORY_CAP), s, m, r);
-				}
-			
-				this.syncNumeric(g, changed);                              
-			
-				if (changed.size > PARALLEL_THRESHOLD) {                   
-					const levels = recalculateDirty.levels(g, [...changed], []);
-					this.recalcParallel(levels.map(level => level.map(k => this.pids.intern(k))));
-				}
-			
-				for (const d of new Set([...oldDeps, ...(g.deps.get(key) ?? [])])) {
-					that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);
-				}
-
-				
-	
-				for (const d of new Set([...oldDeps, ...(g.deps.get(key) ?? [])])) {that.writeCell(this.spreadsheet.dk(d), [...(g.dependents.get(d) ?? [])], s, m, r);	}
-			};
-			const fn = (sheet: S, cell: S, v?: A, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none", chain?: CHAIN) => {
-				const seed =
-					v === undefined ? undefined : (
-						() => {
-							commit(this, sheet, cell, typeof v === "function" ? v() : v, s, m, r);
-							return this.spreadsheet.peek(this.spreadsheet.envKey(sheet, cell), s, m, r);
-						}
-					);
-				const [env] = this.hub.drs.useCell(this.spreadsheet.envKey(sheet, cell), seed, s, m, r, type);
-	
-				const read = (ref: S) => this.spreadsheet.peek(this.spreadsheet.envKey(sheet, ref), s, m, r);
-				const write = (ref: S, raw: A) => commit(this, sheet, ref, raw, s, m, r);
-	
-				// getter: just the computed value
-				const getter = env?.computed ?? 0;
-	
-				// setter: just a setter (function form gets the CURRENT raw, not a stale closure)
-				const setter = MCR_Combo((next: A) => write(cell, typeof next === "function" ? next(read(cell)?.raw) : next), chain);
-	
-				return [getter, setter] as const;
-			};
-			fn.grid = (sheet: S, cell: S, v?: A, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none", chain?: CHAIN) => {
-				const seed =
-					v === undefined ? undefined : (
-						() => {
-							commit(this, sheet, cell, typeof v === "function" ? v() : v, s, m, r);
-							return this.spreadsheet.peek(this.spreadsheet.envKey(sheet, cell), s, m, r);
-						}
-					);
-				const [env] = this.DRS.useCell(this.spreadsheet.envKey(sheet, cell), seed, s, m, r, type);
-	
-				const read = (ref: S) => this.spreadsheet.peek(this.spreadsheet.envKey(sheet, ref), s, m, r);
-				const write = (ref: S, raw: A) => commit(this, sheet, ref, raw, s, m, r);
-	
-				// getter: just the computed value
-				const getter = env?.computed ?? 0;
-	
-				// setter: just a setter (function form gets the CURRENT raw, not a stale closure)
-				const setter = MCR_Combo((next: A) => write(cell, typeof next === "function" ? next(read(cell)?.raw) : next), chain);
-				const rt = r
-				// opts: the bag of tricks
-				const opts = {
-					sheet,
-					cell,
-					envelope: env, // { raw, computed, deps, t }
-					raw: env?.raw, // this cell's raw: "=SUM(B1:B2)" or literal
-					deps: env?.deps ?? [],
-					dependents: this.spreadsheet.peek(this.spreadsheet.dk(normalizeCellRef(cell, sheet)), s, m, r) ?? [],
-	
-					get: (ref: S) => read(ref)?.computed, // any cell, computed
-					getRaw: (ref: S) => read(ref)?.raw,
-					set: write, // opts.set("B1", 500)
-					formula: (ref: S, expr: S) => write(ref, this.spreadsheet.spreadsheetFormula(expr)),
-					clear: (ref: S) => write(ref, undefined),
-					setMany: (edits: Iterable<readonly [S, A]>) => {
-						for (const [r, raw] of edits) write(r, raw);
-					},
-					fill: (anchor: S, block: A[][]) => {
-						const a = parseCellRef(anchor, sheet);
-						block.forEach((row, ri) => row.forEach((raw, ci) => write(`${indexToCol(colToIndex(a.col) + ci)}${a.row + ri}`, raw)));
-					},
-					range: (ref: string) => this.spreadsheet.rangeKeys(ref, sheet).map(r => r.map(k => this.spreadsheet.peek(this.spreadsheet.envKeyOf(k), s, m, rt)?.computed ?? 0)),
-					rawRange: (ref: string) => this.spreadsheet.rangeKeys(ref, sheet).map(r => r.map(k => this.spreadsheet.peek(this.spreadsheet.envKeyOf(k), s, m, rt)?.raw)),
-					history: (ref: S = cell) => this.spreadsheet.peek(`${this.spreadsheet.envKey(sheet, ref)}#h`, s, m, r) ?? [],
-				};
-	
-				return [getter, setter, opts] as const;
-			};
-			return fn;
-		})();
-		// #endregion 
-		//                                                                                                                  [CONSTANTS] 
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public compile(ast: ASTNode): Program | undefined {
-			const code: N[] = [];
-			const consts: N[] = [];
-			const ranges: Int32Array[] = [];
-			let ok = true;
-
-			const rangePids = (node: ASTNode): N[] | undefined => {
-				if (node.type === "CellRef") return [this.pids.intern(cellKey(node.col, node.row, node.sheet))];
-				if (node.type !== "Range") return undefined;
-				const c1 = colToIndex(node.start.col), c2 = colToIndex(node.end.col);
-				const r1 = node.start.row, r2 = node.end.row;
-				const out: N[] = [];
-				for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++)
-					for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++)
-						out.push(this.pids.intern(cellKey(indexToCol(c), r, node.sheet)));
-				return out;
-			};
-			const AGG: Partial<Record<S, N>> = {
-				SUM: VM_OP.SUM_RANGE, AVERAGE: VM_OP.AVG_RANGE,
-				MIN: VM_OP.MIN_RANGE, MAX: VM_OP.MAX_RANGE, COUNT: VM_OP.COUNT_RANGE,
-			};
-
-			const emit = (node: ASTNode): V => {
-				if (!ok) return;
-				switch (node.type) {
-					case "Number": code.push(VM_OP.PUSH_CONST, consts.length); consts.push(node.value); return;
-					case "CellRef": code.push(VM_OP.PUSH_CELL, this.pids.intern(cellKey(node.col, node.row, node.sheet))); return;
-					case "BinOp": {
-						const op = { "+": VM_OP.ADD, "-": VM_OP.SUB, "*": VM_OP.MUL, "/": VM_OP.DIV }[node.op];
-						if (op === undefined) { ok = false; return; } // comparisons, &, ^ — outside this VM
-						emit(node.left); emit(node.right); code.push(op, 0); return;
-					}
-					case "FunctionCall": {
-						const opcode = node.args.length === 1 && AGG[node.name];
-						const pidList = opcode && rangePids(node.args[0]);
-						if (!opcode || !pidList) { ok = false; return; } // VLOOKUP, text fns, SUMIF, lambdas, etc.
-						code.push(opcode, ranges.length);
-						ranges.push(Int32Array.from(pidList));
-						return;
-					}
-					default: ok = false;
-				}
-			};
-
-			emit(ast);
-			if (!ok) return undefined;
-			code.push(VM_OP.RET, 0);
-			return { code: Int32Array.from(code), consts: Float64Array.from(consts), ranges };
-		}
-		private capacity: N;
-		private mask: N;
-		private pidCapacity: N;
-		private schedule: readonly N[];
-		private shared: B;
-		private rings: I32[] = [];
-		private CTRL = 16;
-		private ctrl: I32;
-		private available: I32[] = [];
-		private clock: I32;
-		private phaseIndex: I32;
-		private running: I32;
-		private pidToSlot: I32;
-		private dirty: U32;
-		private f64: F64;
-		private u32: U32;
-		private i32: I32;
-		private bytes: U8;
-		private f64Tail = 0;
-		private u32Tail = 0;
-		private i32Tail = 0;
-		private byteTail = 0;
-		private maxBatch: N;
-		private wait: WaitStrategy;
-		private handlers: AR< | ((ring: I32, from: N, to: N, epoch: N, d: this ) => V) | NU > = [];
-		constructor(SITH: SITH) {
-			this.hub = SITH;
-			this.root = SITH.root;
-			this.r = SITH.r;
-			this.m = SITH.m;
-			this.s = SITH.s;
-			this.k = SITH.k;
-			const capacity = SITH.capacity ?? 1 << 18;
-		  	const pidCapacity = SITH.pidCapacity ?? 1 << 20;
-			if (!pow2(capacity)) throw new Error("capacity must be a power of two");
-			if (!pow2(pidCapacity)) throw new Error("pidCapacity must be a power of two");
-			this.capacity = capacity;
-			this.mask = capacity - 1;
-			this.pidCapacity = pidCapacity;
-			this.schedule = SITH.schedule ?? DEFAULT_SCHEDULE;
-			this.shared = SITH.shared ?? typeof SharedArrayBuffer !== "undefined";
-			this.maxBatch = SITH.maxBatch ?? 8192;
-			this.wait = SITH.wait ?? "yield";
-			const AB = this.shared ? SharedArrayBuffer : ArrayBuffer;
-			const laneCount = this.schedule.length;
-			this.rings = Array.from( { length: laneCount }, () => new Int32Array(new AB(capacity * REC * 4)) );
-			this.ctrl = new Int32Array(new AB(laneCount * this.CTRL * 4));
-			// Availability buffer uses one Int32 per ring slot.
-			this.available = Array.from( { length: laneCount }, () => new Int32Array(new AB(capacity * 4)) );
-			this.clock = new Int32Array(new AB(4));
-			this.phaseIndex = new Int32Array(new AB(4));
-			this.running = new Int32Array(new AB(4));
-			this.pidToSlot = new Int32Array(new AB(pidCapacity * 4));
-			this.pidToSlot.fill(-1);
-			this.dirty = new Uint32Array(new AB((pidCapacity >>> 5) * 4));
-			this.f64 = new Float64Array(new AB((SITH.f64Capacity ?? 1 << 18) * 8));
-			this.u32 = new Uint32Array(new AB((SITH.u32Capacity ?? 1 << 18) * 4));
-			this.i32 = new Int32Array(new AB((SITH.i32Capacity ?? 1 << 18) * 4));
-			this.bytes = new Uint8Array(new AB(SITH.byteCapacity ?? 1 << 20));
-
-			this.f64Bits = new BigInt64Array(this.f64.buffer);
-			this.f64 = new Float64Array(new AB((SITH.f64Capacity ?? 1 << 18) * 8));
-		}
-		// #endregion
-		//                                                                                                                   [HANDLERS] 
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public sub( op: OpKind, handler: ( ring: I32, from: N, to: N, epoch: N, d: this ) => V  ): this {
-		  this.handlers[op] = handler;
-		  return this;
-		}
-	  /*======================================================================
-		 MULTI-PRODUCER CLAIM / PUBLISH
-		 Claim the next sequence for a lane. This is a true multi-producer sequencer: - CAS reserves a unique sequence. - The availability buffer marks that exact sequence published. - Consumers never rely on a single global “highest published” value.
-		====================================================================== */
-		private ctrlAt(lane: N, field: number): number { return lane * this.CTRL + field;  }
-		public claim(lane: number): number {
-		  const next = this.ctrlAt(lane, 0);
-		  const stall = this.ctrlAt(lane, 4);
-		  const claimed = this.ctrlAt(lane, 5);
-	  
-		  let spin = 0;
-	  
-		  for (;;) {
-			const seq = Atomics.load(this.ctrl, next);
-			const wrap = seq - this.capacity;
-			const gate = Atomics.load(this.ctrl, this.ctrlAt(lane, 1));
-	  
-			if (gate > wrap) {
-			  if (Atomics.compareExchange(this.ctrl, next, seq, seq + 1) === seq) {
-				Atomics.add(this.ctrl, claimed, 1);
-				return seq;
-			  }
-			  continue;
-			}
-	  
-			Atomics.add(this.ctrl, stall, 1);
-	  
-			if (this.wait === "spin") {
-			  spin++;
-			  continue;
-			}
-	  
-			if (this.wait === "yield") {
-			  this.yieldNow();
-			  continue;
-			}
-	  
-			Atomics.wait(this.ctrl, next, seq, 1);
-			spin = 0;
-		  }
-		}
-		// Publish a claimed record. The record must be fully written BEFORE this call. The availability buffer is the publication barrier.
-		public publish(lane: number, seq: number): void {
-		  const avail = this.available[lane];
-		  Atomics.store(avail, seq & this.mask, seq + 1);
-	  
-		  const pub = this.ctrlAt(lane, 6);
-		  Atomics.add(this.ctrl, pub, 1);
-	  
-		  const waiting = this.ctrlAt(lane, 0);
-		  Atomics.notify(this.ctrl, waiting);
-		}
-		// One-shot enqueue. Returns: >= 0 — published sequence  -1  — nonblocking mode and lane was full
-		public emit( op: OpKind, pid: N, slot: N, a = 0, b = 0, c = 0, ext = 0, block = true  ): N {
-		  const lane = this.laneFor(op);
-		  const ring = this.rings[lane];
-	  
-		  if (!block && this.isFull(lane)) return -1;
-	  
-		  const seq = this.claim(lane);
-		  const base = (seq & this.mask) * REC;
-		  const epoch = Atomics.load(this.clock, 0);
-	  
-		  ring[base + F_OP] = op;
-		  ring[base + F_PID] = pid;
-		  ring[base + F_SLOT] = slot;
-		  ring[base + F_A] = a;
-		  ring[base + F_B] = b;
-		  ring[base + F_C] = c;
-		  ring[base + F_EPOCH] = epoch;
-		  ring[base + F_EXT] = ext;
-	  
-		  this.publish(lane, seq);
-		  return seq;
-		}
-		// #endregion
-		//                                                                                                         [PID / SLOT / DIRTY] 
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public bind(pid: N, slot: N): V { Atomics.store(this.pidToSlot, pid, slot); }
-		public unbind(pid: N): V { Atomics.store(this.pidToSlot, pid, -1); }
-		public slot(pid: N): N { return Atomics.load(this.pidToSlot, pid); }
-		public dirtyMark(pid: N): V { this.dirty[pid >>> 5] |= 1 << (pid & 31);  }
-		public dirtyPeek(pid: N): B { return (this.dirty[pid >>> 5] & (1 << (pid & 31))) !== 0;  }
-		public dirtyTake(pid: N): B {
-		  const w = pid >>> 5;
-		  const bit = 1 << (pid & 31);
-		  const word = this.dirty[w];
-	  
-		  if ((word & bit) === 0) return false;
-	  
-		  this.dirty[w] = word & ~bit;
-		  return true;
-		}
-		private pids = new PidTable();           
-		public ensureNumericSlot(pid: N): N {
-			const existing = this.slot(pid);
-			if (existing >= 0) return existing;
-			const s = this.allocF64Slot();
-			this.bind(pid, s);
-			return s;
-		}
-		public releaseNumericSlot(pid: N): V {
-			const s = this.slot(pid);
-			if (s < 0) return;
-			this.unbind(pid);
-			this.freeF64Slot(s);
-		}
-		syncNumeric(g: SpreadsheetGraphState, changed: ST<S>): V {
-			for (const k of changed) {
-				const computed = this.spreadsheet.visible(g, k);
-				const pid = this.pids.intern(k);
-				if (typeof computed === "number" && Number.isFinite(computed)) {
-					this.storeComputed(this.ensureNumericSlot(pid), computed);
-				} else {
-					this.releaseNumericSlot(pid);
-				}
-			}
-		}
-		// #endregion
-		//                                                                                                                 [SOA ARENAS] 
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		private f64Free: N[] = [];
-		private f64Bits: BigInt64Array;          // init in constructor, right after this.f64 is created:
-		private scratchF = new Float64Array(1);
-		private scratchI = new BigInt64Array(this.scratchF.buffer);
-		public allocF64Slot(): N {//                           reuse a freed slot before growing the tail
-			if (this.f64Free.length) return this.f64Free.pop()!;
-			const at = this.f64Tail++;
-			if (at >= this.f64.length) throw new Error("f64 arena exhausted — raise f64Capacity");
-			return at;
-		}
-		public freeF64Slot(at: N): V { this.f64Free.push(at); }
-		public storeComputed(slot: N, value: N): V { this.f64[slot] = value; }
-		public loadComputed(slot: N): N { return this.f64[slot]; }
-		public allocF64(value: N): N {
-		  const at = this.f64Tail++;
-		  this.f64[at] = value;
-		  return at;
-		}
-		public allocU32(value: N): N {
-		  const at = this.u32Tail++;
-		  this.u32[at] = value;
-		  return at;
-		}
-		public allocI32(value: N): N {
-		  const at = this.i32Tail++;
-		  this.i32[at] = value;
-		  return at;
-		}
-		public allocBytes(data: U8): N {
-		  const at = this.byteTail;
-		  this.bytes.set(data, at);
-		  this.byteTail += data.length;
-		  return at;
-		}
-		public f64At(offset: N): N {    return this.f64[offset];  }
-		public u32At(offset: N): N {    return this.u32[offset];  }
-		public i32At(offset: N): N {    return this.i32[offset];  }
-		public bytesAt(offset: N, length: N): U8 {    return this.bytes.subarray(offset, offset + length);  }
-		public exportBuffers() {
-			return {
-				rings: this.rings.map(r => r.buffer), ctrl: this.ctrl.buffer,
-				available: this.available.map(a => a.buffer), clock: this.clock.buffer,
-				phaseIndex: this.phaseIndex.buffer, running: this.running.buffer,
-				pidToSlot: this.pidToSlot.buffer, dirty: this.dirty.buffer,
-				f64: this.f64.buffer, u32: this.u32.buffer, i32: this.i32.buffer, bytes: this.bytes.buffer,
-				capacity: this.capacity, pidCapacity: this.pidCapacity, schedule: this.schedule, maxBatch: this.maxBatch,
-			};
-		}
-		static fromBuffers(buf: ReturnType<InstanceType<typeof SITH>["spreadsheet"]["exportBuffers"]>): SITH {
-			const self = Object.create(SITH.prototype); //        bypass the allocating constructor entirely
-			self.capacity = buf.capacity; self.mask = buf.capacity - 1; self.pidCapacity = buf.pidCapacity;
-			self.schedule = buf.schedule; self.maxBatch = buf.maxBatch; self.wait = "yield"; self.shared = true;
-			self.rings = buf.rings.map((b: SharedArrayBuffer) => new Int32Array(b));
-			self.ctrl = new Int32Array(buf.ctrl);
-			self.available = buf.available.map((b: SharedArrayBuffer) => new Int32Array(b));
-			self.clock = new Int32Array(buf.clock); self.phaseIndex = new Int32Array(buf.phaseIndex);
-			self.running = new Int32Array(buf.running); self.pidToSlot = new Int32Array(buf.pidToSlot);
-			self.dirty = new Uint32Array(buf.dirty);
-			self.f64 = new Float64Array(buf.f64); self.f64Bits = new BigInt64Array(buf.f64);
-			self.u32 = new Uint32Array(buf.u32); self.i32 = new Int32Array(buf.i32); self.bytes = new Uint8Array(buf.bytes);
-			self.f64Tail = 0; self.f64Free = []; self.scratchF = new Float64Array(1);
-			self.scratchI = new BigInt64Array(self.scratchF.buffer);
-			self.handlers = [];
-			return self;
-		}
-		public exportArena() {
-			return { f64: this.f64.buffer, pidToSlot: this.pidToSlot.buffer, levelCounter: this.levelCounter.buffer };
-		}
-		// #endregion
-		//                                                                                                           [CONSUMER BARRIER] 
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	  /*======================================================================
-		 Return the highest contiguous available sequence for a lane. This scans only the availability window, then caches the result. It avoids the classic problem of a slow producer blocking visibility of later producers.
-		====================================================================== */
-		private availableThrough(lane: number): number {
-		  const ctrlBase = this.ctrlAt(lane, 0);
-		  const gateField = this.ctrlAt(lane, 1);
-		  const cacheField = this.ctrlAt(lane, 2);
-	  
-		  const next = Atomics.load(this.ctrl, ctrlBase);
-		  let gate = Atomics.load(this.ctrl, gateField);
-		  let cached = Atomics.load(this.ctrl, cacheField);
-	  
-		  if (cached >= gate) {
-			const avail = this.available[lane];
-			const cap = this.capacity;
-	  
-			let scan = cached;
-			const limit = Math.min(next, cached + this.maxBatch);
-	  
-			while (scan < limit) {
-			  const flag = Atomics.load(avail, scan & (cap - 1));
-			  if (flag <= scan) break;
-			  scan++;
-			}
-	  
-			cached = scan;
-			Atomics.store(this.ctrl, cacheField, cached);
-		  }
-	  
-		  return cached;
-		}
-		// #endregion
-		//                                                                                                     [PHASE-LOCKED EXECUTION] 
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		/*======================================================================
-		   Drain exactly one scheduled phase. A phase is homogeneous: READ only, WRITE only, DELETE only, etc.
-		   ====================================================================== */
-	    public drainPhase(limit = this.maxBatch): number {
-		  const schedule = this.schedule;
-		  const lane = schedule[Atomics.load(this.phaseIndex, 0)];
-		  const handler = this.handlers[lane];
-	  
-		  if (!handler) {
-			this.nextPhase();
-			return 0;
-		  }
-	  
-		  const ring = this.rings[lane];
-		  const gateField = this.ctrlAt(lane, 1);
-	  
-		  const available = this.availableThrough(lane);
-		  const head = Atomics.load(this.ctrl, gateField);
-	  
-		  const end = Math.min(available, head + limit);
-	  
-		  if (end <= head) {
-			this.nextPhase();
-			return 0;
-		  }
-	  
-		  const epoch = Atomics.load(this.clock, 0);
-	  
-		  // Batch boundary is handed to the handler.
-		  // The handler can specialize contiguous execution.
-		  handler(ring, head, end, epoch, this);
-	  
-		  Atomics.store(this.ctrl, gateField, end);
-	  
-		  const consumedField = this.ctrlAt(lane, 7);
-		  const batchField = this.ctrlAt(lane, 8);
-		  const maxBatchField = this.ctrlAt(lane, 9);
-	  
-		  const count = end - head;
-	  
-		  Atomics.add(this.ctrl, consumedField, count);
-		  Atomics.add(this.ctrl, batchField, 1);
-	  
-		  const prevMax = Atomics.load(this.ctrl, maxBatchField);
-		  if (count > prevMax) Atomics.store(this.ctrl, maxBatchField, count);
-	  
-		  this.nextPhase();
-		  return count;
-		} 
-		public revolution(limit = this.maxBatch): number {
-		  let total = 0;
-	  
-		  for (let i = 0; i < this.schedule.length; i++) {
-			total += this.drainPhase(limit);
-		  }
-	  
-		  Atomics.add(this.clock, 0, 1);
-		  return total;
-		} 
-		public drainAll(limit = this.maxBatch): number {
-		  let total = 0;
-	  
-		  for (;;) {
-			const before = total;
-			total += this.revolution(limit);
-			if (total === before) break;
-		  }
-	  
-		  return total;
-		}
-		private levelCounter = new Int32Array(new SharedArrayBuffer(4));
-		private workers: { post: (msg: A, transfer?: A[]) => V }[] = [];
-		ownerOf(pid: N): N { return pid % this.workers.length; }
-		registerWorker(post: (msg: A, transfer?: A[]) => V): V { this.workers.push({ post }); }
-		sendProgram(pid: N, program: Program): V {
-			this.workers[this.ownerOf(pid)].post({ type: "register", pid, program });
-		}
-		dispatchLevel(readyPids: N[]): V {
-			const byWorker = new Map<N, N[]>();  
-			for (const pid of readyPids) {
-				const w = this.ownerOf(pid);
-				(byWorker.get(w) ?? byWorker.set(w, []).get(w)!).push(pid);
-			}
-			Atomics.store(this.levelCounter, 0, readyPids.length);
-			for (const [w, pids] of byWorker) {
-				const buf = Int32Array.from(pids);
-				this.workers[w].post({ type: "computeLevel", pids: buf }, [buf.buffer]);  
-			}
-		}
-		recalcParallel(levels: N[][]): V {
-			for (const level of levels) {
-				this.dispatchLevel(level);
-				while (Atomics.load(this.levelCounter, 0) > 0) {
-					Atomics.wait(this.levelCounter, 0, Atomics.load(this.levelCounter, 0));
-				}
-			}
-		}
-		// #endregion
-		//                                                                                                            [CLOCK / CONTROL] 
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public tick(): number { return Atomics.load(this.clock, 0);  }
-		public currentPhase(): OpKind { return this.schedule[Atomics.load(this.phaseIndex, 0)] as OpKind;  }
-		public start(): void {    Atomics.store(this.running, 0, 1);  }
-		public stop(): void {
-		  Atomics.store(this.running, 0, 0);
-		  Atomics.notify(this.running, 0);
-		}
-		public isRunning(): boolean {    return Atomics.load(this.running, 0) === 1;  }
-		// #endregion
-		//                                                                                                                      [STATS] 
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public stats(lane: number): LANE_STATS {
-		  const b = lane * this.CTRL;
-	  
-		  return {
-			claimed: Atomics.load(this.ctrl, b + 5),
-			published: Atomics.load(this.ctrl, b + 6),
-			consumed: Atomics.load(this.ctrl, b + 7),
-			batches: Atomics.load(this.ctrl, b + 8),
-			maxBatch: Atomics.load(this.ctrl, b + 9),
-			fullStalls: Atomics.load(this.ctrl, b + 4),
-		  };
-		}
-		public pending(lane: number): number {
-		  const published = Atomics.load(this.ctrl, this.ctrlAt(lane, 6));
-		  const consumed = Atomics.load(this.ctrl, this.ctrlAt(lane, 7));
-		  return published - consumed;
-		}
-		// #endregion
-		//                                                                                                                   [INTERNAL] 
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		private laneFor(op: OpKind): number {    return op;  }
-		private isFull(lane: number): boolean {
-		  const next = Atomics.load(this.ctrl, this.ctrlAt(lane, 0));
-		  const gate = Atomics.load(this.ctrl, this.ctrlAt(lane, 1));
-		  return next - gate >= this.capacity;
-		}
-		private nextPhase(): void {
-		  const next = (Atomics.load(this.phaseIndex, 0) + 1) % this.schedule.length;
-		  Atomics.store(this.phaseIndex, 0, next);
-		}
-		private yieldNow(): void {
-		  if (typeof scheduler !== "undefined" && "yield" in scheduler) {
-			scheduler.yield();
-		  } else if (typeof setImmediate === "function") {
-			setImmediate(() => {});
-		  } else {
-			setTimeout(() => {}, 0);
-		  }
-		}
-		// #endregion
-	})(this);
 	public exogul = new (class EXOGUL {// SLAB IS FOR ONLY ABOVE THE 8152 WEIGHT LIMIT OR WHEN USER REQUESTED
 		readonly capacity: number;
 		readonly values: Float64Array;
@@ -12831,14 +15752,12 @@ export class SITH {
 		// Track which slots are currently in use (for debugging/validation)
 		private readonly inUse: Uint8Array;
 		private freeRanges: { offset: number; length: number }[] = [];
-		private hub: SITH;
+		public hub: SITH;
 	
-		constructor(SITH: SITH, capacity: number = 1 << 20, slabCapacity = 1 << 20) {
-			this.hub = SITH;
-			if (!pow2(capacity)) throw new Error("slotCapacity must be a power of two");
+		constructor(capacity: number = 1 << 20, slabCapacity = 1 << 20) {
+			
 	
 			this.capacity = capacity;
-	
 			this.values = new Float64Array(capacity);
 			this.versions = new Uint32Array(capacity);
 			this.nextFree = new Int32Array(capacity);
@@ -13256,7 +16175,7 @@ export class SITH {
 				p = this.nextFree[p];
 			}
 			return n;
-	}})(this);
+	}})();
 	public codecs = (() => {
 		//                                                                                                CODECS
 		// #region ══════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -13695,7 +16614,7 @@ export class SITH {
 				private _encode(value: unknown): unknown {
 				  if (this.customEncoder) {
 					const custom = this.customEncoder(value, v => this._encode(v));
-					if (custom !== SKIP) return { __type: custom.type, value: custom.value };
+					//if (custom !== SKIP) return { __type: custom.type, value: custom.value };
 				  }
 			  
 				  if (value === null) return null;
@@ -13848,474 +16767,8 @@ export class SITH {
 				  return parsed;
 				}
 			}
-			z.enc = new (this.codecs.serializer.encoder)({});
-			z.dec = new (this.codecs.serializer.decoder)({});
-			return z
-		})(); 
-		const AVRO_ERROR_SCHEMA: AVROSchema = {
-			type: "record",
-			name: "AVROError",
-			fields: [
-				{ name: "type", type: "string" },
-				{ name: "error", type: "string" },
-				{ name: "id", type: "string" },
-			],
-		};
-		z.avro_writer = new (class AVROWriter {
-			private buf = new Uint8Array(256);
-			private pos = 0;
-		
-			private ensure(length: N): V {
-				if (this.pos + length <= this.buf.length) return;
-				let size = this.buf.length;
-				while (size < this.pos + length) size *= 2;
-				const next = new Uint8Array(size);
-				next.set(this.buf);
-				this.buf = next;
-			}
-		
-			byte(v: N): V {
-				this.ensure(1);
-				this.buf[this.pos++] = v;
-			}
-		
-			bytes(v: Uint8Array): V {
-				this.ensure(v.length);
-				this.buf.set(v, this.pos);
-				this.pos += v.length;
-			}
-		
-			long(value: number | bigint): V {
-				let n = BigInt(value);
-				if (n < -(1n << 63n) || n > (1n << 63n) - 1n) throw new Error("Avro: long out of range");
-				n = n >= 0n ? n << 1n : ((-n) << 1n) - 1n;
-				while (n >= 0x80n) {
-					this.byte(Number(n & 0x7fn) | 0x80);
-					n >>= 7n;
-				}
-				this.byte(Number(n));
-			}
-		
-			int(value: N): V {
-				if (!Number.isInteger(value) || value < -2147483648 || value > 2147483647)
-					throw new Error("Avro: int out of range");
-				this.long(value);
-			}
-		
-			float(value: N): V {
-				this.ensure(4);
-				new DataView(this.buf.buffer).setFloat32(this.pos, value, true);
-				this.pos += 4;
-			}
-		
-			double(value: N): V {
-				this.ensure(8);
-				new DataView(this.buf.buffer).setFloat64(this.pos, value, true);
-				this.pos += 8;
-			}
-		
-			finish(): Uint8Array {
-				return this.buf.slice(0, this.pos);
-			}
-		})();
-		z.avro_reader = new (class AVROReader {
-			private pos = 0;
-			private readonly view: DataView;
-		
-			constructor(private readonly buf: Uint8Array) {
-				this.view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-			}
-		
-			private ensure(length: N): V {
-				if (length < 0 || this.pos + length > this.buf.length)
-					throw new Error("Avro: truncated buffer");
-			}
-		
-			byte(): N {
-				this.ensure(1);
-				return this.buf[this.pos++];
-			}
-		
-			bytes(length: N): Uint8Array {
-				this.ensure(length);
-				const out = this.buf.slice(this.pos, this.pos + length);
-				this.pos += length;
-				return out;
-			}
-		
-			long(): number | bigint {
-				let n = 0n;
-				let shift = 0n;
-		
-				for (let i = 0; i < 10; i++) {
-					const b = this.byte();
-					n |= BigInt(b & 0x7f) << shift;
-					if ((b & 0x80) === 0) {
-						const value = (n & 1n) === 0n ? n >> 1n : -((n >> 1n) + 1n);
-						return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER)
-							? Number(value)
-							: value;
-					}
-					shift += 7n;
-				}
-		
-				throw new Error("Avro: invalid long");
-			}
-		
-			int(): N {
-				const n = this.long();
-				if (typeof n === "bigint" || n < -2147483648 || n > 2147483647)
-					throw new Error("Avro: invalid int");
-				return n;
-			}
-		
-			float(): N {
-				this.ensure(4);
-				const n = this.view.getFloat32(this.pos, true);
-				this.pos += 4;
-				return n;
-			}
-		
-			double(): N {
-				this.ensure(8);
-				const n = this.view.getFloat64(this.pos, true);
-				this.pos += 8;
-				return n;
-			}
-		
-			done(): B { return this.pos === this.buf.length; }
-		})(this);
-		z.BINARY_AVRO = class BINARY_AVRO {
-			private readonly encoder = new TextEncoder();
-			private readonly decoder = new TextDecoder();
-			private readonly schema: AVROSchema;
-			private readonly names: OB<AVROSchema> = Object.create(null);
-		
-			private readonly errorSchema = AVRO_ERROR_SCHEMA;
-			private readonly wireSchema: AVROSchema[];
-		
-			constructor(schema: AVROSchema) {
-				if (Array.isArray(schema)) throw new Error("Avro: root schema cannot be a union");
-				this.schema = schema;
-				this.wireSchema = [schema, this.errorSchema];
-				this.#collect(schema);
-				this.#collect(this.errorSchema);
-			}
-		
-			private #collect(schema: AVROSchema): V {
-				if (Array.isArray(schema)) {
-					for (const branch of schema) this.#collect(branch);
-					return;
-				}
-				if (typeof schema === "string") return;
-		
-				if (schema.name) this.names[schema.name] = schema;
-		
-				if (Array.isArray(schema.type)) this.#collect(schema.type);
-				else if (typeof schema.type === "object") this.#collect(schema.type);
-				else if (typeof schema.type === "string" && ![
-					"null", "boolean", "int", "long", "float", "double",
-					"bytes", "string", "record", "array", "map", "enum", "fixed",
-				].includes(schema.type)) {
-					if (!this.names[schema.type]) throw new Error(`Avro: unknown named type ${schema.type}`);
-				}
-		
-				if (schema.fields) for (const field of schema.fields) this.#collect(field.type);
-				if (schema.items) this.#collect(schema.items);
-				if (schema.values) this.#collect(schema.values);
-			}
-		
-			private #resolve(schema: AVROSchema): AVROSchema {
-				if (typeof schema === "string" && this.names[schema]) return this.names[schema];
-				return schema;
-			}
-		
-			private #kind(schema: AVROSchema): S {
-				schema = this.#resolve(schema);
-				if (typeof schema === "string") return schema;
-				if (Array.isArray(schema)) return "union";
-				return typeof schema.type === "string" ? schema.type : this.#kind(schema.type);
-			}
-		
-			private #matches(schema: AVROSchema, value: AVROValue): B {
-				schema = this.#resolve(schema);
-				const kind = this.#kind(schema);
-		
-				switch (kind) {
-					case "null": return value === null || value === undefined;
-					case "boolean": return typeof value === "boolean";
-					case "int": return typeof value === "number" && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
-					case "long": return typeof value === "bigint" || (typeof value === "number" && Number.isSafeInteger(value));
-					case "float":
-					case "double": return typeof value === "number";
-					case "string": return typeof value === "string";
-					case "bytes":
-					case "fixed": return value instanceof Uint8Array && (kind !== "fixed" || value.length === (schema as any).size);
-					case "array": return Array.isArray(value);
-					case "map": return value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Uint8Array);
-					case "record": return value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Uint8Array);
-					case "enum": return typeof value === "string" && (schema as any).symbols.includes(value);
-					default: return false;
-				}
-			}
-		
-			private #write(w: SITH["codecs"]["avro_writer"], schema: AVROSchema, value: AVROValue): V {
-				schema = this.#resolve(schema);
-		
-				if (Array.isArray(schema)) {
-					const index = schema.findIndex(branch => this.#matches(branch, value));
-					if (index === -1) throw new Error("Avro: no matching union branch");
-					w.long(index);
-					this.#write(w, schema[index], value);
-					return;
-				}
-		
-				if (typeof schema === "string") {
-					switch (schema) {
-						case "null": return;
-						case "boolean": w.byte(value ? 1 : 0); return;
-						case "int": w.int(value); return;
-						case "long": w.long(value); return;
-						case "float": w.float(value); return;
-						case "double": w.double(value); return;
-						case "string": {
-							const bytes = this.encoder.encode(value);
-							w.long(bytes.length);
-							w.bytes(bytes);
-							return;
-						}
-						case "bytes": {
-							w.long(value.length);
-							w.bytes(value);
-							return;
-						}
-						default: throw new Error(`Avro: unknown type ${schema}`);
-					}
-				}
-		
-				if (typeof schema.type !== "string") {
-					this.#write(w, schema.type, value);
-					return;
-				}
-		
-				switch (schema.type) {
-					case "null": return;
-					case "boolean":
-						w.byte(value ? 1 : 0);
-						return;
-					case "int":
-						w.int(value);
-						return;
-					case "long":
-						w.long(value);
-						return;
-					case "float":
-						w.float(value);
-						return;
-					case "double":
-						w.double(value);
-						return;
-					case "string": {
-						const bytes = this.encoder.encode(value);
-						w.long(bytes.length);
-						w.bytes(bytes);
-						return;
-					}
-					case "bytes":
-						w.long(value.length);
-						w.bytes(value);
-						return;
-					case "fixed":
-						if (!(value instanceof Uint8Array) || value.length !== schema.size)
-							throw new Error("Avro: invalid fixed value");
-						w.bytes(value);
-						return;
-					case "enum": {
-						const index = schema.symbols!.indexOf(value);
-						if (index < 0) throw new Error(`Avro: invalid enum symbol ${value}`);
-						w.long(index);
-						return;
-					}
-					case "record":
-						for (const field of schema.fields!) {
-							if (value[field.name] === undefined && !Array.isArray(field.type))
-								throw new Error(`Avro: missing field ${field.name}`);
-							this.#write(w, field.type, value[field.name]);
-						}
-						return;
-					case "array":
-						if (value.length) {
-							w.long(value.length);
-							for (const item of value) this.#write(w, schema.items!, item);
-						}
-						w.long(0);
-						return;
-					case "map": {
-						const keys = Object.keys(value);
-						if (keys.length) {
-							w.long(keys.length);
-							for (const key of keys) {
-								this.#write(w, "string", key);
-								this.#write(w, schema.values!, value[key]);
-							}
-						}
-						w.long(0);
-						return;
-					}
-					default:
-						throw new Error(`Avro: unsupported schema type ${schema.type}`);
-				}
-			}
-		
-			private #read(r: SITH["codecs"]["avro_reader"], schema: AVROSchema): AVROValue {
-				schema = this.#resolve(schema);
-		
-				if (Array.isArray(schema)) {
-					const index = r.long();
-					if (typeof index !== "number" || index < 0 || index >= schema.length)
-						throw new Error("Avro: invalid union index");
-					return this.#read(r, schema[index]);
-				}
-		
-				if (typeof schema === "string") {
-					switch (schema) {
-						case "null": return null;
-						case "boolean": {
-							const b = r.byte();
-							if (b > 1) throw new Error("Avro: invalid boolean");
-							return b === 1;
-						}
-						case "int": return r.int();
-						case "long": return r.long();
-						case "float": return r.float();
-						case "double": return r.double();
-						case "string": return this.decoder.decode(r.bytes(Number(r.long())));
-						case "bytes": return r.bytes(Number(r.long()));
-						default: throw new Error(`Avro: unknown type ${schema}`);
-					}
-				}
-		
-				if (typeof schema.type !== "string") return this.#read(r, schema.type);
-		
-				switch (schema.type) {
-					case "null": return null;
-					case "boolean": {
-						const b = r.byte();
-						if (b > 1) throw new Error("Avro: invalid boolean");
-						return b === 1;
-					}
-					case "int": return r.int();
-					case "long": return r.long();
-					case "float": return r.float();
-					case "double": return r.double();
-					case "string": return this.decoder.decode(r.bytes(Number(r.long())));
-					case "bytes": return r.bytes(Number(r.long()));
-					case "fixed": return r.bytes(schema.size!);
-					case "enum": {
-						const index = r.long();
-						if (typeof index !== "number" || index < 0 || index >= schema.symbols!.length)
-							throw new Error("Avro: invalid enum index");
-						return schema.symbols![index];
-					}
-					case "record": {
-						const out: OB<AVROValue> = {};
-						for (const field of schema.fields!) out[field.name] = this.#read(r, field.type);
-						return out;
-					}
-					case "array": {
-						const out: AVROValue[] = [];
-						let count: number | bigint;
-						while ((count = r.long()) !== 0) {
-							if (typeof count === "bigint") throw new Error("Avro: array block too large");
-							if (count < 0) {
-								count = -count;
-								const blockSize = r.long();
-								if (typeof blockSize !== "number" || blockSize < 0) throw new Error("Avro: invalid array block");
-							}
-							for (let i = 0; i < count; i++) out.push(this.#read(r, schema.items!));
-						}
-						return out;
-					}
-					case "map": {
-						const out: OB<AVROValue> = {};
-						let count: number | bigint;
-						while ((count = r.long()) !== 0) {
-							if (typeof count === "bigint") throw new Error("Avro: map block too large");
-							if (count < 0) {
-								count = -count;
-								const blockSize = r.long();
-								if (typeof blockSize !== "number" || blockSize < 0) throw new Error("Avro: invalid map block");
-							}
-							for (let i = 0; i < count; i++) {
-								const key = this.#read(r, "string");
-								out[key] = this.#read(r, schema.values!);
-							}
-						}
-						return out;
-					}
-					default:
-						throw new Error(`Avro: unsupported schema type ${schema.type}`);
-				}
-			}
-		
-			private #encode(value: AVROValue, branch: N): Uint8Array {
-				const w = new AVROWriter();
-				w.long(branch);
-				this.#write(w, this.wireSchema[branch], value);
-				return w.finish();
-			}
-		
-			private #decode(bytes: Uint8Array): AVROValue {
-				const r = new AVROReader(bytes);
-				const branch = r.long();
-				if (typeof branch !== "number" || branch < 0 || branch >= this.wireSchema.length)
-					throw new Error("Avro: invalid envelope branch");
-				const value = this.#read(r, this.wireSchema[branch]);
-				if (!r.done()) throw new Error("Avro: trailing bytes");
-				return value;
-			}
-		
-			public encode_msg(msg: AVROValue): Uint8Array {
-				if (msg instanceof Uint8Array) return msg;
-				try {
-					return this.#encode(msg, 0);
-				} catch (err) {
-					console.log("[AVRO_PIPE] Failed to encode outbound packet:", err);
-					return this.#encode({
-						type: "error",
-						error: err instanceof Error ? err.message : "Encoding failed",
-						id: String(msg?.id ?? "unknown"),
-					}, 1);
-				}
-			}
-		
-			public decode_msg(raw: any): AVROValue {
-				if (!(raw instanceof Uint8Array) && !(typeof Buffer !== "undefined" && Buffer.isBuffer(raw))) {
-					console.error("[AVRO_PIPE] Protocol violation: Expected encoded Uint8Array data stream.");
-					return null;
-				}
-				try {
-					const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
-					return this.#decode(bytes);
-				} catch (err) {
-					console.error("[AVRO_PIPE] Failed to decode inbound packet:", err);
-					return null;
-				}
-			}
-		}
-		z.avro = new (this.codecs.BINARY_AVRO)(this);
-		z.contracts = (() => {
-			const z = () => {}
-			z.AVROI = new this.codecs.BINARY_AVRO({
-				type: "record",
-				name: "SITHMessage",
-				fields: [
-					{ name: "pid", type: "int" },
-					{ name: "op", type: "int" },
-					{ name: "value", type: ["null", "double"] },
-					{ name: "payload", type: ["null", "bytes"] },
-				],
-			});
+			z.enc = null
+			z.dec = null
 			return z
 		})(); 
 		// #endregion
@@ -14484,11 +16937,14 @@ export class SITH {
 			}
 			public flushNotifications(): V {
 				this._flushScheduled = false;
+			
 				for (let i = 0; i < this.dirtyCount; i++) {
 					const pid = this.dirtyPids[i];
 					const fn = this.listeners[pid];
-					if (fn !== undefined) fn(pid);
+			
+					if (fn !== undefined) (fn as (pid: N) => V)(pid);
 				}
+			
 				this.dirtyCount = 0;
 			}
 			public notifyHook(key: S): V {
@@ -14646,7 +17102,7 @@ export class SITH {
 				get seq(): N { return this.register[3]; }
 				get epoch(): N { return this.register[1]; }
 		})();
-		z.concurrent_batching = new (class CONCURRENT_BYTE_BATCH implements PARTICLE_QUEUE {
+		z.concurrent_batching = class CONCURRENT_BYTE_BATCH implements PARTICLE_QUEUE {
 			/*  ==========================================================================================================================
 			 - Tier ordering: original runs numeric tiers sequentially; remake runs all tiers concurrently.
 			 - Concurrency: original enforces a per-tier concurrency limit; remake's Promise.all can run the entire batch simultaneously, ignoring tier.concurrency.
@@ -14704,8 +17160,8 @@ export class SITH {
 				for (const q of this.queues.values()) n += q.pids.length;
 				return n;
 			}
-		})(this, this);
-		z.queued_tiered_concurrent_batches = new (class QUEUED_TIERED_CONCURRENT_BYTE_BATCHES implements PARTICLE_QUEUE {
+		}
+		z.queued_tiered_concurrent_batches = class QUEUED_TIERED_CONCURRENT_BYTE_BATCHES implements PARTICLE_QUEUE {
 			/*  ==========================================================================================================================
 			 groups particle work into named tiers, processing batches concurrently across tiers and resolving each submission when
 			 its particle is processed. Each tier supports configurable batch sizes and concurrency settings, with implicit tier 
@@ -14772,380 +17228,18 @@ export class SITH {
 				for (const q of this.queues.values()) n += q.pids.length;
 				return n;
 			}
-		})(this, this);
+		}
 		// #endregion
 		//                                                                                            ENCRYPTION
 		// #region ══════════════════════════════════════════════════════════════════════════════════════════════════════
-		z.BUS_ = class DISRUPTOR_CRYPTO {
-			ser(value: unknown): string {
-				if (value instanceof Map) {
-					return JSON.stringify({ __type: "Map", value: Array.from(value.entries()).map(([key, val]) => [this.ser(key), this.ser(val)]) });
-				}
-				if (value instanceof Set) {
-					return JSON.stringify({ __type: "Set", value: Array.from(value.values()).map((value) => this.ser(value)) });
-				}
-				return typeof value === "string" ? value : JSON.stringify(value);
-			}
-			deser(raw: string | null): any {
-				if (raw === null) return null;
-				try {
-					const parsed = JSON.parse(raw);
-					if (parsed?.__type === "Map") {
-						return new Map(parsed.value.map(([key, value]: [string, string]) => [this.deser(key), this.deser(value)]));
-					}
-					if (parsed?.__type === "Set") {
-						return new Set(parsed.value.map((value: string) => this.deser(value)));
-					}
-					return parsed;
-				} catch {
-					return raw;
-				}
-			}
 		
-			hasNode = typeof process !== "undefined" && !!process.versions?.node;
-			_buf(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
-				const out = new Uint8Array(new ArrayBuffer(bytes.byteLength)) as Uint8Array<ArrayBuffer>;
-				out.set(bytes);
-				return out;
-			}
-			_hasSubtle = typeof globalThis.crypto !== "undefined" && typeof (globalThis.crypto as any).subtle !== "undefined" && typeof (globalThis.crypto as any).getRandomValues === "function";
-			_nodeCrypto: any = null;
-			_getNodeCrypto() {
-				if (this._nodeCrypto) return this._nodeCrypto;
-				if (!this.hasNode) return null;
-				try {
-					this._nodeCrypto = require("node:crypto");
-				} catch {
-					this._nodeCrypto = null;
-				}
-				return this._nodeCrypto;
-			}
-			constructor() {}
-		
-			// ── random bytes ────────────────────────────────────────────────────────
-			random_bytes(size = 32): Uint8Array {
-				if (this._hasSubtle) return globalThis.crypto.getRandomValues(new Uint8Array(size));
-				const nc = this._getNodeCrypto();
-				if (nc) return new Uint8Array(nc.randomBytes(size));
-				// last resort — NOT cryptographically secure, but the bus will refuse
-				// to init auth without real randomness, so this never protects anything.
-				const out = new Uint8Array(size);
-				for (let i = 0; i < size; i++) out[i] = (Math.random() * 256) | 0;
-				return out;
-			}
-		
-			// ── HMAC-SHA256 ─────────────────────────────────────────────────────────
-			// Returned as hex so it matches the existing computeHmacSha256 contract.
-		
-			// Async version — used when WebCrypto is the only option.
-			async hash_hmac_hex_async(secret: string | Uint8Array, data: string | Uint8Array): Promise<string> {
-				const keyBytes = typeof secret === "string" ? this.to_utf8_bytes(secret) : secret;
-				const dataBytes = typeof data === "string" ? this.to_utf8_bytes(data) : data;
-		
-				if (this._hasSubtle) {
-					const key = await globalThis.crypto.subtle.importKey(
-						"raw",
-						this._buf(keyBytes), // ← wrap
-						{ name: "HMAC", hash: "SHA-256" },
-						false,
-						["sign"],
-					);
-					const sig = await globalThis.crypto.subtle.sign(
-						"HMAC",
-						key,
-						this._buf(dataBytes), // ← wrap
-					);
-					return this.to_hex(new Uint8Array(sig));
-				}
-		
-				const nc = this._getNodeCrypto();
-				if (nc) {
-					const h = nc.createHmac("sha256", Buffer.from(keyBytes));
-					h.update(Buffer.from(dataBytes));
-					return h.digest("hex");
-				}
-		
-				return "";
-			}
-		
-			// Cache used by the sync path when only WebCrypto is available.
-			// Populated by hash_hmac_hex_async's callers, read by hash_hmac_hex.
-			_hmacCache = new Map<string, string>();
-		
-			// ── SHA-256 ─────────────────────────────────────────────────────────────
-			async hash_sha256_hex(data: string | Uint8Array): Promise<string> {
-				const bytes = typeof data === "string" ? this.to_utf8_bytes(data) : data;
-		
-				if (this._hasSubtle) {
-					const digest = await globalThis.crypto.subtle.digest(
-						"SHA-256",
-						this._buf(bytes), // ← wrap
-					);
-					return this.to_hex(new Uint8Array(digest));
-				}
-		
-				const nc = this._getNodeCrypto();
-				if (nc) {
-					const h = nc.createHash("sha256");
-					h.update(Buffer.from(bytes));
-					return h.digest("hex");
-				}
-		
-				return "";
-			}
-		
-			// ── HKDF (derive a session key from a shared secret) ────────────────────
-			async derive_hkdf(ikm: Uint8Array, salt: Uint8Array, info: Uint8Array, length = 32): Promise<Uint8Array> {
-				if (this._hasSubtle) {
-					const key = await globalThis.crypto.subtle.importKey(
-						"raw",
-						this._buf(ikm), // ← wrap
-						"HKDF",
-						false,
-						["deriveBits"],
-					);
-					const bits = await globalThis.crypto.subtle.deriveBits(
-						{
-							name: "HKDF",
-							hash: "SHA-256",
-							salt: this._buf(salt), // ← wrap
-							info: this._buf(info), // ← wrap
-						},
-						key,
-						length * 8,
-					);
-					return new Uint8Array(bits);
-				}
-		
-				const nc = this._getNodeCrypto();
-				if (nc) {
-					return new Uint8Array(nc.hkdfSync("sha256", Buffer.from(ikm), Buffer.from(salt), Buffer.from(info), length));
-				}
-		
-				return new Uint8Array(length);
-			}
-		
-			// ── AES-GCM (the bus's symmetric p encryption) ────────────────────
-			async encrypt_aes_gcm(key: Uint8Array, iv: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
-				if (this._hasSubtle) {
-					const k = await globalThis.crypto.subtle.importKey(
-						"raw",
-						this._buf(key), // ← wrap
-						"AES-GCM",
-						false,
-						["encrypt"],
-					);
-					const ct = await globalThis.crypto.subtle.encrypt(
-						{ name: "AES-GCM", iv: this._buf(iv) }, // ← wrap
-						k,
-						this._buf(data), // ← wrap
-					);
-					return new Uint8Array(ct);
-				}
-		
-				const nc = this._getNodeCrypto();
-				if (nc) {
-					const cipher = nc.createCipheriv("aes-256-gcm", Buffer.from(key), Buffer.from(iv));
-					const ct = Buffer.concat([cipher.update(Buffer.from(data)), cipher.final()]);
-					const tag = cipher.getAuthTag();
-					// append tag, matching WebCrypto's output format
-					return new Uint8Array(Buffer.concat([ct, tag]));
-				}
-		
-				return data;
-			}
-		
-			async decrypt_aes_gcm(key: Uint8Array, iv: Uint8Array, ct: Uint8Array): Promise<Uint8Array> {
-				if (this._hasSubtle) {
-					const k = await globalThis.crypto.subtle.importKey(
-						"raw",
-						this._buf(key), // ← wrap
-						"AES-GCM",
-						false,
-						["decrypt"],
-					);
-					const pt = await globalThis.crypto.subtle.decrypt(
-						{ name: "AES-GCM", iv: this._buf(iv) }, // ← wrap
-						k,
-						this._buf(ct), // ← wrap
-					);
-					return new Uint8Array(pt);
-				}
-		
-				const nc = this._getNodeCrypto();
-				if (nc) {
-					// split off the 16-byte tag from the end
-					const tag = ct.slice(ct.length - 16);
-					const body = ct.slice(0, ct.length - 16);
-					const decipher = nc.createDecipheriv("aes-256-gcm", Buffer.from(key), Buffer.from(iv));
-					decipher.setAuthTag(Buffer.from(tag));
-					const pt = Buffer.concat([decipher.update(Buffer.from(body)), decipher.final()]);
-					return new Uint8Array(pt);
-				}
-		
-				return ct;
-			}
-		
-			// ── Encoding ────────────────────────────────────────────────────────────
-			to_utf8_bytes(str: string): Uint8Array {
-				if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(str);
-				const nc = this._getNodeCrypto();
-				if (nc) return new Uint8Array(Buffer.from(str, "utf8"));
-				// last resort
-				const out = new Uint8Array(str.length);
-				for (let i = 0; i < str.length; i++) out[i] = str.charCodeAt(i) & 0xff;
-				return out;
-			}
-		
-			to_hex(data: Uint8Array): string {
-				if (typeof Buffer !== "undefined") return Buffer.from(data).toString("hex");
-				let out = "";
-				for (let i = 0; i < data.length; i++) out += data[i].toString(16).padStart(2, "0");
-				return out;
-			}
-		
-			from_hex(hex: string): Uint8Array {
-				if (typeof Buffer !== "undefined") return new Uint8Array(Buffer.from(hex, "hex"));
-				const out = new Uint8Array(hex.length / 2);
-				for (let i = 0; i < hex.length; i += 2) out[i / 2] = parseInt(hex.slice(i, i + 2), 16);
-				return out;
-			}
-		
-			to_base64(data: Uint8Array): string {
-				if (typeof Buffer !== "undefined") return Buffer.from(data).toString("base64");
-				let bin = "";
-				for (let i = 0; i < data.length; i++) bin += String.fromCharCode(data[i]);
-				return btoa(bin);
-			}
-		
-			from_base64(str: string): Uint8Array {
-				if (typeof Buffer !== "undefined") return new Uint8Array(Buffer.from(str, "base64"));
-				const bin = atob(str);
-				const out = new Uint8Array(bin.length);
-				for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-				return out;
-			}
-		
-			// ── Constants ───────────────────────────────────────────────────────────
-			ready(): boolean {
-				return this._hasSubtle || this._getNodeCrypto() !== null;
-			}
-		
-			secure_equal(a: Uint8Array, b: Uint8Array): boolean {
-				let diff = a.length ^ b.length;
-				const len = Math.max(a.length, b.length);
-				for (let i = 0; i < len; i++) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
-				return diff === 0;
-			}
-		
-			hash_hmac_hex(secret: string | Uint8Array, data: string | Uint8Array): string {
-				const nc = this._getNodeCrypto();
-				if (!nc) throw new Error("Synchronous HMAC requires Node crypto");
-				const key = typeof secret === "string" ? this.to_utf8_bytes(secret) : secret;
-				const bytes = typeof data === "string" ? this.to_utf8_bytes(data) : data;
-				return nc.createHmac("sha256", Buffer.from(key)).update(Buffer.from(bytes)).digest("hex");
-			}
-		
-			hash_hmac(secret: string | Uint8Array, data: string | Uint8Array): string {
-				return this.hash_hmac_hex(secret, data);
-			}
-		
-			hash_sha256(data: string | Uint8Array): string {
-				const nc = this._getNodeCrypto();
-				if (!nc) throw new Error("Synchronous hashing requires Node crypto");
-				const bytes = typeof data === "string" ? this.to_utf8_bytes(data) : data;
-				return nc.createHash("sha256").update(Buffer.from(bytes)).digest("hex");
-			}
-		
-			derive_key(password: string, salt: Uint8Array, iterations = 310_000, length = 32): Uint8Array {
-				const nc = this._getNodeCrypto();
-				if (!nc) throw new Error("Synchronous PBKDF2 requires Node crypto");
-				return new Uint8Array(nc.pbkdf2Sync(Buffer.from(this.to_utf8_bytes(password)), Buffer.from(salt), iterations, length, "sha256"));
-			}
-		
-			symmetric_encrypt(p: string, key: Uint8Array): { ciphertext: string; nonce: string } {
-				const nc = this._getNodeCrypto();
-				if (!nc) throw new Error("Synchronous encryption requires Node crypto");
-				if (key.length !== 32) throw new Error("AES-256-GCM requires a 32-byte key");
-		
-				const nonce = nc.randomBytes(12);
-				const cipher = nc.createCipheriv("aes-256-gcm", Buffer.from(key), nonce);
-				const ciphertext = Buffer.concat([cipher.update(p, "utf8"), cipher.final(), cipher.getAuthTag()]);
-		
-				return {
-					ciphertext: this.to_base64(new Uint8Array(ciphertext)),
-					nonce: this.to_base64(new Uint8Array(nonce)),
-				};
-			}
-		
-			symmetric_decrypt(p: { ciphertext: string; nonce: string }, key: Uint8Array): string {
-				const nc = this._getNodeCrypto();
-				if (!nc) throw new Error("Synchronous decryption requires Node crypto");
-				if (key.length !== 32) throw new Error("AES-256-GCM requires a 32-byte key");
-		
-				const ciphertext = this.from_base64(p.ciphertext);
-				const nonce = this.from_base64(p.nonce);
-				if (nonce.length !== 12 || ciphertext.length < 16) throw new Error("Invalid AES-GCM payload");
-		
-				const body = ciphertext.slice(0, -16);
-				const tag = ciphertext.slice(-16);
-				const decipher = nc.createDecipheriv("aes-256-gcm", Buffer.from(key), Buffer.from(nonce));
-				decipher.setAuthTag(Buffer.from(tag));
-		
-				return Buffer.concat([decipher.update(Buffer.from(body)), decipher.final()]).toString("utf8");
-			}
-			generate_key_pair(_type: string): { publicKey: Uint8Array; secretKey: Uint8Array } {
-				const nc = this._getNodeCrypto();
-				if (!nc) throw new Error("Synchronous key generation requires Node crypto");
-		
-				const pair = nc.generateKeyPairSync("ed25519");
-				return {
-					publicKey: new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" })),
-					secretKey: new Uint8Array(pair.privateKey.export({ type: "pkcs8", format: "der" })),
-				};
-			}
-		
-			pqc_generate_KEM_keys(): { publicKey: Uint8Array; secretKey: Uint8Array; algorithm: string } {
-				const nc = this._getNodeCrypto();
-				if (!nc) throw new Error("PQC key generation requires a supported Node crypto provider");
-		
-				const pair = nc.generateKeyPairSync("ml-kem-768");
-				return {
-					publicKey: new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" })),
-					secretKey: new Uint8Array(pair.privateKey.export({ type: "pkcs8", format: "der" })),
-					algorithm: "ML-KEM-768",
-				};
-			}
-		}
-		z.BUS_CRYPTO = this.codecs.BUS_
 		return z
 		// #endregion
 	})(); 
 }
-export interface ChannelMessage<P = U> {
-	r: S;
-	m: S;
-	s: S;
-	k: S;
-	p: P;
-	ts?: N;
-}
-class PidTable {
-	#toPid: Record<S, N> = Object.create(null);
-	#toKey: S[] = [];
-	intern(key: S): N {
-		const existing = this.#toPid[key];
-		if (existing !== undefined) return existing;
-		const pid = this.#toKey.length;
-		this.#toPid[key] = pid;
-		this.#toKey.push(key);
-		return pid;
-	}
-	keyOf(pid: N): S { return this.#toKey[pid]; }
-}
 // #endregion
 // #endregion
-//                                                                                                                [RAVEN] STATE
+//                                                                                                                RAPTORS RAVEN 
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 export let _root: ComponentInstance = {
 	id: "THE_WIZARD_ROOT_REG",
@@ -15456,6 +17550,9 @@ class OTracer<V = any> {
 		this.index.set(key, { lane: this.dial, seq });
 	}
 }
+// #endregion
+//                                                                                                                [RAVEN] STATE
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class RAVEN {
 	public hub: DEATH_STAR;
 	public t: A = {};
@@ -15493,15 +17590,10 @@ class RAVEN {
 	public scopeCursors: Record<Priority, number> = { immediate: 0, "user-blocking": 0, normal: 0, background: 0, idle: 0 };
 	public currentScope: symbol | string = this.GLOBAL_SCOPE;
 	public loopScheduled = false;
-	public _subscribers = new Map<string, Set<() => void>>();
-	public _externalSubscribers = new Map<string, Map<string, Map<string, Map<SignalKey, Set<(value: A) => void>>>>>();
-	public _components = new Map<string, ComponentInstance>();
-	public _pendingNotifications = new Set<string>();
-	public externalSubscribers = new Set<() => void>();
 	public readonly instanceId: string = `instance_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 
-	public drain(): void {
+	public drain1(): void {
 		this._flushScheduled = false;
 		if (this.dirty.size === 0) return;
 
@@ -15516,6 +17608,21 @@ class RAVEN {
 		this.dirty = new Set();
 		for (const cb of callbacks) cb();
 	}
+	public drain = (): void => {
+		this._flushScheduled = false;
+		if (this.dirty.size === 0) return;
+	
+		// An explicit openBatch() scope is still open.
+		if (this.openScopes.size > 0) {
+			this.scheduleDrain();
+			return;
+		}
+	
+		const callbacks = this.dirty;
+		this.dirty = new Set();
+	
+		for (const cb of callbacks) cb();
+	};
 	public microtask(fn: FlushCallback): void {	 queueMicrotask(fn); }
 	public batch<T>(fn: () => T): T {
 		this.batchDepth++;
@@ -15651,17 +17758,32 @@ class RAVEN {
 
 		this.schedule(runChunk, { priority, scope });
 		return {
-			cancel(): void {
-				cancelled = true;
-			},
-			reprioritize(next: Priority): void {
-				priority = next;
-			},
+			cancel(): void { cancelled = true; },
+			reprioritize(next: Priority): void { priority = next; },
 		};
 	}
 	// SAURON
-	_globalNotifyCache = new WeakMap<A, Map<A, () => void>>();
+	public _pendingNotifications = new Set<string>();
+	public _externalSubscribers = new O2<string, Map<string, Map<string, Map<SignalKey, Set<(value: A) => void>>>>>();
+	public externalSubscribers = new Set<() => void>();
+	public _components = new O2<string, ComponentInstance>();
+	public _subscribers = new O2<string, Set<() => void>>();
+	_globalListeners = new Set<(key: S | symbol, value: A) => void>()
+	_globalNotifyCache = new O2<A, Map<A, () => void>>();
 	_notifyCache = new WeakMap<Map<A, Set<(value: A) => void>>, Map<A, () => void>>();
+	
+	_persistent: M<A, A>;
+	_persistent_keys: M<A, A>;
+	_gt: O2<A, A>;
+	public cache: c_type = "mesh"
+	public THE_STATE_CACHE = new O2<S, O2<S, O2<S, O2<S, V>>>>();
+	public getS(s: S = this.s, m: S = this.m, r: S = this.r, c: c_type = "mesh") {
+		const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_STATE_CACHE;
+		const rL = (cache[r] ??= new O2());
+		const mL = (rL[m] ??= new O2());
+		const sL = (mL[s] ??= new O2());
+		return sL;
+	}
 	public scheduleGlobalNotify(key: string | symbol, meta: A, opts: ScopeOptions): void {
 		let cache = this._globalNotifyCache.get(meta);
 		if (!cache) {
@@ -15681,7 +17803,7 @@ class RAVEN {
 					}
 					meta._waiters.delete(key);
 				}
-				for (const listener of meta._globalListeners) {
+				for (const listener of this._globalListeners) {
 					try { listener(key, finalVal); } 
 					catch (err) { console.error(`[Sauron Global Listener Error]:`, err); }
 				}
@@ -15710,9 +17832,9 @@ class RAVEN {
 	public store = {
 		get: <T = A,>(key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | undefined => {
 			const { s, m, r } = opts;
-			const _state = this.hub.wr._gt;
-			const _persistent = this.hub.wr._persistent;
-			const _persistKeys = this.hub.wr._persistent_keys;
+			const _state = this._gt;
+			const _persistent = this._persistent;
+			const _persistKeys = this._persistent_keys;
 
 			if (_state.has(key)) return MaybePromise(_state.get(key));
 			if (_persistKeys.has(key) && _persistent.has(key)) {
@@ -15724,10 +17846,10 @@ class RAVEN {
 		},
 		set: <T = A,>(key: A, value: T | ((prev: T | undefined) => T), opts: { triggerRender?: boolean; cap?: number } & ScopeOptions = { s: this.s, m: this.m, r: this.r, triggerRender: true, cap: 200 }) => {
 			const { triggerRender = true, s, m, r, cap } = opts;
-			const _state = this.hub.wr._gt;
-			const _persistent = this.hub.wr._persistent;
-			const _persistKeys = this.hub.wr._persistent_keys;
-			const _listeners = this.hub.wr._listeners;
+			const _state = this._gt;
+			const _persistent = this._persistent;
+			const _persistKeys = this._persistent_keys;
+			const _listeners = this._listeners;
 			const prev = _state.get(key);
 			const next = typeof value === "function" ? (value as (prev: T | undefined) => T)(prev) : value;
 			if (Object.is(prev, next)) return;
@@ -15741,7 +17863,7 @@ class RAVEN {
 		},
 		subscribe: <T = A,>(key: A, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
 			const { s, m, r } = opts;
-			const _listeners = this.hub.wr._listeners;
+			const _listeners = this._listeners;
 
 			if (!_listeners.has(key)) _listeners.set(key, new Set());
 			_listeners.get(key)!.add(listener);
@@ -15752,10 +17874,10 @@ class RAVEN {
 		},
 		delete: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): boolean => {
 			const { s, m, r } = opts;
-			const _state = this.hub.wr._gt;
-			const _persistent = this.hub.wr._persistent;
-			const _persistKeys = this.hub.wr._persistent_keys;
-			const _listeners = this.hub.wr._listeners;
+			const _state = this._gt;
+			const _persistent = this._persistent;
+			const _persistKeys = this._persistent_keys;
+			const _listeners = this._listeners;
 
 			const existed = _state.delete(key);
 			if (_persistKeys.has(key)) {
@@ -15768,47 +17890,47 @@ class RAVEN {
 		},
 		entries: <T = A,>(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): [A, T][] => {
 			const { s, m, r } = opts;
-			const _state = this.hub.wr._gt;
+			const _state = this._gt;
 			return MaybePromise(Array.from(_state.entries()));
 		},
 		persist: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
 			const { s, m, r } = opts;
-			const _persistKeys = this.hub.wr._persistent_keys;
+			const _persistKeys = this._persistent_keys;
 			_persistKeys.set(key, true);
 		},
 		unpersist: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
 			const { s, m, r } = opts;
-			const _persistent = this.hub.wr._persistent;
-			const _persistKeys = this.hub.wr._persistent_keys;
+			const _persistent = this._persistent;
+			const _persistKeys = this._persistent_keys;
 			_persistKeys.delete(key);
 			_persistent.delete(key);
 		},
 		has: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): boolean => {
 			const { s, m, r } = opts;
-			const _state = this.hub.wr._gt;
-			const _persistent = this.hub.wr._persistent;
-			const _persistKeys = this.hub.wr._persistent_keys;
+			const _state = this._gt;
+			const _persistent = this._persistent;
+			const _persistKeys = this._persistent_keys;
 
 			return _state.has(key) || (_persistKeys.has(key) && _persistent.has(key));
 		},
 		clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
 			const { s, m, r } = opts;
-			const _state = this.hub.wr._gt;
-			const _listeners = this.hub.wr._listeners;
+			const _state = this._gt;
+			const _listeners = this._listeners;
 			_state.clear();
 			_listeners.clear();
 		},
 		clearPersistent: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
 			const { s, m, r } = opts;
-			const _persistent = this.hub.wr._persistent;
-			const _persistKeys = this.hub.wr._persistent_keys;
+			const _persistent = this._persistent;
+			const _persistKeys = this._persistent_keys;
 			_persistent.clear();
 			_persistKeys.clear();
 		},
 		_emit: (key: string | symbol, s = this.s, m = this.m, r = this.r): void => {
 			const opts = { s, m, r };
-			const _state = this.hub.wr._gt;
-			const _listeners = this.hub.wr._listeners;
+			const _state = this._gt;
+			const _listeners = this._listeners;
 			const _waiters = this.hub.wr;
 			this.scheduleNotify(key, _listeners, _state);
 			this.scheduleGlobalNotify(key, _waiters, opts);
@@ -15827,10 +17949,10 @@ class RAVEN {
 		},
 		delete: (key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): boolean => {
 			const { s, m, r } = opts;
-			const meta = this.hub.wr.map("_globalListeners_raven", this.m, this.r);
+			const meta = this.map("_globalListeners_raven", this.m, this.r);
 			const deleted = this.store.delete(key, opts);
 			if (deleted) {
-				for (const listener of meta._globalListeners) {
+				for (const listener of this._globalListeners) {
 					try {
 						listener(key, undefined);
 					} catch (err) {
@@ -15858,10 +17980,10 @@ class RAVEN {
 		},
 		subscribeAll: (listener: (key: string | symbol, value: A) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
 			const { s, m, r } = opts;
-			const meta = this.hub.wr.map("_globalListeners_raven", this.m, this.r);
-			meta._globalListeners.add(listener);
+			const meta = this.map("_globalListeners_raven", this.m, this.r);
+		this._globalListeners.add(listener);
 			return () => {
-				meta._globalListeners.delete(listener);
+				this._globalListeners.delete(listener);
 			};
 		},
 		clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
@@ -15869,7 +17991,7 @@ class RAVEN {
 			const meta = this.hub.wr;
 			this.store.clear(opts);
 			meta._waiters.clear();
-			const gl = this.hub.wr.map("_globalListeners_raven", this.m, this.r);
+			const gl = this.map("_globalListeners_raven", this.m, this.r);
 			gl.clear();
 		},
 		waitFor: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Promise<T> => {
@@ -15920,10 +18042,10 @@ class RAVEN {
 			return _root;
 		} else {
 			if (!init_hooks_context) {
-				this.hub.bear.cell.set("_root", _root, true, this.s, this.m, this.r);
+				this.set("_root", _root, true, this.s, this.m, this.r);
 				init_hooks_context = true;
 			}
-			const updated_ctx = this.hub.bear.cell("_root", this.s, this.m, this.r) as ComponentInstance;
+			const updated_ctx = this.get("_root", this.s, this.m, this.r) as ComponentInstance;
 			if (updated_ctx && updated_ctx.id === this.r) return updated_ctx;
 			else return _root;
 		}
@@ -16439,8 +18561,8 @@ export async function get_ws_id(): Promise<string> {
 	const isElectron = false;
 	const isUnix = false;
 	const isWindows = true;
-	let WS_KEY = root.REGISTRY.get('WS_KEY');
-	let WS_ID = root.REGISTRY.get('WS_ID');
+	let WS_KEY = root.reg.get('WS_KEY');
+	let WS_ID = root.reg.get('WS_ID');
 	if (isBrowser) {
 		let id = getSS(WS_KEY);
 		if (!id) { id = generateId(); setSS(WS_KEY, id);		}
@@ -16530,53 +18652,50 @@ export class WAR_ROOOM {
 	public m: A = "SAURON_MASTER_REG";
 	public s: A = "SAURON_SLAVE_REG";
 	public k: A = "__SAURON__";
-	private raven: DEATH_STAR;
+	public raven: DEATH_STAR;
 	//                                                                                                                  MAIN CACHES
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	#META = new M2<A, M2<A, M2<A, A>>>();
-	_meta: MTracer<A, A>;
+	_meta: M2<A, A>;
 	#SIGNALS = new M2<A, M2<A, M2<A, A>>>();
 	_signals: M2<A, A>;
 	#NAKED_SIGNALS = new M2<A, M2<A, M2<A, A>>>();
 	_naked_signals: M2<A, A>;
 	#CONTEXT = new M2<A, M2<A, M2<A, A>>>();
-	_context: MTracer<A, A>;
+	_context: M2<A, A>;
 	#ATOMS = new M2<A, M2<A, M2<A, A>>>();
-	_atoms: MTracer<A, A>;
+	_atoms: M2<A, A>;
 	#SAURON = new M2<A, M2<A, M2<A, A>>>();
-	_sauron: MTracer<A, A>;
+	_sauron: M2<A, A>;
 	#BUS = new M2<A, M2<A, M2<A, A>>>();
-	_bus: MTracer<A, A>;
-	_gt: MTracer<A, A>;
+	_bus: M2<A, A>;
 
 	COMPONENTS = new M2<S, ComponentInstance>();
 	// #endregion
 	//                                                                                                                    THE CLOUD
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	_components: MTracer<A, A>;
-	_batches: MTracer<S | SY>;
-	_batchQueue: MTracer<S | SY, A>;
+	_components: M<A, A>;
+	_batches: M<S | SY>;
+	_batchQueue: M<S | SY, A>;
 	_batchOpts: M<S | SY, { triggerRender?: B }>;
-	_sys: MTracer<S, SysEntry>;
-	_sealed: MTracer<S, SysEntry>;
-	_keyContracts: M<S, ST<S>>;
-	_conflicts: MTracer<S, ConflictPolicy>;
-	_conflictStrategies: MTracer<S, "latest" | "fail" | "accumulate">;
+	_sys: M<S, SysEntry>;
+	_sealed: M<S, SysEntry>;
+	_keyContracts: M<S, Set<S>>;
+	_conflicts: M<S, ConflictPolicy>;
+	_conflictStrategies: M<S, "latest" | "fail" | "accumulate">;
 	_causal: M<S, CausalEntry[]>;
 	_history: M<S | SY, HistoryEntry[]>;
-	_scopes: MTracer<S, SignalScope>;
-	_msgHandlers: M<S, ST<(p: A) => V>>;
+	_scopes: M<S, SignalScope>;
+	_msgHandlers: M<S, Set<(p: A) => V>>;
 	_lastWriteSource: M<S, S>;
-	_mainMap: MTracer<A, S>;
-	_tupleCache: MTracer<S, S>;
-	_weakMap: MTracer<O, S>;
-	_boundaries: MTracer<O, S>;
-	_persistent: MTracer<A, A>;
-	_persistent_keys: MTracer<A, A>;
+	_mainMap: M<A, S>;
+	_tupleCache: M<S, S>;
+	_weakMap: M<O, S>;
+	_boundaries: M<O, S>;
 
-	_global_subscribers: M2<S, ST<() => V>>;
-	_waiters: M2<S | SY, ST<(value: A) => V>>;
-	_listeners: M2<A, ST<(value: A) => void>>;
+	_global_subscribers: M2<S, Set<() => V>>;
+	_waiters: M2<S | SY, Set<(value: A) => V>>;
+	_listeners: M2<A, Set<(value: A) => void>>;
 	// #endregion
 	//                                                                                                                    SIGNALS
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -16586,54 +18705,7 @@ export class WAR_ROOOM {
 	_subscribersMaul: M2<A, A>;
 	_listenersMaul: M2<A, A>;
 	// #endregion
-	constructor(raven: DEATH_STAR) {
-		this.raven = raven;
-		this.r = raven.r ?? "THE_WIZARD_ROOT_REG";
-		this.m = raven.m ?? "SAURON_MASTER_REG";
 
-		this.s = raven.s ?? "SAURON_SLAVE_REG";
-		this.k = raven.k ?? "THE_K_KEY";
-
-		this._meta = this.tracer("_meta", this.m, this.r, "#META");
-		this._signals = this.map("_signals", this.m, this.r, "#SIGNALS");
-		this._naked_signals = this.map("_naked_signals", this.m, this.r, "#NAKED_SIGNALS");
-		this._context = this.tracer("_context", this.m, this.r, "#CONTEXT");
-		this._atoms = this.tracer("_atoms", this.m, this.r, "#ATOMS");
-		this._sauron = this.tracer("_sauron", this.m, this.r, "#SAURON");
-		this._bus = this.tracer("_bus", this.m, this.r, "#BUS");
-		this._gt = this.tracer("_gt", this.m, this.r);
-
-		this._listeners = this.map("_listeners_raven", this.m, this.r);
-		this._global_subscribers = this.map<M<S, ST<() => V>>>("_global_subscribers_raven", this.m, this.r);
-		this._waiters = this.map<M<S | SY, ST<(value: A) => V>>>("_waiters_raven", this.m, this.r);
-
-		this._persistent_keys = this.tracer("_persistent_keys_raven", this.m, this.r);
-		this._persistent = this.tracer("_persistent_raven", this.m, this.r);
-		this._components = this.tracer("_components_raven", this.m, this.r);
-		this._batches = this.tracer("_batches_raven", this.m, this.r);
-		this._batchQueue = this.tracer("_batchQueue_raven", this.m, this.r);
-		this._batchOpts = this.map<M<S | SY, { triggerRender?: B }>>("_batchOpts_raven", this.m, this.r);
-		this._sys = this.tracer<MTracer<S, SysEntry>>("_sys_raven", this.m, this.r);
-		this._sealed = this.tracer<MTracer<S, SysEntry>>("_sealed_raven", this.m, this.r);
-		this._keyContracts = this.map<M<S, ST<S>>>("_keyContracts_raven", this.m, this.r);
-		this._conflicts = this.tracer<MTracer<S, ConflictPolicy>>("_conflicts_raven", this.m, this.r);
-		this._conflictStrategies = this.tracer<MTracer<S, "latest" | "fail" | "accumulate">>("_conflictStrategies_raven", this.m, this.r);
-		this._causal = this.map<M<S, CausalEntry[]>>("_causal_raven", this.m, this.r);
-		this._history = this.map<M<S | SY, HistoryEntry[]>>("_history_raven", this.m, this.r);
-		this._scopes = this.tracer<MTracer<S, SignalScope>>("_scopes_raven", this.m, this.r);
-		this._msgHandlers = this.map<M<S, ST<(p: A) => V>>>("_msgHandlers_raven", this.m, this.r);
-		this._lastWriteSource = this.map<M<S, S>>("_lastWriteSource_raven", this.m, this.r);
-		this._mainMap = this.tracer("_mainMap_raven", this.m, this.r);
-		this._tupleCache = this.tracer<MTracer<S, S>>("_tupleCache_raven", this.m, this.r);
-		this._weakMap = this.tracer<MTracer<O, S>>("_weakMap_raven", this.m, this.r);
-		this._boundaries = this.tracer<MTracer<O, S>>("_boundaries_raven", this.m, this.r);
-
-		this._timeTravelMaul = this.tracer<MTracer<O, S>>("_timeTravel_maul", this.m, this.r, "#SIGNALS");
-		this._historyMaul = this.tracer<MTracer<O, S>>("_history_maul", this.m, this.r, "#SIGNALS");
-
-		this._subscribersMaul = this.map<M2<O, S>>(" _subscribers_maul", this.m, this.r, "#SIGNALS");
-		this._listenersMaul = this.map<M2<O, S>>(" _listeners_maul", this.m, this.r, "#SIGNALS");
-	}
 	get_root(c: S, r: S) {
 		let root;
 		switch (c) {
@@ -16727,13 +18799,14 @@ export class WAR_ROOOM {
 //                                                                                                             [DEATH STAR] HUB
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 export class DEATH_STAR {
+	public mesh: THE_MESH_STORE
+	public state: RAVEN; // app context / state
 	public bus: SITH; // bus
 	public signals: SIGNALS; // signals
-	public state: RAVEN; // app context / state
 	public governor: GOVERNOR;
-	public REGISTRY: Registry;
+	public reg: Registry;
+
 	public wr: WAR_ROOOM;
-	
 	//public MESH: Mesh;
 
 	public r: S = "THE_WIZARD_ROOT_REG";
@@ -16741,25 +18814,270 @@ export class DEATH_STAR {
 	public s: S = "SAURON_SLAVE_REG";
 	public k: A = "__SIGNALS__";
 	public RTRN_TO_SDR = 'RTRN_TO_SDR'
+	public DEVTOOLS_ACTIVE = false
+	public capacity = 1 << 20
+	public pidCapacity = 1024
+	public schedule = DEFAULT_SCHEDULE
+	public shared = typeof SharedArrayBuffer !== "undefined"
+	public maxBatch = 8192
+	public wait: WaitStrategy = "yield"
+	public f64Capacity = 1 << 18
+	public u32Capacity = 1 << 18
+	public i32Capacity = 1 << 18
+	public byteCapacity = 1 << 20
+	public CTRL = 16;
+	public f64: F64 = new Float64Array(0);
+	public ready: Promise<void>;
+	constructor(REGISTRY: A = null, MESH: THE_MESH_STORE = null) {
+		this.ready = (async () => {
+			const serial = executor();
+			await serial.enqueue(() => (this.wr = new WAR_ROOOM(this)));
+			await serial.enqueue(() => (
+				this.wr.raven = this,
+				this.wr.r = this.r ?? "THE_WIZARD_ROOT_REG",
+				this.wr.m = this.m ?? "SAURON_MASTER_REG",
+				this.wr.s = this.s ?? "SAURON_SLAVE_REG",
+				this.wr.k = this.k ?? "THE_K_KEY",
+				this.wr._meta = this.wr.map("_meta", this.m, this.r, "#META"),
+				this.wr._signals = this.wr.map("_signals", this.m, this.r, "#SIGNALS"),
+				this.wr._naked_signals = this.wr.map("_naked_signals", this.m, this.r, "#NAKED_SIGNALS"),
+				this.wr._context = this.wr.map("_context", this.m, this.r, "#CONTEXT"),
+				this.wr._atoms = this.wr.map("_atoms", this.m, this.r, "#ATOMS"),
+				this.wr._sauron = this.wr.map("_sauron", this.m, this.r, "#SAURON"),
+				this.wr._bus = this.wr.map("_bus", this.m, this.r, "#BUS"),
+				this.wr._gt = this.wr.map("_gt", this.m, this.r),
+				this.wr._listeners = this.wr.map("_listeners_raven", this.m, this.r),
+				this.wr._global_subscribers = this.wr.map<M<S, Set<() => V>>>("_global_subscribers_raven", this.m, this.r),
+				this.wr._waiters = this.wr.map<M<S | SY, Set<(value: A) => V>>>("_waiters_raven", this.m, this.r),
+				this.wr._persistent_keys = this.wr.map("_persistent_keys_raven", this.m, this.r),
+				this.wr._persistent = this.wr.map("_persistent_raven", this.m, this.r),
+				this.wr._components = this.wr.map("_components_raven", this.m, this.r),
+				this.wr._batches = this.wr.map("_batches_raven", this.m, this.r),
+				this.wr._batchQueue = this.wr.map("_batchQueue_raven", this.m, this.r),
+				this.wr._batchOpts = this.wr.map<M<S | SY, { triggerRender?: B }>>("_batchOpts_raven", this.m, this.r),
+				this.wr._sys = this.wr.map<M<S, SysEntry>>("_sys_raven", this.m, this.r),
+				this.wr._sealed = this.wr.map<M<S, SysEntry>>("_sealed_raven", this.m, this.r),
+				this.wr._keyContracts = this.wr.map<M<S, Set<S>>>("_keyContracts_raven", this.m, this.r),
+				this.wr._conflicts = this.wr.map<M<S, ConflictPolicy>>("_conflicts_raven", this.m, this.r),
+				this.wr._conflictStrategies = this.wr.map<M<S, "latest" | "fail" | "accumulate">>("_conflictStrategies_raven", this.m, this.r),
+				this.wr._causal = this.wr.map<M<S, CausalEntry[]>>("_causal_raven", this.m, this.r),
+				this.wr._history = this.wr.map<M<S | SY, HistoryEntry[]>>("_history_raven", this.m, this.r),
+				this.wr._scopes = this.wr.map<M<S, SignalScope>>("_scopes_raven", this.m, this.r),
+				this.wr._msgHandlers = this.wr.map<M<S, Set<(p: A) => V>>>("_msgHandlers_raven", this.m, this.r),
+				this.wr._lastWriteSource = this.wr.map<M<S, S>>("_lastWriteSource_raven", this.m, this.r),
+				this.wr._mainMap = this.wr.map("_mainMap_raven", this.m, this.r),
+				this.wr._tupleCache = this.wr.map<M<S, S>>("_tupleCache_raven", this.m, this.r),
+				this.wr._weakMap = this.wr.map<M<O, S>>("_weakMap_raven", this.m, this.r),
+				this.wr._boundaries = this.wr.map<M<O, S>>("_boundaries_raven", this.m, this.r),
+				this.wr._timeTravelMaul = this.wr.map<M<O, S>>("_timeTravel_maul", this.m, this.r, "#SIGNALS"),
+				this.wr._historyMaul = this.wr.map<M<O, S>>("_history_maul", this.m, this.r, "#SIGNALS"),
+				this.wr._subscribersMaul = this.wr.map<M2<O, S>>(" _subscribers_maul", this.m, this.r, "#SIGNALS"),
+				this.wr._listenersMaul = this.wr.map<M2<O, S>>(" _listeners_maul", this.m, this.r, "#SIGNALS")
+			));
+			await serial.enqueue(() => (this.state = new RAVEN(this)));
 
-	constructor(capacity = 1 << 20, REGISTRY: A = null, MESH: A = null) {
-		this.REGISTRY = REGISTRY;
-		if (!REGISTRY) this.REGISTRY = new Registry();
-		this.wr = new WAR_ROOOM(this);
-		// this.MESH = MESH
-		//if (!MESH) this.MESH = new Mesh()
-		this.bus = new SITH(this, capacity);
-		this.state = new RAVEN(this);
-		this.signals = new SIGNALS(this);
-		this.governor = new GOVERNOR(this);
+			await serial.enqueue(() => {
+				this.reg = REGISTRY;
+				if (!REGISTRY) this.reg = new Registry();
+			});
+			await serial.enqueue(() => {
+				if (MESH) this.mesh = MESH;
+				else if (!MESH) this.mesh = new THE_MESH_STORE(this);
+			});
+
+			await serial.enqueue(() => (this.governor = new GOVERNOR(this)));
+			await serial.enqueue(() => (this.bus = new SITH()));
+			await serial.enqueue(() => (this.signals = new SIGNALS()));
+			await serial.enqueue(() => (this.mesh = new THE_MESH_STORE(this)));
+			await serial.enqueue(() => (this.init()));
+			await serial.exec();
+		})();
+	}
+	public update_mesh(MESH: THE_MESH_STORE) {
+		this.mesh = MESH
+		this.bus.mesh_store = MESH
+	}
+	public init() {
+		//                                                                                                             SIGNALS.signals
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		
+		// #endregion
+		//                                                                                                              signals.signals
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		this.signals.root = this
+		this.signals.r = this.r
+		this.signals.m = this.m
+		this.signals.s = this.s
+		this.signals.k = this.k
+		this.signals.hub = this
+		this.signals.signals = this.signals
+		this.signals._signal_cells = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_CELLS");
+		this.signals._signal_listeners = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_LISTENERS");
+		this.signals._signal_global_listeners = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_GLOBAL_LISTENERS");
+		this.signals._signal_waiters = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_WAITERS");
+		this.signals._signal_persistent = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_PERSISTENT");
+		this.signals._signal_persistent_keys = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_PERSISTENT_KEYS");
+		this.signals.selfId = `SIGNALS_${this.reg._sid()}`
+		// #endregion
+		//                                                                                                       signals.signals_raptor
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		this.signals.signals_raptor.root = this
+		this.signals.signals_raptor.hub = this
+		this.state = this.state;
+		this.signals.signals_raptor.r = this.r;
+		this.signals.signals_raptor.m = this.m;
+		this.signals.signals_raptor.s = this.s;
+		this.signals.signals_raptor.k = this.k;
+		this.signals.signals_raptor.signals = this.signals
+		this.signals.signals_raptor.DARTH_MAUL_ENGINE = this.signals.signals_raptor_ngin;
+		// #endregion
+		//                                                                                                                          bus
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		this.bus.root = this;
+		this.bus.shared = this.shared;
+		this.bus.state = this.state.state;
+		this.bus.wait = this.wait;
+		this.bus.maxBatch = this.maxBatch;
+		this.bus.capacity = this.capacity;
+		this.bus.schedule = this.schedule
+		this.bus.r = this.r;
+		this.bus.m = this.m;
+		this.bus.s = this.s;
+		this.bus.k = this.k;
+		this.bus.DEVTOOLS_ACTIVE = this.DEVTOOLS_ACTIVE;
+		// #endregion
+		//                                                                                                          bus.batching_raptor
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		this.bus.batching_raptor.hub = this.bus;
+		this.bus.batching_raptor.root = this
+		// #endregion
+		//                                                                                                            bus.stream_raptor
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		this.bus.stream_raptor.capacity = this.capacity;
+		this.bus.stream_raptor.channelMask = this.capacity - 1;
+		this.bus.stream_raptor.hub = this.bus;
+		this.bus.stream_raptor.root = this
+		this.bus.stream_raptor.r = this.r;
+		this.bus.stream_raptor.m = this.m;
+		this.bus.stream_raptor.s = this.s;
+		this.bus.stream_raptor.k = this.k;
+		// #endregion
+		//                                                                                                                      bus.ro2
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		this.bus.ro2.root = this;
+		this.bus.ro2.hub = this.bus;
+		this.bus.ro2.r = this.r;
+		this.bus.ro2.m = this.m;
+		this.bus.ro2.s = this.s;
+		this.bus.ro2.k = this.k;
+		if ((this.capacity & (this.capacity - 1)) !== 0) { throw new Error("Disruptor capacity must be a power of two."); }
+		this.bus.ro2.capacity = this.capacity;
+		this.bus.ro2.mask = this.capacity - 1;
+		// #endregion
+		//                                                                                                                   bus.exogul
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		this.bus.exogul.hub = this.bus;
+		if (!pow2(this.capacity)) throw new Error("slotCapacity must be a power of two");
+		// #endregion
+		//                                                                                                             SIGNALS.signals
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		this.bus.g_bus.s = this.s;
+		this.bus.g_bus.m = this.m;
+		this.bus.g_bus.r = this.r;
+		this.bus.g_bus.k = this.k;
+		const root = globalThis as any;
+		const rL = (root[this.r] ??= Object.create(null));
+		const mL = (rL[this.m] ??= Object.create(null));
+		this.bus.g_bus.channels = mL[this.s] ??= Object.create(null);
+		// #endregion
+
+		//                                                                                                             SIGNALS.signals
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		this.bus.drs.root = this;
+		this.bus.drs.hub = this.bus;
+		this.bus.drs.r = this.r;
+		this.bus.drs.m = this.m;
+		this.bus.drs.s = this.s;
+		this.bus.drs.k = this.k;
+		this.bus.drs.state = this.state.state
+		this.bus.drs.bus = this.bus
+		// #endregion
+		//                                                                                                             SIGNALS.signals
+		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+		this.bus.spreadsheet.hub = this.bus;
+		this.bus.spreadsheet.root = this;
+		this.bus.spreadsheet.r = this.r;
+		this.bus.spreadsheet.m = this.m;
+		this.bus.spreadsheet.s = this.s;
+		this.bus.spreadsheet.k = this.k;
+		const capacity = this.capacity ?? 1 << 18;
+		const pidCapacity = this.pidCapacity ?? 1 << 20;
+		if (!pow2(capacity)) throw new Error("capacity must be a power of two");
+		if (!pow2(pidCapacity)) throw new Error("pidCapacity must be a power of two");
+		this.bus.spreadsheet.capacity = capacity;
+		this.bus.spreadsheet.mask = capacity - 1;
+		this.bus.spreadsheet.pidCapacity = pidCapacity;
+		this.bus.spreadsheet.schedule = this.schedule ?? DEFAULT_SCHEDULE;
+		this.bus.spreadsheet.shared = this.shared ?? typeof SharedArrayBuffer !== "undefined";
+		this.bus.spreadsheet.maxBatch = this.maxBatch ?? 8192;
+		this.bus.spreadsheet.wait = this.wait ?? "yield";
+
+		const AB = this.shared ? SharedArrayBuffer : ArrayBuffer;
+		const laneCount = this.schedule.length;
+		this.bus.spreadsheet.rings = Array.from( { length: laneCount }, () => new Int32Array(new AB(capacity * REC * 4)) );
+		this.bus.spreadsheet.ctrl = new Int32Array(new AB(laneCount * this.CTRL * 4));
+		// Availability buffer uses one Int32 per ring slot.
+		this.bus.spreadsheet.available = Array.from( { length: laneCount }, () => new Int32Array(new AB(capacity * 4)) );
+		this.bus.spreadsheet.clock = new Int32Array(new AB(4));
+		this.bus.spreadsheet.phaseIndex = new Int32Array(new AB(4));
+		this.bus.spreadsheet.running = new Int32Array(new AB(4));
+		this.bus.spreadsheet.pidToSlot = new Int32Array(new AB(pidCapacity * 4));
+		this.bus.spreadsheet.pidToSlot.fill(-1);
+		this.bus.spreadsheet.dirty = new Uint32Array(new AB((pidCapacity >>> 5) * 4));
+		this.bus.spreadsheet.f64 = new Float64Array(new AB((this.f64Capacity ?? 1 << 18) * 8));
+		this.bus.spreadsheet.u32 = new Uint32Array(new AB((this.u32Capacity ?? 1 << 18) * 4));
+		this.bus.spreadsheet.i32 = new Int32Array(new AB((this.i32Capacity ?? 1 << 18) * 4));
+		this.bus.spreadsheet.bytes = new Uint8Array(new AB(this.byteCapacity ?? 1 << 20));
+		this.bus.spreadsheet.f64Bits = new BigInt64Array(this.f64.buffer);
+		this.bus.spreadsheet.f64 = new Float64Array(new AB((this.f64Capacity ?? 1 << 18) * 8));
+
+
+		this.bus.codecs.serializer.enc = new (this.bus.codecs.serializer.encoder)({});
+		this.bus.codecs.serializer.dec = new (this.bus.codecs.serializer.decoder)({});
+		// #endregion
+	}
+	public update_reg(REGISTRY: Registry) {
+		this.reg = REGISTRY
 	}
 }
+
 // send               p: U, k: A, s: S = '_globalThis', m: S = this.m, r: S = this.r, adapter = "ws"
 // send.gt.hot        p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'
 // sub                handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh"
 // sub.hot            handler: A, k: S
-// __sauron_id__ = this.root.REGISTRY._sid()
+// __sauron_id__ = this.root.reg._sid()
 export const root = new DEATH_STAR();
+export const mesh = root.mesh
+
+
+class _serialExecutor {
+	chain = Promise.resolve();
+	enqueue(fn) {
+		const run = this.chain.then(fn);
+		this.chain = run.then(
+			() => undefined,
+			() => undefined,
+		);
+		return run;
+	}
+	exec() {
+		return this.chain;
+	}
+}
+function executor() {
+	return new _serialExecutor();
+}
+
 function getDark<T = A>(key: A, s?: S, m?: S, r?: S) {
 	return MaybePromise(root.state.state.get<T>(key, { s, m, r }));
 }
@@ -16774,7 +19092,7 @@ function subDark<T = A>(fn: (value: T) => void, k: S, s?: S, m?: S, r?: S): () =
 // #endregion
 //                                                                                                                    USE STATE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkState<T = any, S = T>(initialValue?: T | (() => T), options: StateOptions<T, S> = {}, __sauron_id__ = this.hub.REGISTRY._sid()) {
+export function darkState<T = any, S = T>(initialValue?: T | (() => T), options: StateOptions<T, S> = {}, __sauron_id__ = this.hub.reg._sid()) {
 	return root.state.createHookCell( "darkState", __sauron_id__, () => ({
 			value: {
 				current: typeof initialValue === "function" ? (initialValue as () => T)() : initialValue,
@@ -16809,10 +19127,11 @@ export function darkState<T = any, S = T>(initialValue?: T | (() => T), options:
 		},
 	);
 }
+(globalThis as any).darkState = darkState
 // #endregion
 //                                                                                                                USE CALL BACK
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkCallback<T extends (...args: A[]) => A>(callback: T, deps?: A[], __sauron_id__ = this.hub.REGISTRY._sid()): T {
+export function darkCallback<T extends (...args: A[]) => A>(callback: T, deps?: A[], __sauron_id__ = this.hub.reg._sid()): T {
 	return root.state.createHookCell( "darkCallback", __sauron_id__,
 		(): CallbackHookState => ({ value: undefined, callback, deps: deps ?? [] }),
 		(s: HookState) => {
@@ -16828,10 +19147,11 @@ export function darkCallback<T extends (...args: A[]) => A>(callback: T, deps?: 
 		},
 	);
 }
+(globalThis as any).darkCallback = darkCallback
 // #endregion
 //                                                                                                                   USE EFFECT
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkEffect(effect: (signal?: AbortSignal) => void | (() => void), deps?: A[], __sauron_id__ = this.hub.REGISTRY._sid()): void {
+export function darkEffect(effect: (signal?: AbortSignal) => void | (() => void), deps?: A[], __sauron_id__ = this.hub.reg._sid()): void {
 	root.state.createHookCell( "darkEffect", __sauron_id__,
 		(): HookState => {
 			const controller = new AbortController();
@@ -16867,10 +19187,15 @@ function _depsEqual(a: A[], b: A[]): boolean {
 	}
 	return true;
 }
+(globalThis as any).darkEffect = darkEffect
+
+
+
+
 // #endregion
 //                                                                                                                 USE INTERVAL
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkInterval(options: { timer?: number; autoStart?: boolean; execute: () => void }, __sauron_id__ = this.hub.REGISTRY._sid()) {
+export function darkInterval(options: { timer?: number; autoStart?: boolean; execute: () => void }, __sauron_id__ = this.hub.reg._sid()) {
 	const autoStart = options.autoStart ? Boolean(options.autoStart) !== false : true;
 	const callback = options.execute ? options.execute : console.log(`interval triggered`);
 	const delay = options.timer ? options.timer : 30000;
@@ -16938,7 +19263,7 @@ export function darkInterval(options: { timer?: number; autoStart?: boolean; exe
 // #endregion
 //                                                                                                           USE DEFERRED VALUE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkDeferredValue<T>(value: T, __sauron_id__ = this.hub.REGISTRY._sid()): T {
+export function darkDeferredValue<T>(value: T, __sauron_id__ = this.hub.reg._sid()): T {
 	return root.state.createHook(
 		"darkDeferredValue",
 		__sauron_id__,
@@ -16957,7 +19282,7 @@ export function darkDeferredValue<T>(value: T, __sauron_id__ = this.hub.REGISTRY
 // #endregion
 //                                                                                                        USE IMPERATIVE HANDLE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkImperativeHandle<T>(ref: { current: T | null }, init: () => T, deps?: A[], __sauron_id__ = this.hub.REGISTRY._sid()): void {
+export function darkImperativeHandle<T>(ref: { current: T | null }, init: () => T, deps?: A[], __sauron_id__ = this.hub.reg._sid()): void {
 	return root.state.createHook(
 		"darkImperativeHandle",
 		__sauron_id__,
@@ -16977,7 +19302,7 @@ export function darkImperativeHandle<T>(ref: { current: T | null }, init: () => 
 // #endregion
 //                                                                                                                     USE MEMO
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export function darkMemo<T>(factory: () => T, deps: A[], __sauron_id__ = this.hub.REGISTRY._sid()): T {
+export function darkMemo<T>(factory: () => T, deps: A[], __sauron_id__ = this.hub.reg._sid()): T {
 	return root.state.createHook(
 		"darkMemo",
 		__sauron_id__,

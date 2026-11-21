@@ -1,9 +1,31 @@
 //                                    CELL  
 // #region ══════════════════════════════════════════════════════════════════════════════════════════════════════
 import * as path from 'path'
-import { parse as parseTS } from '@typescript-eslint/typescript-estree'
 import { Registry } from "@the-w1zard/the-registry";
+import * as fs from 'fs'
+import { parse as parseTS } from '@typescript-eslint/typescript-estree'
 
+const SKIP_KEYS = new Set(['parent', 'loc', 'range', 'tokens', 'comments'])
+
+export function walkTSNodes(node: any, visit: (n: any) => void): void {
+  if (!node || typeof node !== 'object') return
+  if (Array.isArray(node)) { for (const n of node) walkTSNodes(n, visit); return }
+  if (typeof node.type === 'string') visit(node)
+  for (const key of Object.keys(node)) {
+    if (SKIP_KEYS.has(key)) continue
+    walkTSNodes(node[key], visit)
+  }
+}
+
+export function parseAST(filePath: string): ASTResult {
+  const content = fs.readFileSync(filePath, 'utf8')
+  const lang = detectLang(filePath)
+  if (lang === 'ts' || lang === 'tsx' || lang === 'js' || lang === 'jsx') {
+    return parseASTFromContent(content, filePath)
+  }
+  // css / md / json / jsonc: no parser wired up here, keep the raw text
+  return { lang, filePath, raw: content }
+}
 
 export function boxContains(b: RangeBox, key: string): boolean {
   const m = KEY_RE.exec(key)
@@ -1020,8 +1042,8 @@ NOW: () => dateSerial(new Date()),
 DATE: (a) => Math.floor(dateSerial(new Date(toNum(a[0]), toNum(a[1]) - 1, toNum(a[2])))),
 EDATE: (a) => { const d = fromSerial(toNum(a[0])); d.setMonth(d.getMonth() + toNum(a[1])); return Math.floor(dateSerial(d)) },
 EOMONTH: (a) => { const d = fromSerial(toNum(a[0])); d.setMonth(d.getMonth() + toNum(a[1]) + 1, 0); return Math.floor(dateSerial(d)) },
-DATEVALUE: (a) => { const d = new Date(toStr(a[0])); return isNaN(d.getTime()) ? "#VALUE!" : Math.floor(dateSerial(d)) },
-DAYS360: (a) => days360(fromSerial(toNum(a[0])), fromSerial(toNum(a[1])), toBool(a[2])),
+// DATEVALUE: (a) => { const d = new Date(toStr(a[0])); return isNaN(d.getTime()) ? "#VALUE!" : Math.floor(dateSerial(d)) },
+// DAYS360: (a) => days360(fromSerial(toNum(a[0])), fromSerial(toNum(a[1])), toBool(a[2])),
 YEARFRAC: (a) => {
   let s = toNum(a[0]), e = toNum(a[1]); const basis = toNum(a[2] ?? 0)
   if (s > e) [s, e] = [e, s]
@@ -1050,7 +1072,7 @@ YEARFRAC: (a) => {
   WEEKNUM: (a) => { const d = fromSerial(toNum(a[0])); const jan1 = new Date(d.getFullYear(), 0, 1); return Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7) },
   ISOWEEKNUM: (a) => { const d = fromSerial(toNum(a[0])); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 4 - (d.getDay() || 7)); const y = new Date(d.getFullYear(), 0, 1); return Math.ceil(((d.getTime() - y.getTime()) / 86400000 + 1) / 7) },
   DAYS: (a) => toNum(a[0]) - toNum(a[1]),
-  DAYS360: (a) => Math.round((toNum(a[0]) - toNum(a[1])) * 360 / 365),
+ DAYS360: (a) => Math.round((toNum(a[0]) - toNum(a[1])) * 360 / 365),
   NETWORKDAYS: (a) => networkDays(toNum(a[0]), toNum(a[1]), a[2] ? flattenRange(a[2]).map(toNum) : []),
   WORKDAY: (a) => workday(toNum(a[0]), toNum(a[1]), a[2] ? flattenRange(a[2]).map(toNum) : []),
   DATEVALUE: (a) => { const d = new Date(toStr(a[0])); return isNaN(d.getTime()) ? { error: '#VALUE!' } : dateSerial(d) },
@@ -1627,7 +1649,7 @@ export class Parser {
   private parseComparison(): ASTNode {
     let left = this.parseConcat()
     while (this.match('EQ', 'NEQ', 'LT', 'LTE', 'GT', 'GTE')) {
-      const op = this.eat().value
+      const op = this.eat().value as BinOpNode["op"]
       left = { type: 'BinOp', op, left, right: this.parseConcat() }
     }
     return left
@@ -1637,18 +1659,28 @@ export class Parser {
     while (this.match('AMP')) { this.eat(); left = { type: 'BinOp', op: '&', left, right: this.parseAddSub() } }
     return left
   }
-  private parseAddSub(): ASTNode {
+  private parseAddSub1(): ASTNode {
     let left = this.parseMulDiv()
     while (this.match('PLUS', 'MINUS')) {
-      const op = this.eat().value
+      const op = this.eat().value as BinOpNode["op"]
       left = { type: 'BinOp', op, left, right: this.parseMulDiv() }
     }
     return left
   }
+  private parseAddSub(): ASTNode {
+    let left = this.parseMulDiv();
+
+    while (this.match("PLUS", "MINUS")) {
+        const op = this.eat().value as BinOpNode["op"];
+        left = { type: "BinOp", op, left, right: this.parseMulDiv() };
+    }
+
+    return left;
+}
   private parseMulDiv(): ASTNode {
     let left = this.parseExponent()
     while (this.match('STAR', 'SLASH')) {
-      const op = this.eat().value
+      const op = this.eat().value as BinOpNode["op"]
       left = { type: 'BinOp', op, left, right: this.parseExponent() }
     }
     return left
@@ -1852,7 +1884,7 @@ export function parseASTFromContent(content: string, filePath: string): ASTResul
         tokens: false,
         comment: false,
       });
-      return { lang, filePath, raw };
+      return { lang, filePath, raw: content };
     }
     case 'css':
     case 'md':
@@ -2041,7 +2073,10 @@ export function errCode(v: unknown): string | undefined {
   if (typeof v === "object" && v !== null && "error" in v) return String((v as any).error)
   return undefined
 }
-export function isErr(v: unknown): v is string | { error: string } { return errCode(v) !== undefined }
+export function isEr1(v: unknown): v is string | { error: string } { return errCode(v) !== undefined }
+export function isErr(value: unknown): value is { error: string } {
+  return typeof value === "object" && value !== null && "error" in value;
+}
 export function isSpreadsheetError(v: unknown): v is SpreadsheetError { return typeof v === "string" && ERR_RE.test(v) }
 export type SpecialForm = (nodes: ASTNode[], ctx: EvalContext, ev: (n: ASTNode, c?: EvalContext) => unknown) => unknown
 const normalizeResult = (v: unknown) => {

@@ -13,8 +13,8 @@
 //  Everything else (Bun / Deno / node) is the server path.
 //  ══════════════════════════════════════════════════════════════════════════════
 
-import { hub } from './hadron_disruptor'
-import { INDEXED_DB, BINARY } from './binary_kvdb'
+import { hub } from './archive/hadron_disruptor'
+import { INDEXED_DB, BINARY } from './client/kv_idb'
 
 
 
