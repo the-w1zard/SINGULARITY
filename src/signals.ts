@@ -49,6 +49,8 @@ import "@the-w1zard/alias_types"
 import "@the-w1zard/types"
 import "@the-w1zard/dx"
 import { Registry } from "@the-w1zard/the-registry";
+import { GateSmasher } from "../node_modules/@the-w1zard/solutions/dist/index.js";
+
 // import { Mesh } from "@the-w1zard/the-mesh"
 // import { darkState, useEffect } from "@the-w1zard/the-dark-side"
 import { queue, Queue } from "./comps/queue";
@@ -59,7 +61,9 @@ import { BINARY_CODEC } from "./comps/binary";
 import { MCR_Combo } from "@the-w1zard/dx/twx";
 import { CellVM } from "./comps/cell-worker";
 //import { M2 } from "@the-w1zard/dx";
-
+import { expose } from './slab';
+import type { SlabServices } from './slab.types';
+import { slab } from './slab.types';
 
 // #endregion
 //                                                                                                                        M2 O2
@@ -1967,6 +1971,10 @@ function makeRx<T>(id: string, b: Binding<T>): Rx<T> {
 
 	return r;
 }
+function untrackFn<T>(fn: () => T): T {
+	const prev = setActiveSub(undefined);
+   try { return fn(); } finally { setActiveSub(prev); }
+}
 export function getActiveSub() { return activeSub;}
 export function setActiveSub(sub) { const prevSub = activeSub; activeSub = sub; return prevSub;}
 export function getBatchDepth() { return batchDepth;}
@@ -2344,38 +2352,99 @@ export function scanRoot(root: ParentNode = document, componentId = _signals_roo
 
 	return out;
 }
+type rts = {
+	s?: S;
+	m?: S;
+	r?: S;
+   }
+type MetaEntry = {
+	sys?: SysEntry;
+	causal?: A[];
+	conflict?: ConflictPolicy;
+	initial?: A
+	frozen?: B
+	sealed?: B
+	schema?: A
+	async?: A
+	lifecycle?: A
+	key?: S
+	version?: N
+	lastWriteSource?: S
+};
+type ScopeMetaEntry = {
+	weakMap: WeakMap<object, string>;
+	tupleCache: Map<string, string>;
+};
+type ContractEntry = {
+	invariant: (snapshot: Record<string, A>) => boolean;
+	key: A; s: S; m: S; r: S; block: boolean;
+};
 // #endregion
-//                                                                                                [DARTH MAUL] DISRPTOR SIGNALS
+//                                                                                                  [DARTH MAUL] RAPTOR SIGNALS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class SIGNALS {
-	public root: DEATH_STAR
-	public r: A = "THE_WIZARD_ROOT_REG";
-	public m: A = "SAURON_MASTER_REG";
-	public s: A = "SAURON_SLAVE_REG";
-	public k: A = "__SAURON__";
-
-	public hub: DEATH_STAR
-	public signals: SIGNALS
+	//                                                                                                                        STORE
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public r: S = "SIGNALS";
+	public m: S = "SAURON_MASTER_REG";
+	public s: S = "SAURON_SLAVE_REG";
+	public k: S = "__SAURON__";
 
 	public selfId: S
-	#SIGNAL_CELLS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-	public _signal_cells: Record<S, A>
-
-	#SIGNAL_LISTENERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-	public _signal_listeners: Record<S, Set<(value: A) => void>>;
-
-	#SIGNAL_GLOBAL_LISTENERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-	public _signal_global_listeners: Record<S, Set<(key: A, value: A) => void>>;
-
-	#SIGNAL_WAITERS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-	public _signal_waiters: Record<S, Set<(value: A) => void>>;
-
-	#SIGNAL_PERSISTENT: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-	
-	public _signal_persistent: Record<S, A>
-	#SIGNAL_PERSISTENT_KEYS: Record<S, Record<S, Record<S, Record<S, A>>>> = Object.create(null);
-	public _signal_persistent_keys: Record<S, A>
-	
+	#SIGNAL_CELLS: O2<S, O2<S, O2<S, O2<S, A>>>> = new O2<S, O2<S, O2<S, O2<S, A>>>>();
+	#SIGNAL_META: O2<S, O2<S, O2<S, O2<S, A>>>> = new O2<S, O2<S, O2<S, O2<S, A>>>>();
+	#SIGNAL_SCOPE_META: O2<S, O2<S, O2<S, O2<S, A>>>> = new O2<S, O2<S, O2<S, O2<S, A>>>>();
+	#CONTRACTS: O2<S, O2<S, O2<S, O2<S, A>>>> = new O2<S, O2<S, O2<S, O2<S, A>>>>();
+	#SIGNAL_LISTENERS: O2<S, O2<S, O2<S, O2<S, A>>>> = new O2<S, O2<S, O2<S, O2<S, A>>>>();
+	#SIGNAL_GLOBAL_LISTENERS: O2<S, O2<S, O2<S, O2<S, A>>>> = new O2<S, O2<S, O2<S, O2<S, A>>>>();
+	#SIGNAL_WAITERS: O2<S, O2<S, O2<S, O2<S, A>>>> = new O2<S, O2<S, O2<S, O2<S, A>>>>();
+	#SIGNAL_PERSISTENT: O2<S, O2<S, O2<S, O2<S, A>>>> = new O2<S, O2<S, O2<S, O2<S, A>>>>();
+	#SIGNAL_PERSISTENT_KEYS: O2<S, O2<S, O2<S, O2<S, A>>>> = new O2<S, O2<S, O2<S, O2<S, A>>>>();
+	public _signal_listeners: O2<S, Set<(value: A) => void>> = new O2<S, Set<(value: A) => void>>();
+	public _signal_cells: O2<S, A> = new O2<S, A>();
+	public _signal_meta: O2<S, A> = new O2<S, A>();
+	public _signal_scope_meta: O2<S, A> = new O2<S, A>();
+	public _contracts: O2<S, A> = new O2<S, A>();
+	public _timeTravel: O2<S, A> = new O2<S, A>();
+	public _history: O2<S, A> = new O2<S, A>();
+	public _signal_global_listeners: O2<S, Set<(key: A, value: A) => void>>= new O2<S, Set<(key: A, value: A) => void>>();
+	public _signal_waiters: O2<S, Set<(value: A) => void>> = new O2<S, Set<(value: A) => void>>();
+	public _signal_persistent: O2<S, A> = new O2<S, A>();
+	public _signal_persistent_keys: O2<S, A> = new O2<S, A>();
+	public activeTracer: O2<SignalKey, SIGNAL_CELL> | null = null;
+	private total_cache_size = 5000;
+	public signalsDevtools() {
+		return {
+			roots: {
+				signals: this.#SIGNAL_CELLS,
+				meta: this.#SIGNAL_META,
+				scope_meta: this.#SIGNAL_SCOPE_META,
+				contracts: this.#CONTRACTS,
+				listeners: this.#SIGNAL_LISTENERS,
+				global_listeners: this.#SIGNAL_GLOBAL_LISTENERS,
+				waiters: this.#SIGNAL_WAITERS,
+				persistent: this.#SIGNAL_PERSISTENT,
+				persistent_keys: this.#SIGNAL_PERSISTENT_KEYS,
+			},
+			hot_caches: {
+				_signal_listeners: this._signal_listeners,
+				_signal_cells: this._signal_cells,
+				_signal_meta: this._signal_meta,
+				_signal_scope_meta: this._signal_scope_meta,
+				_contracts: this._contracts,
+				_timeTravel: this._timeTravel,
+				_history: this._history,
+				_signal_global_listeners: this._signal_global_listeners,
+				_signal_waiters: this._signal_waiters,
+				_signal_persistent: this._signal_persistent,
+				_signal_persistent_keys: this._signal_persistent_keys,
+				activeTracer: this.activeTracer,
+			}
+		}
+	}
+	// #endregion
+	//                                                                                                                      SIGNALS
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public get_(c:S = "signal_cells") {
 		let _
 		switch (c) {
@@ -2388,7 +2457,7 @@ class SIGNALS {
 			default: {  break; }
 		}
 		return _
-	}
+	}p
 	public getHash(c:S = "signal_cells", r:S = this.r) {
 		let root;
 		switch (c) {
@@ -2427,13 +2496,40 @@ class SIGNALS {
 	}
 	public getS(s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") {
 		const rL = this.get_root(c, r);
-		const mL = (rL[m] ??= Object.create(null));
-		const sL = (mL[s] ??= Object.create(null));
+		const mL = (rL[m] ??= new O2());
+		const sL = (mL[s] ??= new O2());
 		return sL;
+	}
+	public atom_reg(s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") {
+		const rL = this.get_root(c, r);
+		const mL = (rL[m] ??= new O2());
+		const sL = (mL[s] ??= new O2());
+		return sL;
+	}
+	public meta_reg(s: S = this.s, m: S = this.m, r: S = this.r) {
+		const rL = (this.#SIGNAL_META[r] ??= new O2());
+		const mL = (rL[m] ??= new O2());
+		const sL = (mL[s] ??= new O2());
+		return sL; // O2<S, MetaEntry>
+	}
+	public meta(key: A, s: S = this.s, m: S = this.m, r: S = this.r): MetaEntry {
+		const bucket = this.meta_reg(s, m, r);
+		return (bucket[key] ??= {});
+	}
+	public contract_reg(s: S = this.s, m: S = this.m, r: S = this.r) {
+		const rL = (this.#CONTRACTS[r] ??= new O2());
+		const mL = (rL[m] ??= new O2());
+		const sL = (mL[s] ??= new O2());
+		return sL; // O2<name, ContractEntry>
+	}
+	private scopeMeta(s: S = this.s, m: S = this.m, r: S = this.r): ScopeMetaEntry {
+		const rL = (this.#SIGNAL_SCOPE_META[r] ??= new O2());
+		const mL = (rL[m] ??= new O2());
+		return (mL[s] ??= { weakMap: new WeakMap(), tupleCache: new Map() });
 	}
 	public getM(m: S = this.m, r: S = this.r, c = "signal_cells") {
 		const rL = this.get_root(c, r);
-		const mL = (rL[m] ??= Object.create(null));
+		const mL = (rL[m] ??= new O2());
 		return mL;
 	}
 	public getR(r: S = this.r, c = "signal_cells") {
@@ -2451,7 +2547,7 @@ class SIGNALS {
 		}
 		return fn;
 	})();
-	getHot(k: S) {
+	public getHot(k: S) {
 		   return this._signal_cells[k];
 	}
 	public read = (() => {
@@ -2466,7 +2562,7 @@ class SIGNALS {
 		 
 		return fn;
 	})();
-	readHot(k: S)  {
+	public readHot(k: S)  {
 		 return this._signal_cells[k];
 	}
 	public write = (() => {
@@ -2481,46 +2577,16 @@ class SIGNALS {
 		} 
 		return fn;
 	})();
-	setHot<T = A>(v: T | (() => T), k: S)   {
-		const registry = this._signal_cells
+	public setHot<T = A>(v: T | (() => T), k: S) {
+		const registry = this._signal_cells;
 		const t = UF(v);
 		const atom = signal(t);
 		registry[k] = atom;
+		this._resolveWaitersHot(k, t);
 		return atom;
 	}
-	public notifyKeyListeners(key: A, value: A | UD, opts: ScopeOptions): void {
-		const listeners = this._signal_listeners[key];
-		if (!listeners) return;
-		for (const listener of listeners) {
-			try { listener(value); }
-			catch (err) { console.error(`[Sauron Signal Listener Error]:`, err); }
-		}
-	}
-	public scheduleGlobalNotify(key: A, value: A | UD, opts: ScopeOptions): void {
-		const globalListeners = this._signal_global_listeners["_signal_global_listeners_raven"];
-		if (globalListeners) {
-			for (const listener of globalListeners) {
-				try { listener(key, value); }
-				catch (err) { console.error(`[Sauron Signal Global Listener Error]:`, err); }
-			}
-		}
-	
-		const waiters = this._signal_waiters[key];
-		if (waiters) {
-			const resolved = Array.from(waiters);
-			delete this._signal_waiters[key];
-			for (const resolve of resolved) {
-				try { resolve(value); }
-				catch (err) { console.error(`[Sauron Signal Waiter Error]:`, err); }
-			}
-		}
-	}
-	private notifyAll( key: A, value: A | UD, opts: ScopeOptions,	): void {
-		this.notifyKeyListeners(key, value, opts);
-		this.scheduleGlobalNotify(key, value, opts);
-	}
 	public atom = (() => {
-		const fn = <T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.reg._sid()}`, s = this.s, m = this.m, r = this.r, ) => {
+		const fn = <T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${slab.reg._sid()}`, s = this.s, m = this.m, r = this.r, ) => {
 			return {
 				get value(): T { return this.signal(undefined, k, s, m, r); },
 				get current(): T { return this.signal(undefined, k, s, m, r); },
@@ -2531,7 +2597,7 @@ class SIGNALS {
 				set set(v: T) { this.signal(v, k, s, m, r); },
 			};
 		}
-		fn.hot = <T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${this.hub.reg._sid()}`, s = this.s, m = this.m, r = this.r, )  => {
+		fn.hot = <T = any>(v: A, k: SignalKey = `__THE_WARLOCK_SIGNALS_${slab.reg._sid()}`, s = this.s, m = this.m, r = this.r, )  => {
 			return {
 				get value(): T { return this.signal.hot(k); },
 				get current(): T { return this.signal.hot(k); },
@@ -2544,6 +2610,17 @@ class SIGNALS {
 		}
 		return fn;
 	})();
+	public create<T = A>(k: SignalKey, v?: T | (() => T), s = this.s, m = this.m, r = this.r) {
+		const registry = this.atom_reg(s, m, r);
+		let sig = registry[k];
+		if (sig || v === undefined) return sig;
+	
+		const initialValue = typeof v === "function" ? (v as () => T)() : v;
+		sig = signal(initialValue);
+		registry[k] = sig;
+		this.meta(k, s, m, r).initial = initialValue; // for reset()
+		return sig;
+	}
 	public signal = (() => {
 		const fn = <T = A,>(v: T | (() => T), k: SignalKey, s = this.s, m = this.m, r = this.r, c = "signal_cells") => {
 			const rL = this.get_root(c, r);
@@ -2580,7 +2657,1276 @@ class SIGNALS {
 			return atom;
 		};
 		return fn;
+	})();	
+	// #endregion
+	//                                                                                                                      SIGNALS
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public derive = (() => {
+		const fn = <T>(k: A, deps: A[], compute: (...values: A[]) => T, s = this.s, m = this.m, r = this.r, options?: { eager?: B; onError?: (err: Error) => V },	): S => {
+			if (this.meta(k, s, m, r).sys?.isComputed) return k;
+	
+		const reg = this.atom_reg(s, m, r);
+	
+		for (const d of deps) {
+			const depAtom = reg[d] as SIGNAL_CELL<A> | undefined;
+			this._sys.ensure(d, depAtom?.peek(), s, m, r);
+		}
+	
+		const c = computed(() => {
+			try {
+				const vals = deps.map(d => this._sys.ensure(d, undefined, s, m, r).read());
+				return compute(...vals);
+			} catch (err) {
+				options?.onError?.(err as Error);
+				throw err;
+			}
+		});
+	
+		this.meta(k, s, m, r).sys = {
+			read: () => c(),
+			write: () => {},
+			node: c as A,
+			isComputed: true,
+		};
+	
+		const initial = untrackFn(() => c());
+		this.create(k, initial, s, m, r);
+	
+		if (options?.eager) {
+			for (const dep of deps) {
+				const depAtom = reg[dep] as SIGNAL_CELL<A> | UD;
+				if (!depAtom) continue;
+	
+				depAtom.subscribe(() =>
+					this._.writeResolved(
+						k,
+						untrackFn(() => c()),
+						"derived",
+						s, m, r,
+						dep as S,
+					),
+				);
+			}
+		}
+		return k;
+		};
+		fn.invalidate = (k: A, s = this.s, m = this.m, r = this.r): V => {
+			const entry = this.meta(k, s, m, r).sys;
+			if (!entry || !entry.isComputed) return;
+			this._.writeResolved(k, untrackFn(() => entry.read()), "derived", s, m, r, "invalidate");
+		};
+		return fn;
 	})();
+	public tx(fn: () => V, k: S, s = this.s, m = this.m, r = this.r): V {
+		const o: ScopeOptions = { s, m, r };
+		const snap = new Map<string, A>();
+		for (const [k, v] of Object.entries(slab.state.getAll(o))) snap.set(k, v);
+		const sysSnap = this._sys.snapshot(s, m, r);
+	
+		try {
+			fn();
+		} catch (err) {
+			for (const k of Object.keys(slab.state.getAll(o))) {
+				if (!snap.has(k)) slab.state.delete(k, o);
+			}
+			for (const [k, v] of snap) slab.state.set(k, v, { ...o, triggerRender: false });
+			this._sys.dropComputeds(k, s, m, r);
+			this._sys.restore(sysSnap, s, m, r);
+			throw err;
+		}
+	}
+	public has(k: A, s = this.s, m = this.m, r = this.r): B {
+		return this.atom_reg(s, m, r)?.[k] !== undefined;
+	}
+	public freeze(k: A, s = this.s, m = this.m, r = this.r): V {
+		if (!this.has(k, s, m, r)) throw new Error(`[Sauron] Cannot freeze unknown signal "${String(k)}"`);
+		this.meta(k, s, m, r).frozen = true;
+	}
+	public seal(k: A, s = this.s, m = this.m, r = this.r): V {
+		if (!this.has(k, s, m, r)) throw new Error(`[Sauron] Cannot seal unknown signal "${String(k)}"`);
+		this.meta(k, s, m, r).sealed = true;
+	}
+	public reset(k: A, s = this.s, m = this.m, r = this.r): V {
+		const initial = this.meta_reg(s, m, r)[k]?.initial;
+		if (initial === undefined) throw new Error(`[Sauron] Cannot reset unknown signal "${String(k)}"`);
+		this._.writeResolved(k, initial, "reset", s, m, r, "reset");
+	}
+	public hydrate<T>(k: A, value: T, s = this.s, m = this.m, r = this.r): V {
+		const sig = this.atom_reg(s, m, r)[k];
+		if (!sig) { this.create(k, value, s, m, r); return; }
+		sig(value);
+	}
+	public registerSchema<T>(k: A, schema: SignalSchema, s = this.s, m = this.m, r = this.r): V {
+		if (!this.has(k, s, m, r)) throw new Error(`[Sauron] Cannot register schema for unknown signal "${String(k)}"`);
+		this.meta(k, s, m, r).schema = schema; // validated wherever writes actually happen, not here
+	}
+	public peek<T = A>(k: SignalKey, s = this.s, m = this.m, r = this.r): T | undefined {
+		const sig = this.atom_reg(s, m, r)[k];
+		if (!sig) return undefined;
+		return untrackFn(() => sig());
+	}
+	public _ = (() => {
+		const fn = () => {};
+		fn.validateSchema = <T,>(schema: SignalSchema, value: T): T => {
+			try {
+				const next = schema.coerce ? schema.coerce(value) : value;
+				if (schema.validate(next)) {
+					return next as T;
+				}
+				throw new Error("[Sauron] Schema validation failed");
+			} catch (error) {
+				console.error("[Sauron] Schema validation failed:", error);
+				throw error;
+			}
+		};
+		fn.serializeTuple = (tuple: A[], s = this.s, m = this.m, r = this.r): S => {
+			const parts: string[] = new Array(tuple.length);
+			const weakMap = this.scopeMeta(s, m, r).weakMap;
+		
+			for (let i = 0; i < tuple.length; i++) {
+				const item = tuple[i];
+				const type = typeof item;
+		
+				if (item === null) {
+					parts[i] = "null";
+				} else if (type === "string") {
+					parts[i] = `s:${item}`;
+				} else if (type === "number") {
+					parts[i] = `n:${item}`;
+				} else if (type === "boolean") {
+					parts[i] = `b:${item}`;
+				} else if (type === "symbol") {
+					parts[i] = `sym:${item!.description ?? String(item)}`;
+				} else if (type === "bigint") {
+					parts[i] = `bi:${item!.toString()}`;
+				} else if (type === "undefined") {
+					parts[i] = "undef";
+				} else if (Array.isArray(item)) {
+					parts[i] = `arr:[${this._.serializeTuple(item, s, m, r)}]`;
+				} else if (type === "object" || type === "function") {
+					let refId = weakMap.get(item);
+					if (!refId) {
+						refId = `ref:${slab.reg._sid()}`;
+						weakMap.set(item, refId);
+					}
+					parts[i] = refId;
+				} else {
+					parts[i] = `v:${String(item)}`;
+				}
+			}
+		
+			return parts.join("|");
+		};
+		fn.hashTuple = (tuple: U[], s = this.s, m = this.m, r = this.r): S => {
+			const key = this._.serializeTuple(tuple, s, m, r);
+			const tupleCache = this.scopeMeta(s, m, r).tupleCache;
+		
+			const cached = tupleCache.get(key);
+			if (cached) {
+				tupleCache.delete(key);
+				tupleCache.set(key, cached);
+				return cached;
+			}
+		
+			let h1 = 0x811c9dc5;
+			let h2 = 0x01000193;
+			for (let i = 0; i < key.length; i++) {
+				const code = key.charCodeAt(i);
+				h1 = Math.imul(h1 ^ code, 16777619) >>> 0;
+				h2 = Math.imul(h2 ^ code, 2246822507) >>> 0;
+			}
+		
+			const result = `tuple:${h1.toString(36)}-${h2.toString(36)}`;
+			tupleCache.set(key, result);
+		
+			if (tupleCache.size > this.total_cache_size) {
+				const toRemove = Math.floor(tupleCache.size * 0.2);
+				const iter = tupleCache.keys();
+				for (let i = 0; i < toRemove; i++) {
+					const k = iter.next().value;
+					if (k !== undefined) tupleCache.delete(k);
+				}
+			}
+		
+			return result;
+		};
+		fn.writeResolved = <T = any>(k: SignalKey, value: A, source: S, s = this.s, m = this.m, r = this.r, cause?: S): T => {
+			const resolvedValue = typeof value === "function" ? value() : value;
+	
+			let sig = this.atom_reg(s, m, r)[k];
+			if (!sig) sig = this.create(k, resolvedValue, s, m, r);
+		
+			const meta = this.meta(k, s, m, r);
+			if (meta.sealed || meta.frozen) {
+				console.warn(`[Sauron] Write to ${meta.sealed ? "sealed" : "frozen"} signal "${String(k)}" ignored.`);
+				return untrackFn(() => sig()) as T;
+			}
+		
+			sig(resolvedValue);
+			this._resolveWaiters(k, resolvedValue, s, m, r);
+			return resolvedValue as T;
+		};
+		fn.recordCausal = <K, V>(k: S, value: V, source: S, s = this.s, m = this.m, r = this.r, cause?: S): void => {
+			const metaEntry = this.meta(k, s, m, r);
+			const chain: A[] = (metaEntry.causal ??= []);
+			chain.push({ key: k, value, timestamp: Date.now(), source, cause });
+			if (chain.length > 100) chain.shift();
+		};
+		fn.bindComponentToSignal = ( rk: S, s = this.s, m = this.m, r = this.r  ): V => {
+			const component = slab.state.getCurrentComponent(); // left as-is — component subsystem, not touched by your edits
+			if (!component) return;
+		
+			const hookKey = `${component.id}:signal:${r}:${m}:${s}:${rk}`;
+			if (component.hooks.has(hookKey)) return;
+			component.hooks.set(hookKey, { value: undefined });
+		
+			const atom = this.atom_reg(s, m, r)?.[rk] as SIGNAL_CELL<A> | undefined;
+			if (!atom) {
+				console.warn(
+					`[Sauron] _bindComponentToSignal: no signal registered for "${String(rk)}" — ` +
+						`create it (create()/cell.set()) before binding a component to it.`,
+				);
+				return;
+			}
+		
+			const unsubSignal = atom.subscribeExternal(() => {
+				slab.state.notifyHook(hookKey);
+			});
+			component.unmount.add(unsubSignal);
+		
+			if (component.render) {
+				const unsubRender = slab.state.subscribeToHook(hookKey, () => component.render?.());
+				component.unmount.add(unsubRender);
+			}
+		};
+		fn.bindComponentToSignal2 = (rk: S, s = this.s, m = this.m, r = this.r): V => {
+			const component = slab.state.getCurrentComponent();
+			if (!component) return;
+			const hookKey = `${component.id}:signal:${r}:${m}:${s}:${rk}`;
+			if (component.hooks.has(hookKey)) {
+				return;
+			}
+			component.hooks.set(hookKey, { value: undefined });
+
+			const atom = this.create(rk, undefined, s, m, r);
+			if (!atom) { return; }
+
+			const unsubSignal = atom.subscribeExternal(() => {
+				slab.state.notifyHook(hookKey);
+			});
+			component.unmount.add(unsubSignal);
+
+			if (component.render) {
+				const unsubRender = slab.state.subscribeToHook(hookKey, () => component.render?.());
+				component.unmount.add(unsubRender);
+			}
+		};
+		fn.resolveConflict = <T = any>(conflict: ConflictPolicy | undefined, previous: T, next: T, strategy: "latest" | "fail" | "accumulate" = "latest"): T | null => {
+			if (conflict?.resolve) return conflict.resolve(previous, next);
+			if (strategy === "fail") {
+				console.warn('[Sauron] conflict rejected by "fail" strategy');
+				return null;
+			}
+			if (strategy === "accumulate" && Array.isArray(previous) && Array.isArray(next)) {
+				return [...previous, ...next] as T;
+			}
+			return next;
+		};
+		fn.checkContracts=(key: S, s = this.s, m = this.m, r = this.r): void =>{
+			const bucket = this.contract_reg(s, m, r);
+			for (const name of Object.keys(bucket)) {
+				const contract = bucket[name] as ContractEntry;
+				if (contract.key !== key) continue;
+				const ok = contract.invariant(this.snapshot(s, m, r));
+				if (!ok) {
+					if (contract.block) throw new Error(`[Sauron] Contract "${name}" violated for "${String(key)}"`);
+					console.warn(`[Sauron] Contract "${name}" violated for "${String(key)}"`);
+				}
+			}
+		}
+		fn.getConflictPolicy=(key: A, s = this.s, m = this.m, r = this.r): ConflictPolicy | undefined =>{
+			return this.meta(key, s, m, r).conflict;
+		}
+		return fn;
+	})();
+	// #endregion
+	//                                                                                                              [STATE SURGERY]
+	// #region ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public surgery = (() => {
+		// Live-state surgery. Reads the current value, hands it to `mutate`, writes the result back through the normal reactive write path, records a causal entry, and pushes an undo entry onto the surgery journal.
+		// The mutation receives the current value. It may either: - mutate and return nothing (object/array mutation), or - return a replacement value.
+		const fn = <T = A,>(k: SignalKey, mutate: (draft: T) => T | void, s: S = this.s, m: S = this.m, r: S = this.r, options?: { source?: S; cause?: S; record?: B }): T => {
+			const atom = this.getS(s,m,r).get(k) as T
+			const meta = this.meta(k, s, m, r)
+			if (!atom) {
+				throw new Error(`[Sauron] Cannot perform surgery on unknown signal "${String(k)}"`);
+			}
+			if (meta.frozen) {
+				throw new Error(`[Sauron] Cannot perform surgery on frozen signal "${String(k)}"`);
+			}
+			const previous = this.peek(k,s,m,r); // Structured clone gives surgery isolation without touching the reactive kernel. Primitive values pass through unchanged.
+			const draft = previous !== null && typeof previous === "object" ? (structuredClone(previous) as T) : previous;
+			const result = mutate(draft);
+			const next = result === undefined ? draft : (result as T);
+			if (Object.is(previous, next)) {
+				return previous;
+			}
+
+			const source = options?.source ?? "surgery";
+			const cause = options?.cause ?? `surgery:${String(k)}:${Date.now()}`;
+
+			const written = this.write(next, k, s, m, r);
+
+			this.surgery.journal.push({ key: k, previous, next: written, s, m, r });
+
+			return written;
+		}; //  Undo the most recent surgery. Restoration goes through the normal write path, so computeds, effects, subscribers, history, and channels all see a real write.
+		fn.journal = [] as Array<{ key: SignalKey; previous: A; next: A; s: S; m: S; r: S }>;
+		fn.undo = (): A | UD => {
+			const entry = this.surgery.journal.pop();
+
+			if (!entry) return undefined;
+
+			const atom = this.getS(entry.s,entry.m,entry.r).get(entry.key) as SIGNAL_CELL | undefined;
+
+			if (!atom) return undefined;
+
+			return atom.write(entry.previous, {
+				source: "surgery:undo",
+				cause: `surgery:undo:${String(entry.key)}`,
+				triggerRender: true,
+				recordHistory: true,
+			});
+		}; //   Undo every surgery performed since the returned marker was created. Undo every surgery performed since the returned marker was created.
+		fn.checkpoint = (): (() => V) => {
+			const mark = this.surgery.journal.length;
+			return () => {
+				while (this.surgery.journal.length > mark) {
+					this.surgery.undo();
+				}
+			};
+		}; // Surgery on a nested path. Example: sauron.surgeryAt('user', ['profile', 'email'], email => email.trim());
+		fn.at = <T = A, P = A>(k: SignalKey, path: Array<S | N | SY>, mutate: (draft: P) => P | V, s: S = this.s, m: S = this.m, r: S = this.r, options?: { source?: S; cause?: S }): T => {
+			return this.surgery<T>(
+				k,
+				(draft) => {
+					let target: A = draft;
+
+					for (let i = 0; i < path.length - 1; i++) {
+						target = target[path[i] as keyof typeof target];
+					}
+
+					const leafKey = path[path.length - 1] as keyof typeof target;
+					const leaf = target[leafKey] as P;
+
+					const result = mutate(leaf);
+
+					target[leafKey] = result === undefined ? leaf : (result as P);
+
+					// Returning undefined keeps the outer draft as the next value.
+					return undefined as unknown as T;
+				},
+				s,
+				m,
+				r,
+				options,
+			);
+		};
+		return fn;
+	})();
+	public _sys = (() => {
+		const fn = () => {};
+		fn.ensure = (rk: S, v: A, s = this.s, m = this.m, r = this.r): SysEntry => {
+			const metaEntry = this.meta(rk, s, m, r);
+			if (metaEntry.sys) return metaEntry.sys;
+		
+			const sig = signal(v);
+			const entry: SysEntry = { read: () => sig(), write: (v: A) => sig(v), node: sig as A, isComputed: false };
+			metaEntry.sys = entry;
+		
+			if (slab.state.get(rk, { s, m, r }) === undefined) {
+				slab.state.set(rk, v, { s, m, r, triggerRender: false });
+			}
+			return entry;
+		};
+		fn.snapshot = (k: S, s = this.s, m = this.m, r = this.r): M<S, A> => {
+			const out = new Map<string, A>();
+			const bucket = this.meta_reg(s, m, r);
+			for (const rk of Object.keys(bucket)) {
+				const entry = (bucket[rk] as MetaEntry).sys;
+				if (entry && !entry.isComputed) out.set(rk, untrackFn(() => entry.read()));
+			}
+			return out;
+		};
+		fn.restore = (snap: M<S, A>, s, m, r): V => {
+			for (const [rk, v] of snap) this._sys.ensure(rk, v, s, m, r).write(v);
+		};
+		fn.dropComputeds = (k:S, s = this.s, m = this.m, r = this.r): V => {
+			const bucket = this.meta_reg(s, m, r);
+			for (const rk of Object.keys(bucket)) {
+				const metaEntry = bucket[rk] as MetaEntry;
+				if (metaEntry.sys?.isComputed) delete metaEntry.sys;
+			}
+		};
+		return fn;
+	})();
+	// #endregion
+	//                                                                                                               [TRACE EFFECT]
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public trace = (() => {
+		const fn = (fn: () => V): { reads: SignalKey[]; result: V } => {
+			const reads = new O2<SignalKey, SIGNAL_CELL>();
+			const previous = this.activeTracer;
+			this.activeTracer = reads;
+			try {
+				const result = fn();
+				return { reads: [...reads.keys()], result };
+			} finally {
+				this.activeTracer = previous;
+			}
+		};
+		fn.effect = (fn: () => V | (() => V), s: S = this.s, m: S = this.m, r: S = this.r) => {
+			const reads = new Map<SignalKey, A>();
+			const runs: Array<{ run: number; reads: Map<SignalKey, A>; at: number }> = [];
+			let runCount = 0;
+			const tracked = new Map<SignalKey, SIGNAL_CELL>();
+			const registry = this.getS(s, m, r);
+
+			const effectDispose = effect(() => {
+				runCount++;
+				const before = new Map<SignalKey, A>();
+				for (const [key, cell] of tracked) {
+					before.set(key, cell.peek());
+				}
+
+				const result = fn();
+
+				const touched = new Map<SignalKey, A>();
+
+				for (const [key, cell] of tracked) {
+					const value = cell.peek();
+					if (!Object.is(before.get(key), value)) {
+						touched.set(key, value);
+					}
+				}
+
+				runs.push({
+					run: runCount,
+					reads: new Map(tracked),
+					at: Date.now(),
+				});
+
+				return result;
+			});
+
+			// Wrap reads by exposing a tracing proxy is not needed for the
+			// first version: cells register themselves when read through
+			// useCell / read(). For explicit tracing, callers can pass keys.
+			return effectDispose;
+		}; // Finds the first recorded write whose value differs from the current live value. That is the divergence point.
+		fn.bisect = (entries: Array<{ key: SignalKey; value: A; previous: A; timestamp: N; source?: S }>, s: S = this.s, m: S = this.m, r: S = this.r): { index: number; key: SignalKey; recorded: A; actual: A } | UD => {
+			const registry = this.getS(s, m, r);
+
+			for (let i = 0; i < entries.length; i++) {
+				const entry = entries[i];
+				const atom = registry.get(entry.key) as SIGNAL_CELL | undefined;
+
+				if (!atom) continue;
+
+				const actual = atom.peek();
+
+				if (!Object.is(actual, entry.value)) {
+					return {
+						index: i,
+						key: entry.key,
+						recorded: entry.value,
+						actual,
+					};
+				}
+			}
+
+			return undefined;
+		};
+		fn.why = <T = A,>(k: SignalKey, s: S = this.s, m: S = this.m, r: S = this.r): { key: SignalKey; value: T | UD; version: N; lastWriteSource?: S; causal: CausalEntry[]; history: readonly AtomHistoryEntry<T>[] } | UD => {
+			const atom = this.getS(s, m, r).get(k) as T
+			const meta = this.meta(k, s, m, r)
+			if (!atom) return undefined;
+
+			return {
+				key: meta.key,
+				value: this.peek(k, s, m, r),
+				version: meta.version,
+				lastWriteSource: meta.lastWriteSource,
+				causal: [...meta.causal].reverse(),
+				history: this._history.get(k),
+			};
+		};
+		return fn;
+	})();
+	// #endregion
+	//                                                                                                                   SEND / SUB
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public sub<T = A>(k: SignalKey, listener: (value: T, previous: T) => V, s = this.s, m = this.m, r = this.r): () => V {
+		const sig = this.atom_reg(s, m, r)[k] ?? this.create(k, undefined, s, m, r);
+		if (!sig) throw new Error(`[Sauron] Cannot subscribe to unknown signal "${String(k)}"`);
+	
+		let previous = untrackFn(() => sig()) as T;
+		return effect(() => {
+			const current = sig() as T;
+			if (!Object.is(current, previous)) {
+				const prev = previous;
+				previous = current;
+				listener(current, prev);
+			}
+		});
+	}
+	public send = (k: S, p: A, s = this.s, m = this.m, r = this.r): V => {
+		this._.writeResolved(k, p, "send", s, m, r);
+	};
+	public delete = (k: A, s = this.s, m = this.m, r = this.r): V => {
+		this.atom_reg(s, m, r).delete(k);
+		this.meta_reg(s, m, r)._sys.delete(k);
+	};
+	// #endregion
+	//                                                                                                                      WAITERS
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public waiters_reg(s: S = this.s, m: S = this.m, r: S = this.r) {
+		const rL = (this.#SIGNAL_WAITERS[r] ??= new O2());
+		const mL = (rL[m] ??= new O2());
+		const sL = (mL[s] ??= new O2());
+		return sL; // O2<key, Set<(value: A) => void>>
+	}
+	public waitFor = (() => {
+		const fn = <T = A>(key: SignalKey, s = this.s, m = this.m, r = this.r): P<T> => {
+			const existing = this.peek<T>(key, s, m, r);
+			if (existing !== undefined) return Promise.resolve(existing);
+	
+			return new Promise<T>(resolve => {
+				const bucket = this.waiters_reg(s, m, r);
+				const set = (bucket[key] ??= new Set());
+				set.add(resolve as (value: A) => void);
+			});
+		};
+		fn.hot = <T = A>(key: SignalKey): P<T> => {
+			const existing = this.getHot(key);
+			const current = typeof existing === "function" ? untrackFn(() => existing()) : existing;
+			if (current !== undefined) return Promise.resolve(current as T);
+	
+			return new Promise<T>(resolve => {
+				const set = (this._signal_waiters[key] ??= new Set());
+				set.add(resolve as (value: A) => void);
+			});
+		};
+		return fn;
+	})();
+	private _resolveWaiters(key: SignalKey, value: A, s = this.s, m = this.m, r = this.r): void {
+		if (value === undefined) return;
+		const bucket = this.waiters_reg(s, m, r);
+		const set = bucket[key];
+		if (!set || set.size === 0) return;
+		delete bucket[key]; // one-shot — every waiter gets consumed together, same as the original scheduleGlobalNotify
+		for (const resolve of set) {
+			try { resolve(value); }
+			catch (err) { console.error(`[Sauron] Waiter callback error for "${String(key)}":`, err); }
+		}
+	}
+	private _resolveWaitersHot(key: SignalKey, value: A): void {
+		if (value === undefined) return;
+		const set = this._signal_waiters[key];
+		if (!set || set.size === 0) return;
+		delete this._signal_waiters[key];
+		for (const resolve of set) {
+			try { resolve(value); }
+			catch (err) { console.error(`[Sauron] Waiter callback error for "${String(key)}":`, err); }
+		}
+	}
+	// #endregion
+	//                                                                                                                        ASYNC
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public async = (() => {
+		const fn =  <T,>(k: A, fetcher: (signal: AbortSignal) => P<T>, s = this.s, m = this.m, r = this.r, options?: { fallback?: T },	) => {
+			if (!this.has(k, s, m, r)) this.create(k, options?.fallback, s, m, r);
+	
+			const dataKey = `${String(k)}:data`;
+			const loadingKey = `${String(k)}:loading`;
+			const errorKey = `${String(k)}:error`;
+		
+			if (!this.has(dataKey, s, m, r)) this.create(dataKey, options?.fallback, s, m, r);
+			if (!this.has(loadingKey, s, m, r)) this.create(loadingKey, false, s, m, r);
+			if (!this.has(errorKey, s, m, r)) this.create(errorKey, null, s, m, r);
+		
+			const meta = this.meta(k, s, m, r); // all bookkeeping lives here, never on a signal
+		
+			const run = async (): Promise<T> => {
+				const state = meta.async;
+				if (!state) throw new Error(`[Sauron] Missing async state for "${String(k)}"`);
+		
+				if (state.controller) state.controller.abort();
+				const controller = new AbortController();
+				state.controller = controller;
+		
+				this._.writeResolved(loadingKey, true, "write", s, m, r, String(k));
+		
+				try {
+					const data = await fetcher(controller.signal);
+					if (!controller.signal.aborted) {
+						this._.writeResolved(dataKey, data, "write", s, m, r, String(k));
+						this._.writeResolved(errorKey, null, "write", s, m, r, String(k));
+					}
+					return data;
+				} catch (error) {
+					if (!controller.signal.aborted) {
+						this._.writeResolved(errorKey, error, "write", s, m, r, String(k));
+						meta.lifecycle?.onError?.(error as Error);
+					}
+					throw error;
+				} finally {
+					if (!controller.signal.aborted) {
+						this._.writeResolved(loadingKey, false, "write", s, m, r, String(k));
+						state.controller = null;
+					}
+				}
+			};
+		
+			meta.async = { fetcher: run, controller: null, retryCount: 0, staleValue: options?.fallback };
+			void run();
+		
+			return { dataKey, loadingKey, errorKey };
+		};
+		fn.invalidate = <T,>(key: A, s = this.s, m = this.m, r = this.r): V => {
+			const meta = this.meta_reg(s, m, r)[key];
+			const state = meta?.async;
+			if (!state) return;
+		
+			const dataKey = `${String(key)}:data`;
+			const loadingKey = `${String(key)}:loading`;
+			const errorKey = `${String(key)}:error`;
+		
+			this._.writeResolved(loadingKey, true, "write", s, m, r, String(key));
+			this._.writeResolved(errorKey, null, "write", s, m, r, String(key));
+		
+			void Promise.resolve(state.fetcher())
+				.then(data => this._.writeResolved(dataKey, data, "write", s, m, r, String(key)))
+				.catch(error => {
+					this._.writeResolved(errorKey, error, "write", s, m, r, String(key));
+					meta.lifecycle?.onError?.(error as Error);
+				});
+		};
+		fn.mutate = <T,>(key: A, optimistic: T, s = this.s, m = this.m, r = this.r): V => {
+			const meta = this.meta_reg(s, m, r)[key];
+			const state = meta?.async;
+			if (!state) return;
+		
+			const dataKey = `${String(key)}:data`;
+			if (!this.has(dataKey, s, m, r)) throw new Error(`[Sauron] Missing async data signal "${dataKey}"`);
+		
+			const prior = this.peek<T>(dataKey, s, m, r);
+			this._.writeResolved(dataKey, optimistic, "write", s, m, r, String(key));
+		
+			void Promise.resolve(state.fetcher()).catch(() => {
+				this._.writeResolved(dataKey, prior, "write", s, m, r, String(key));
+			});
+		};
+		fn.read = <T,>(key: A, s = this.s, m = this.m, r = this.r): T => {
+			const dataKey = `${String(key)}:data`;
+			const loadingKey = `${String(key)}:loading`;
+			const errorKey = `${String(key)}:error`;
+		
+			const error = this.peek(errorKey, s, m, r);
+			if (error) throw error;
+		
+			if (this.peek(loadingKey, s, m, r)) {
+				throw new Promise<void>(resolve => {
+					const unsub = this.sub<boolean>(loadingKey, current => {
+						if (!current) { unsub(); resolve(); }
+					}, s, m, r);
+				});
+			}
+		
+			return this.peek<T>(dataKey, s, m, r) as T;
+		};
+		return fn;
+	})();
+	// #endregion
+	//                                                                                                                  PERSISTANCE
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public persist = async <T,>(key: A, value: T, s = this.s, m = this.m, r = this.r, options?: {serialize?: (v: T) => S}) => {
+		// REDO 
+	};
+	public unpersist = async (key: A, s = this.s, m = this.m, r = this.r) => {
+		// REDO 
+	};
+	public transaction = (block: () => V): V => {
+		// REDO 
+	}
+	// #endregion
+	//                                                                                                                     TIMELINE
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public signalTimeline = (key: A, s = this.s, m = this.m, r = this.r): readonly HistoryEntry<A>[] => {
+		return this.time_travel(key, {s, m, r});
+	};
+	public replay = async (key: A, s = this.s, m = this.m, r = this.r, options?: { speed?: number }): Promise<void> => {
+		const history = this.time_travel.resolveHistory(key, {s, m, r});
+		if (!history.length) return;
+	
+		const atom = this.atom_reg(s, m, r)?.[key] as SIGNAL_CELL<A> | undefined;
+		if (!atom) return;
+	
+		const delay = options?.speed ?? 300;
+		for (let i = 0; i < history.length; i++) {
+			atom.historyIndex = i;
+			atom.write(history[i].value, {
+				source: "replay",
+				cause: "timeline-replay",
+				triggerRender: true,
+				recordHistory: false,
+			});
+			if (delay > 0) await new Promise<void>(resolve => setTimeout(resolve, delay));
+		}
+	};
+	public undo = (key: A, s = this.s, m = this.m, r = this.r): void => {
+		this.time_travel.back(key, 1, {s, m, r});
+	};
+	public redo = (key: A, s = this.s, m = this.m, r = this.r): void => {
+		this.time_travel.forward(key, 1, {s, m, r});
+	};
+	public getCausalChain(key: A, s = this.s, m = this.m, r = this.r) {
+		return this.meta(key, s, m, r).causal ?? [];
+	}
+	public conflictPolicy<T>(key: A, policy: ConflictPolicy, s = this.s, m = this.m, r = this.r): void {
+		this.meta(key, s, m, r).conflict = policy;
+	}
+	public declareContract(
+		name: string,
+		invariant: (snapshot: Record<string, A>) => boolean,
+		key: S,
+		s = this.s,
+		m = this.m,
+		r = this.r,
+		options?: { block?: boolean },
+	): void {
+		this.contract_reg(s, m, r)[name] = { invariant, key, s, m, r, block: options?.block ?? false };
+	}
+	public removeContract(name: string, s = this.s, m = this.m, r = this.r): void {
+		delete this.contract_reg(s, m, r)[name];
+	}
+	public createScope = (id: string) => {
+		const s = `${this.s}:${id}`;
+		const m = this.m;
+		const r = this.r;
+	
+		return {
+			s, m, r,
+			get: <T = A>(k: A) => this.get<T>(k, s, m, r),
+			set: <T = A>(k: A, v: T) => this.cell.set(k, v, true, s, m, r),
+			sub: <T = A>(k: A, fn: (v: T, prev: T) => V) => this.sub<T>(k, fn, s, m, r),
+			derive: <T>(
+				k: A,
+				deps: A[],
+				compute: (...vals: A[]) => T,
+				options?: { eager?: B; onError?: (e: Error) => V },
+			) => this.derive<T>(k, deps, compute, s, m, r, options),
+			dispose: () => {
+				const atoms = this.atom_reg(s, m, r);
+				for (const k of Object.keys(atoms)) delete atoms[k];
+				const meta = this.meta_reg(s, m, r);
+				for (const k of Object.keys(meta)) delete meta[k];
+			},
+		};
+	};
+	public effectOnce = (
+		keys: A[],
+		predicate: (...values: A[]) => boolean,
+		fn: (...values: A[]) => void,
+		s = this.s,
+		m = this.m,
+		r = this.r,
+	): (() => void) => {
+		let disposed = false;
+		const unsubs: (() => void)[] = [];
+	
+		const check = () => {
+			if (disposed) return;
+			const values = keys.map(k => this.get(k, s, m, r));
+			if (values.every(v => v !== undefined) && predicate(...values)) {
+				disposed = true;
+				unsubs.forEach(u => u());
+				fn(...values);
+			}
+		};
+	
+		for (const k of keys) unsubs.push(this.sub(k, check, s, m, r));
+		check();
+	
+		return () => {
+			disposed = true;
+			unsubs.forEach(u => u());
+		};
+	};
+	public _time_travel_reverting = false;
+	public time_travel = (() => {
+		const fn = <T = unknown,>(key: SignalKey, channels: HistoryChannels = this.time_travel.defaultChannels()): readonly HistoryEntry[] => {
+			return this.time_travel.resolveHistory<T>(key, channels) ?? [];
+		};
+		fn.defaultChannels = (): Required<HistoryChannels> => ({
+			r: this.r,
+			m: this.m,
+			s: "_TC_TIME_TRAVEL_",
+		});
+		fn.resolveChannels = (channels: HistoryChannels = this.time_travel.defaultChannels()): Required<HistoryChannels> => ({
+			...this.time_travel.defaultChannels(),
+			...channels,
+		});
+		fn.resolveHistory = <T = unknown,>(key: SignalKey, channels: HistoryChannels = this.time_travel.defaultChannels()) => {
+			const _history = this._history.get(key);
+			return _history as HistoryEntry[] | undefined;
+		};
+		fn.replay = <T = unknown,>(key: SignalKey, value: T, channels: HistoryChannels, source: string): T => {
+			const { s, m, r } = this.time_travel.resolveChannels(channels);
+			this._time_travel_reverting = true;
+			try {
+				slab.state.store.set(key, value, { s: s, m: m, r: r, triggerRender: true });
+				return value;
+			} finally {
+				this._time_travel_reverting = false;
+			}
+		};
+		fn.graft = (drs: A) => {
+			drs.time_travel = {
+				back: this.time_travel.back,
+				forward: this.time_travel.forward,
+				goto: this.time_travel.goto,
+				history: this.time_travel,
+			};
+
+			return drs.time_travel;
+		};
+		fn.back = <T = unknown,>(key: SignalKey, steps = 1, channels: HistoryChannels = this.time_travel.defaultChannels()): T | undefined => {
+			const history = this.time_travel.resolveHistory<T>(key, channels);
+			if (!history?.length || steps <= 0) return undefined;
+
+			const index = this._timeTravel.get(key) ?? history.length - 1;
+			const targetIndex = Math.max(0, index - steps);
+
+			if (targetIndex === index) return undefined;
+
+			this._timeTravel.set(key, targetIndex);
+			for (let i = 0; i < history.length; i++) {
+				history[i].undone = i > targetIndex;
+			}
+
+			return this.time_travel.replay(key, history[targetIndex].prev as T, channels, "time-travel.back");
+		};
+		fn.forward = <T = unknown,>(key: SignalKey, steps = 1, channels: HistoryChannels = this.time_travel.defaultChannels()): T | undefined => {
+			const history = this.time_travel.resolveHistory<T>(key, channels);
+			if (!history?.length || steps <= 0) return undefined;
+
+			const index = this._timeTravel.get(key) ?? history.length - 1;
+			const targetIndex = Math.min(history.length - 1, index + steps);
+
+			if (targetIndex === index) return undefined;
+
+			this._timeTravel.set(key, targetIndex);
+			for (let i = 0; i < history.length; i++) {
+				history[i].undone = i > targetIndex;
+			}
+
+			return this.time_travel.replay(key, history[targetIndex].next as T, channels, "time-travel.forward");
+		};
+		fn.goto = <T = unknown,>(key: SignalKey, sequence: number, channels: HistoryChannels = this.time_travel.defaultChannels()): T | undefined => {
+			const history = this.time_travel.resolveHistory<T>(key, channels);
+			if (!history?.length) return undefined;
+
+			const targetIndex = history.findIndex((entry) => entry.k === sequence);
+			const index = this._timeTravel.get(key) ?? history.length - 1;
+
+			if (targetIndex < 0 || targetIndex === index) return undefined;
+
+			this._timeTravel.set(key, targetIndex);
+			for (let i = 0; i < history.length; i++) {
+				history[i].undone = i > targetIndex;
+			}
+
+			return this.time_travel.replay(key, history[targetIndex].goto as T, channels, "time-travel.goto");
+		};
+		return fn;
+	})();
+	public recording: { entries: Array<{ key: SignalKey; value: A; previous: A; timestamp: number; source?: S }>; unsubs: Array<() => V> } | null = null;
+	public timeline = (() => {
+		const fn = (key: A, s = this.s, m = this.m, r = this.r) => {};
+		fn.replay = (entries: Array<{ key: SignalKey; value: A; previous: A; timestamp: number; source?: S }>, options?: { from?: number; speed?: number; triggerRender?: boolean }): Promise<V> => {
+			const { from = 0, speed = 0, triggerRender = true } = options ?? {};
+			return new Promise((resolve) => {
+				let index = from;
+				const step = () => {
+					if (index >= entries.length) {
+						resolve();
+						return;
+					}
+					const entry = entries[index++];
+					this._.writeResolved(entry.key, entry.value, entry.source ?? "replay", this.s, this.m, this.r, `replay:${index}`);
+					if (speed > 0) {
+						setTimeout(step, speed);
+					} else {
+						step();
+					}
+				};
+				startBatch();
+				try {
+					step();
+				} finally {
+					endBatch();
+				}
+				if (speed === 0) {
+					resolve();
+				}
+			});
+		};
+		fn.back = (key: A, s = this.s, m = this.m, r = this.r): void => {
+		};
+		fn.forward = (key: A, s = this.s, m = this.m, r = this.r): void => {
+		};
+		fn.record = (keys?: SignalKey[], s: S = this.s, m: S = this.m, r: S = this.r): (() => V) => {
+			/** USAGE
+				const stop = sauron.record();
+			
+				// ...user reproduces the bug...
+				
+				const entries = stop();
+				
+				// Replay it exactly:
+				await sauron.replay(entries);
+				
+				// Or find where reality diverged:
+				sauron.bisect(entries);
+				 */
+			if (this.recording) {
+				throw new Error("[Sauron] A recording is already active");
+			}
+
+			const registry = this.getS(s,m,r);
+			const targets = keys ?? [...registry.keys()];
+
+			const entries: Array<{ key: SignalKey; value: A; previous: A; timestamp: number; source?: S }> = [];
+
+			const unsubs = targets.map((key) => {
+				const atom = registry.get(key) as SIGNAL_CELL | undefined;
+				if (!atom) return () => {};
+
+				return atom.subscribe((change) => {
+					entries.push({
+						key,
+						value: change.current,
+						previous: change.previous,
+						timestamp: Date.now(),
+						source: change.source,
+					});
+				});
+			});
+
+			this.recording = { entries, unsubs };
+
+			return () => this.timeline.stopRecording();
+		};
+		fn.stopRecording = (): Array<{ key: SignalKey; value: A; previous: A; timestamp: number; source?: S }> => {
+			if (!this.recording) return [];
+
+			for (const unsub of this.recording.unsubs) {
+				unsub();
+			}
+
+			const entries = this.recording.entries;
+			this.recording = null;
+
+			return entries;
+		};
+		return fn;
+	})();
+	public snapshot = (() => {
+		const fn = (s = this.s, m = this.m, r = this.r): Record<string, A> => {
+			const out: Record<string, A> = Object.create(null);
+			const bucket = this.atom_reg(s, m, r);
+			for (const k of Object.keys(bucket)) {
+				out[k] = (bucket[k] as SIGNAL_CELL<A>).peek();
+			}
+			return out;
+		};
+		fn.restore = (snapshot: Record<string, A>, s = this.s, m = this.m, r = this.r): void => {
+			for (const [k, v] of Object.entries(snapshot)) {
+				this._.writeResolved(k as S, v, "restore", s, m, r, "snapshot-restore");
+			}
+		};
+		fn.diff = (a: Record<string, A>, b: Record<string, A>): Record<string, { from: A; to: A }> => {
+			const patch: Record<string, { from: A; to: A }> = Object.create(null);
+			const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+			for (const k of keys) {
+				if (!Object.is(a[k], b[k])) patch[k] = { from: a[k], to: b[k] };
+			}
+			return patch;
+		};
+		fn.applyPatch = (patch: Record<string, { from: A; to: A }>, s = this.s, m = this.m, r = this.r): void => {
+			for (const [k, { to }] of Object.entries(patch)) {
+				this._.writeResolved(k as S, to, "patch", s, m, r, "apply-patch");
+			}
+		};
+		return fn;
+	})();
+	// #endregion
+	//                                                                                                                   SRC / DEST
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public readonly SRC_DEFAULTS: rts = { s: this.s, m: this.m, r: this.r };
+	public readonly DST_DEFAULTS: rts = { s: this.s, m: this.m, r: this.r };
+	public filter = <T,>(
+		srcKey: A,
+		destKey: A,
+		pred: (v: T) => B,
+		src: rts = this.SRC_DEFAULTS,
+		dest: rts = this.DST_DEFAULTS,
+	): (() => V) => {
+		return this.sub<T>(
+			srcKey,
+			v => {
+				if (pred(v)) this._.writeResolved(destKey, v, "derived", dest.s, dest.m, dest.r, srcKey as S);
+			},
+			src.s, src.m, src.r,
+		);
+	};
+	public throttle = (
+		srcKey: A,
+		destKey: A,
+		ms: N,
+		src: rts = this.SRC_DEFAULTS,
+		dest: rts = this.DST_DEFAULTS,
+	): (() => V) => {
+		let last = 0;
+		return this.sub(
+			srcKey,
+			v => {
+				const now = Date.now();
+				if (now - last >= ms) {
+					last = now;
+					this._.writeResolved(destKey, v, "derived", dest.s, dest.m, dest.r, srcKey as S);
+				}
+			},
+			src.s, src.m, src.r,
+		);
+	};
+	public merge = (
+		srcKeys: A[],
+		destKey: A,
+		src: rts = this.SRC_DEFAULTS,
+		dest: rts = this.DST_DEFAULTS,
+	): (() => V) => {
+		const unsubs = srcKeys.map(k =>
+			this.sub(k, v => this._.writeResolved(destKey, v, "derived", dest.s, dest.m, dest.r, k as S), src.s, src.m, src.r),
+		);
+		return () => unsubs.forEach(u => u());
+	};
+	public zip = (
+		srcKeys: A[],
+		destKey: A,
+		src: rts = this.SRC_DEFAULTS,
+		dest: rts = this.DST_DEFAULTS,
+	): (() => V) => {
+		const emitted = new Map<A, A>();
+		const unsubs = srcKeys.map(k =>
+			this.sub(
+				k,
+				v => {
+					emitted.set(k, v);
+					if (srcKeys.every(kk => emitted.has(kk))) {
+						this._.writeResolved(
+							destKey,
+							srcKeys.map(kk => emitted.get(kk)),
+							"derived",
+							dest.s, dest.m, dest.r,
+							"zip",
+						);
+						emitted.clear();
+					}
+				},
+				src.s, src.m, src.r,
+			),
+		);
+		return () => unsubs.forEach(u => u());
+	};
+	public scan = <T, R>(
+		srcKey: A,
+		destKey: A,
+		reducer: (acc: R, v: T) => R,
+		seed: R,
+		src: rts = this.SRC_DEFAULTS,
+		dest: rts = this.DST_DEFAULTS,
+	): (() => V) => {
+		let acc = seed;
+		this._.writeResolved(destKey, acc, "derived", dest.s, dest.m, dest.r, "scan-seed");
+		return this.sub<T>(
+			srcKey,
+			v => {
+				acc = reducer(acc, v);
+				this._.writeResolved(destKey, acc, "derived", dest.s, dest.m, dest.r, srcKey as S);
+			},
+			src.s, src.m, src.r,
+		);
+	};
+	public switch = (
+		srcKey: A,
+		destKey: A,
+		src: rts = this.SRC_DEFAULTS,
+		dest: rts = this.DST_DEFAULTS,
+	): (() => V) => {
+		let innerUnsub: (() => V) | null = null;
+		const outerUnsub = this.sub(
+			srcKey,
+			(targetKey: A) => {
+				innerUnsub?.();
+				innerUnsub = this.sub(
+					targetKey,
+					v => this._.writeResolved(destKey, v, "derived", dest.s, dest.m, dest.r, targetKey as S),
+					src.s, src.m, src.r,
+				);
+			},
+			src.s, src.m, src.r,
+		);
+		return () => {
+			innerUnsub?.();
+			outerUnsub();
+		};
+	};
+	public buffer = (
+		srcKey: A,
+		destKey: A,
+		count: N,
+		src: rts = this.SRC_DEFAULTS,
+		dest: rts = this.DST_DEFAULTS,
+	): (() => V) => {
+		const buf: A[] = [];
+		return this.sub(
+			srcKey,
+			v => {
+				buf.push(v);
+				if (buf.length >= count) {
+					this._.writeResolved(destKey, [...buf], "derived", dest.s, dest.m, dest.r, srcKey as S);
+					buf.length = 0;
+				}
+			},
+			src.s, src.m, src.r,
+		);
+	};
+	public window = (
+		srcKey: A,
+		destKey: A,
+		ms: N,
+		src: rts = this.SRC_DEFAULTS,
+		dest: rts = this.DST_DEFAULTS,
+	): (() => V) => {
+		const buf: A[] = [];
+		const iv = setInterval(() => {
+			if (buf.length) {
+				this._.writeResolved(destKey, [...buf], "derived", dest.s, dest.m, dest.r, srcKey as S);
+				buf.length = 0;
+			}
+		}, ms);
+	
+		const unsub = this.sub(srcKey, v => buf.push(v), src.s, src.m, src.r);
+		return () => {
+			unsub();
+			clearInterval(iv);
+		};
+	};
+	public distinct = <T,>(
+		srcKey: A,
+		destKey: A,
+		equals?: (a: T, b: T) => B,
+		src: rts = this.SRC_DEFAULTS,
+		dest: rts = this.DST_DEFAULTS,
+	): (() => V) => {
+		let last: T | undefined;
+		let hasLast = false;
+		return this.sub<T>(
+			srcKey,
+			v => {
+				const same = hasLast && (equals ? equals(last as T, v) : Object.is(last, v));
+				if (!same) {
+					last = v;
+					hasLast = true;
+					this._.writeResolved(destKey, v, "derived", dest.s, dest.m, dest.r, srcKey as S);
+				}
+			},
+			src.s, src.m, src.r,
+		);
+	};
+	public audit = (
+		srcKey: A,
+		destKey: A,
+		ms: N,
+		src: rts = this.SRC_DEFAULTS,
+		dest: rts = this.DST_DEFAULTS,
+	): (() => V) => {
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		let latest: A;
+		const unsub = this.sub(
+			srcKey,
+			v => {
+				latest = v;
+				if (!timer) {
+					timer = setTimeout(() => {
+						this._.writeResolved(destKey, latest, "derived", dest.s, dest.m, dest.r, srcKey as S);
+						timer = null;
+					}, ms);
+				}
+			},
+			src.s, src.m, src.r,
+		);
+		return () => {
+			unsub();
+			if (timer) clearTimeout(timer);
+		};
+	};
+	// #endregion
+	//                                                                                                         SIGNALS BACKED STATE
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	public notifyKeyListeners(key: A, value: A | UD, opts: ScopeOptions): void {
+		const listeners = this._signal_listeners[key];
+		if (!listeners) return;
+		for (const listener of listeners) {
+			try { listener(value); }
+			catch (err) { console.error(`[Sauron Signal Listener Error]:`, err); }
+		}
+	}
+	public scheduleGlobalNotify(key: A, value: A | UD, opts: ScopeOptions): void {
+		const globalListeners = this._signal_global_listeners[key] as Set<(key: A, value: A) => void> | undefined;
+		if (globalListeners) {
+			for (const listener of globalListeners) {
+				try { listener(key, value); }
+				catch (err) { console.error(`[Sauron Signal Global Listener Error]:`, err); }
+			}
+		}
+	
+		const hot = this._signal_waiters[key] as Set<(value: A) => void> | undefined;
+		if (hot) {
+			const resolved = Array.from(hot);
+			delete this._signal_waiters[key];
+			for (const resolve of resolved) {
+				try { resolve(value); } catch (err) { console.error(`[Sauron Signal Waiter Error]:`, err); }
+			}
+		}
+	
+		const { s, m, r } = opts;
+		const scopedBucket = this.waiters_reg(s, m, r);
+		const scoped = scopedBucket[key] as Set<(value: A) => void> | undefined;
+		if (scoped) {
+			const resolved = Array.from(scoped);
+			delete scopedBucket[key];
+			for (const resolve of resolved) {
+				try { resolve(value); } catch (err) { console.error(`[Sauron Signal Waiter Error]:`, err); }
+			}
+		}
+	}
+	private notifyAll( key: A, value: A | UD, opts: ScopeOptions,	): void {
+		this.notifyKeyListeners(key, value, opts);
+		this.scheduleGlobalNotify(key, value, opts);
+	}
 	public store = {
 		get: <T = A,>(key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | UD => {
 			const { s, m, r } = opts;
@@ -2846,7 +4192,9 @@ class SIGNALS {
 		this.state.set(k, t, { triggerRender: true, s: s, m: m, r: r });
 		return t;
 	} 
-	 
+	// #endregion
+	//                                                                                                                        ATOMS
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public ATOM = (() => {
 		function mergeInto<T extends object>(target: T, source: object): T {
 			Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
@@ -2884,7 +4232,7 @@ class SIGNALS {
 			const liveTarget: any = {};
 			const selfProxy = new Proxy(liveTarget, {
 				get: (t, k: any) => t[k],
-				set: (t, k: any, v: any) => { t[k] = v; this.hub.root.state.state.set(`${instanceId}:${k}`, v); return true; },
+				set: (t, k: any, v: any) => { t[k] = v; this.hub.root.state.set(`${instanceId}:${k}`, v); return true; },
 			});
 			return { selfProxy, liveTarget };
 		}
@@ -3022,13 +4370,13 @@ class SIGNALS {
 		const z = () => {}
 		z.MASTER = (name: string, arg: any)=>{ 
 			const f = resolveFactory(arg); 
-			if (this.root && this.root.state) this.root.state.state.set(name, f); 
+			if (slab && slab.state) slab.state.set(name, f); 
 			return f; }
-		z.BIND=(name: string, arg: any)=> { const f = resolveFactory(arg);if (this.root && this.root.state) this.root.state.state.set(name, f); return f; }
+		z.BIND=(name: string, arg: any)=> { const f = resolveFactory(arg);if (slab && slab.state) slab.state.set(name, f); return f; }
 		z.BINDABLE=(factory: any)=> { return factory; }
 		z.CONTRACT=(arg1: any, arg2?: any): any =>{
 			let num = 0
-			const id = this.root && this.root.reg ? `${this.root.reg._sid()}` :  `${++num}`;
+			const id = slab && slab.reg ? `${slab.reg._sid()}` :  `${++num}`;
 			const categoryName = typeof arg1 === "string" ? arg1 : `ATOM_CONTRACT${id}`;
 			const rawConfig = typeof arg1 === "string" ? arg2 : arg1;
 			if (rawConfig === undefined || rawConfig === null) throw new Error("Self is required");
@@ -3041,7 +4389,7 @@ class SIGNALS {
 				return createMaster(kind, normalized);
 			}) as any;
 			Object.assign(contract, pass);
-			if(this.root && this.root.signals && this.root.signals.signals && this.root.signals.signals.state) this.root.signals.signals.state.set(categoryName, contract);
+			if(slab && slab.signals && slab.signals.state) slab.signals.state.set(categoryName, contract);
 			return contract;
 		}
 		return z
@@ -6821,7 +8169,9 @@ class SIGNALS {
 			...this.MQ,
 		} as const;
 	})();
-
+	// #endregion
+	//                                                                                                                      RAPTORS
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public signals_raptor_ngin = new (class DARTH_MAUL_ENGINE {// DISRUPTOR SIGNALS ENGINE
 		public signals_raptor:  SIGNALS["signals_raptor"]
 		public root: DEATH_STAR
@@ -6885,8 +8235,7 @@ class SIGNALS {
 		public BRAND_EFFECT_SCOPE = Symbol("warlock.effectScope");
 		public BRAND_COMPUTED = Symbol("warlock.computed");
 		// #endregion
-		constructor(s: SIGNALS, capacity = 1 << 18) {
-			this.root = s.root;
+		constructor(s: SIGNALS, capacity = 1 << 18) { 
 			this.signals_raptor = s.signals_raptor;
 			this.signals = s;
 			this.capacity = capacity;
@@ -7845,7 +9194,9 @@ class SIGNALS {
 		public signals: SIGNALS
 		public state: RAVEN
 		public DARTH_MAUL_ENGINE: SIGNALS["signals_raptor_ngin"]
-	
+		#RAPTOR_SIGNALS: O2<S, O2<S, O2<S, O2<S, A>>>> = new O2<S, O2<S, O2<S, O2<S, A>>>>();
+		public _raptor_signals: O2<S, A> = new O2<S, A>();
+		public _timeTravelMaul: O2<S, A> = new O2<S, A>();
 		public r: S = "this.r";
 		public m: S = "this.m";
 		public s: S = "this.s";
@@ -7859,11 +9210,12 @@ class SIGNALS {
 		UU = [this.m, this.r];
 		private total_cache_size = 5000;
 		public activeTracer: Map<SignalKey, SIGNAL_CELL> | null = null;
+		
 		// capacity = 1 << 20
 		// #endregion
 		//                                                                                                                         MAPS
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		#maul_meta = new M2<A, A>();
+		#maul_meta = new O2<A, A>();
 		private _getMetadata(s = this.s, m = this.m, r = this.r) {
 			let root = this.#maul_meta.get(r);
 			if (!root) {
@@ -7896,10 +9248,13 @@ class SIGNALS {
 			}
 			return metaMap;
 		}
-		// #endregion
-		//                                                                                                                        ATOMS
-		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
+		public getS(s: S = this.s, m: S = this.m, r: S = this.r, c = "signal_cells") {
+			const cache = this.#RAPTOR_SIGNALS
+			const rL = cache[r]
+			const mL = (rL[m] ??= new O2());
+			const sL = (mL[s] ??= new O2());
+			return sL;
+		}
 		// #endregion
 		//                                                                                                                          API
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -7933,7 +9288,7 @@ class SIGNALS {
 			};
 		}
 		public create<T = A>(k: SignalKey, v?: T | (() => T), options?: SignalOptions, s = this.s, m = this.m, r = this.r): ATOM<T> | T {
-			const registry = this.hub.wr._signals;
+			const registry = this._raptor_signals;
 			let atom = registry.get(k);
 	
 			if (atom && v === undefined) { return atom as ATOM<T> | T; }
@@ -7948,18 +9303,18 @@ class SIGNALS {
 			return atom as ATOM<T> | T;
 		}
 		public get<T = A>(k: SignalKey, s = this.s, m = this.m, r = this.r): A {
-			const registry = this.hub.wr._signals;
+			const registry = this._raptor_signals;
 			return registry.get(k) as ATOM<T> | UD;
 		}
 		public write<T = A>(k: SignalKey, value: T | ((previous: T) => T), source = "write", s = this.s, m = this.m, r = this.r): T {
 			return this._.writeResolved(k, value, source, s, m, r);
 		}
 		public read<T = A>(k: SignalKey, s = this.s, m = this.m, r = this.r): T | UD {
-			const atom = this.hub.wr._signals.get(k) as ATOM<T> | undefined;
+			const atom = this._raptor_signals.get(k) as ATOM<T> | undefined;
 			return atom?.read();
 		}
 		public peek<T = A>(k: SignalKey, s = this.s, m = this.m, r = this.r): T | UD {
-			const atom = this.hub.wr._signals.get(k) as ATOM<T> | UD;
+			const atom = this._raptor_signals.get(k) as ATOM<T> | UD;
 			return atom?.peek();
 		}
 		public signal<T>(initialValue?: T): { (): T | UD; (value: T): V } {
@@ -7970,44 +9325,44 @@ class SIGNALS {
 			Object.defineProperty(fn, eng.BRAND_SIGNAL, { value: true });
 			return fn;                                        
 		}
-		public has(k: A, s = this.s, m = this.m, r = this.r): B { return this.hub.wr._signals.get(k) !== undefined; }
+		public has(k: A, s = this.s, m = this.m, r = this.r): B { return this._raptor_signals.get(k) !== undefined; }
 		public freeze(k: A, s = this.s, m = this.m, r = this.r): void {
-			const atom = this.hub.wr._signals.get(k);
+			const atom = this._raptor_signals.get(k);
 			if (!atom) { throw new Error(`[Sauron] Cannot freeze unknown signal "${String(k)}"`); }
 			atom.setFrozen();
 		}
 		public unfreeze(k: A, s = this.s, m = this.m, r = this.r): void {
-			const atom = this.hub.wr._signals.get(k);
+			const atom = this._raptor_signals.get(k);
 			if (!atom) { throw new Error(`[Sauron] Cannot freeze unknown signal "${String(k)}"`); }
 			atom.setUnfrozen();
 		}
 		public seal(k: A, s = this.s, m = this.m, r = this.r): V {
-			const meta = this.hub.wr._signals;
+			const meta = this._raptor_signals;
 			const atom = meta.get(k);
 			atom.setSealed();
 		}
 		public reset(k: A, s = this.s, m = this.m, r = this.r): V {
-			const atom = this.hub.wr._signals.get(k) as ATOM<A> | UD;
+			const atom = this._raptor_signals.get(k) as ATOM<A> | UD;
 			if (!atom) { throw new Error(`[Sauron] Cannot reset unknown signal "${String(k)}"`); 	}
 			atom.value = atom.initial;
-			// this._writeResolved(k, atom.initial, "reset", s, m, r, "reset");
+			// this._.writeResolved(k, atom.initial, "reset", s, m, r, "reset");
 		}
 		public hydrate<T = ATOM<A> | A>(k: A, value: T, s = this.s, m = this.m, r = this.r): V {
-			let atom = this.hub.wr._signals.get(k) as ATOM<T> | UD;
+			let atom = this._raptor_signals.get(k) as ATOM<T> | UD;
 			if (!atom) { this.create(k, value, undefined, s, m, r); return; }
 			// atom.write(value, { source: "hydrate", triggerRender: false });
 		}
 		public tx(fn: () => V): V {
 			const o = { s: this.s, m: this.m, r: this.r };
 			const snap = new Map<string, A>();
-			for (const [k, v] of Object.entries(this.hub.state.state.getAll(o))) snap.set(k, v);
+			for (const [k, v] of Object.entries(this.hub.state.getAll(o))) snap.set(k, v);
 			const sysSnap = this._sys.snapshot();
 			const self = this;
 			try {
 				fn();
 			} catch (err) {
-				for (const k of Object.keys(this.hub.state.state.getAll(o))) if (!snap.has(k)) this.hub.state.state.delete(k, o);
-				for (const [k, v] of snap) this.hub.state.state.set(k, v, { ...o, triggerRender: false });
+				for (const k of Object.keys(this.hub.state.getAll(o))) if (!snap.has(k)) this.hub.state.delete(k, o);
+				for (const [k, v] of snap) this.hub.state.set(k, v, { ...o, triggerRender: false });
 				self._sys.dropComputeds();
 				self._sys.restore(sysSnap);
 				throw err;
@@ -8016,7 +9371,7 @@ class SIGNALS {
 		public derive = (() => {
 			const fn = <T,>(k: A, deps: A[], compute: (...values: A[]) => T, s = this.s, m = this.m, r = this.r, options?: { eager?: B; onError?: (err: Error) => V }): S => {
 				if (this._getMetadata(s, m, r)._sys.get(k)?.isComputed) return k;
-				const reg = this.hub.wr._signals;
+				const reg = this._raptor_signals;
 				for (const d of deps) {
 					this._sys.ensure(d, reg.get(d), s, m, r);
 				}
@@ -8062,83 +9417,9 @@ class SIGNALS {
 		// #endregion
 		//                                                                                                                   SEND / SUB
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		#defBucket?: M2<A, A>;
-		#bufs = new WeakMap<O, A[]>(); // open batch buffers, touched only inside batches
-		private bucket(s: S, m: S, r: S): M2<A, A> {
-			if (s === this.s && m === this.m && r === this.r) {
-				return (this.#defBucket ??= this.hub.wr.map(s, m, r, "#NAKED_SIGNALS") as M2<A, A>);
-			}
-			return this.hub.wr.map(s, m, r, "#NAKED_SIGNALS") as M2<A, A>;
-		}
-		private channel(k: A, s: S, m: S, r: S, create: B): A {
-			const b = this.bucket(s, m, r);
-			let sig = b.get(k);
-			if (!sig && create) {
-				sig = this.signal<A>(undefined);
-				b.set(k, sig);
-			}
-			return sig;
-		}
-		public sub = (() => {
-			const fn = <T = A,>(listener: (value: T, previous: T) => A, k: A, s = this.s, m = this.m, r = this.r) => {
-				const eng = this.DARTH_MAUL_ENGINE;
-				const sig = this.channel(k, s, m, r, true);
-				let prev: T | UD;
-				let first = true;
-				let live = true;
-		
-				const pid = eng.effectSignal(() => {
-					const env = sig();
-					if (first) { first = false; return; }
-					if (!env) return;
-					eng.untrack(() => {
-						if (env.b !== undefined) {
-							// batched delivery: replies can't make it back, ignore return values
-							if (this.#bufs.get(sig) === env.b) this.#bufs.delete(sig);
-							for (const p of env.b) {
-								try { listener(p, prev as T); } catch (e) { console.error("[bus]", e); }
-								prev = p;
-							}
-						} else {
-							try {
-								const v = listener(env.p, prev as T);
-								if (v !== undefined) (env.r ??= []).push(v); // array only allocated if someone replies
-							} catch (e) { console.error("[bus]", e); }
-							prev = env.p;
-						}
-					});
-					// effect body returns nothing on purpose: a returned function would be treated as cleanup
-				});
-		
-				return () => { if (live) { live = false; eng.dispose(pid); } };
-			};
-			fn.naked = (k: A, s = this.s, m = this.m, r = this.r) => this.channel(k, s, m, r, true);
-			return fn;
-		})();    
-		public send = (() => {
-			const dispatch = (p: A, k: S, s: S, m: S, r: S): A[] | UD => {
-				const sig = this.channel(k, s, m, r, false);
-				if (!sig) return;
-		
-				if (this.DARTH_MAUL_ENGINE.batchDepth > 0) {
-					const buf = this.#bufs.get(sig);
-					if (buf) { buf.push(p); return; }
-					const b = [p];
-					this.#bufs.set(sig, b);
-					sig({ b });
-					return; // flush is deferred, so there are no replies yet
-				}
-		
-				const env: A = { p, r: undefined };
-				sig(env);       // synchronous commit + flush: listeners have already run
-				return env.r;
-			};
-			const fn = (p: A, k: S, s = this.s, m = this.m, r = this.r): A => dispatch(p, k, s, m, r)?.[0];
-			fn.all = (p: A, k: S, s = this.s, m = this.m, r = this.r): A[] => dispatch(p, k, s, m, r) ?? [];
-			return fn;
-		})();
+	
 		public delete = (k: A, s = this.s, m = this.m, r = this.r): V => {
-			this.hub.wr._signals.delete(k);
+			this._raptor_signals.delete(k);
 			this._getMetadata(s, m, r)._sys.delete(k);
 		};
 		// #endregion
@@ -8161,7 +9442,7 @@ class SIGNALS {
 				const runs: Array<{ run: number; reads: Map<SignalKey, A>; at: number }> = [];
 				let runCount = 0;
 				const tracked = new Map<SignalKey, SIGNAL_CELL>();
-				const registry = this.hub.wr._signals;
+				const registry = this._raptor_signals;
 	
 				const effectDispose = effect(() => {
 					runCount++;
@@ -8196,7 +9477,7 @@ class SIGNALS {
 				return effectDispose;
 			}; // Finds the first recorded write whose value differs from the current live value. That is the divergence point.
 			fn.bisect = (entries: Array<{ key: SignalKey; value: A; previous: A; timestamp: N; source?: S }>, s: S = this.s, m: S = this.m, r: S = this.r): { index: number; key: SignalKey; recorded: A; actual: A } | UD => {
-				const registry = this.hub.wr._signals;
+				const registry = this._raptor_signals;
 	
 				for (let i = 0; i < entries.length; i++) {
 					const entry = entries[i];
@@ -8219,7 +9500,7 @@ class SIGNALS {
 				return undefined;
 			};
 			fn.why = <T = A,>(k: SignalKey, s: S = this.s, m: S = this.m, r: S = this.r): { key: SignalKey; value: T | UD; version: N; lastWriteSource?: S; causal: CausalEntry[]; history: readonly AtomHistoryEntry<T>[] } | UD => {
-				const atom = this.hub.wr._signals.get(k) as SIGNAL_CELL<T> | undefined;
+				const atom = this._raptor_signals.get(k) as SIGNAL_CELL<T> | undefined;
 	
 				if (!atom) return undefined;
 	
@@ -8241,7 +9522,7 @@ class SIGNALS {
 			// Live-state surgery. Reads the current value, hands it to `mutate`, writes the result back through the normal reactive write path, records a causal entry, and pushes an undo entry onto the surgery journal.
 			// The mutation receives the current value. It may either: - mutate and return nothing (object/array mutation), or - return a replacement value.
 			const fn = <T = A,>(k: SignalKey, mutate: (draft: T) => T | void, s: S = this.s, m: S = this.m, r: S = this.r, options?: { source?: S; cause?: S; record?: B }): T => {
-				const atom = this.hub.wr._signals.get(k) as ATOM<T> | UD;
+				const atom = this._raptor_signals.get(k) as ATOM<T> | UD;
 				if (!atom) {
 					throw new Error(`[Sauron] Cannot perform surgery on unknown signal "${String(k)}"`);
 				}
@@ -8271,7 +9552,7 @@ class SIGNALS {
 	
 				if (!entry) return undefined;
 	
-				const atom = this.hub.wr._signals.get(entry.key) as SIGNAL_CELL | undefined;
+				const atom = this._raptor_signals.get(entry.key) as SIGNAL_CELL | undefined;
 	
 				if (!atom) return undefined;
 	
@@ -8327,8 +9608,8 @@ class SIGNALS {
 				const sig = signal(v);
 				entry = { read: () => sig(), write: (v: A) => sig(v), node: sig as A, isComputed: false };
 				sysMap.set(rk, entry);
-				if (this.hub.state.state.get(rk, { s, m, r }) === undefined) {
-					this.hub.state.state.set(rk, v, { s, m, r, triggerRender: false });
+				if (this.hub.state.get(rk, { s, m, r }) === undefined) {
+					this.hub.state.set(rk, v, { s, m, r, triggerRender: false });
 				}
 				return entry;
 			};
@@ -8440,7 +9721,7 @@ class SIGNALS {
 				return result;
 			};
 			fn.writeResolved = <T,>(k: SignalKey, value: T | ((previous: T) => T), source: S, s = this.s, m = this.m, r = this.r, cause?: S): T => {
-				const registry = this.hub.wr._signals;
+				const registry = this._raptor_signals;
 				let atom = registry.get(k) as ATOM<T> | UD;
 	
 				if (!atom) {
@@ -8455,7 +9736,7 @@ class SIGNALS {
 				return atom.write(value);
 			};
 			fn.recordCausal = <K, V>(k: S, value: V, source: S, s = this.s, m = this.m, r = this.r, cause?: S): void => {
-				const atom = this.hub.wr._signals.get(k);
+				const atom = this._raptor_signals.get(k);
 				if (!atom) return;
 				atom.causal.push({ key: k, value, timestamp: Date.now(), source, cause });
 				if (atom.causal.length > 100) {
@@ -8522,7 +9803,7 @@ class SIGNALS {
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		public async = (() => {
 			const fn = <T,>(k: A, fetcher: (signal: AbortSignal) => P<T>, s = this.s, m = this.m, r = this.r, options?: { fallback?: T,triggerRender?:B }) => {
-				const reg = this.hub.wr._signals;
+				const reg = this._raptor_signals;
 				let atom = reg.get(k) as ATOM<T> | UD;
 	
 				if (!atom) { atom = this.create(k, options?.fallback as T, { triggerRender: false }, s, m, r) as ATOM<T>; }
@@ -8572,7 +9853,7 @@ class SIGNALS {
 				return { dataKey, loadingKey, errorKey };
 			};
 			fn.invalidate = <T,>(key: A, s = this.s, m = this.m, r = this.r): V => {
-				const reg = this.hub.wr._signals;
+				const reg = this._raptor_signals;
 				const atom = reg.get(key) as SIGNAL_CELL<T> | UD;
 				const state = atom?.async;
 				if (!atom || !state) return;
@@ -8592,7 +9873,7 @@ class SIGNALS {
 					});
 			};
 			fn.mutate = <T,>(key: A, optimistic: T, s = this.s, m = this.m, r = this.r): V => {
-				const reg = this.hub.wr._signals;
+				const reg = this._raptor_signals;
 				const atom = reg.get(key) as SIGNAL_CELL<T> | UD;
 				const state = atom?.async;
 				if (!atom || !state) return;
@@ -8609,7 +9890,7 @@ class SIGNALS {
 				});
 			};
 			fn.read = <T,>(key: A, s = this.s, m = this.m, r = this.r): T => {
-				const reg = this.hub.wr._signals;
+				const reg = this._raptor_signals;
 				const dataKey = `${String(key)}:data`;
 				const loadingKey = `${String(key)}:loading`;
 				const errorKey = `${String(key)}:error`;
@@ -8665,7 +9946,7 @@ class SIGNALS {
 				...channels,
 			});
 			fn.resolveHistory = <T = unknown,>(key: SignalKey, channels: HistoryChannels = this.time_travel.defaultChannels()) => {
-				const _history = this.hub.wr._historyMaul.get(key);
+				const _history = this._timeTravelMaul.get(key);
 				return _history as HistoryEntry[] | undefined;
 			};
 			fn.replay = <T = unknown,>(key: SignalKey, value: T, channels: HistoryChannels, source: string): T => {
@@ -8692,12 +9973,12 @@ class SIGNALS {
 				const history = this.time_travel.resolveHistory<T>(key, channels);
 				if (!history?.length || steps <= 0) return undefined;
 	
-				const index = this.hub.wr._timeTravelMaul.get(key) ?? history.length - 1;
+				const index = this._timeTravelMaul.get(key) ?? history.length - 1;
 				const targetIndex = Math.max(0, index - steps);
 	
 				if (targetIndex === index) return undefined;
 	
-				this.hub.wr._timeTravelMaul.set(key, targetIndex);
+				this._timeTravelMaul.set(key, targetIndex);
 				for (let i = 0; i < history.length; i++) {
 					history[i].undone = i > targetIndex;
 				}
@@ -8708,12 +9989,12 @@ class SIGNALS {
 				const history = this.time_travel.resolveHistory<T>(key, channels);
 				if (!history?.length || steps <= 0) return undefined;
 	
-				const index = this.hub.wr._timeTravelMaul.get(key) ?? history.length - 1;
+				const index = this._timeTravelMaul.get(key) ?? history.length - 1;
 				const targetIndex = Math.min(history.length - 1, index + steps);
 	
 				if (targetIndex === index) return undefined;
 	
-				this.hub.wr._timeTravelMaul.set(key, targetIndex);
+				this._timeTravelMaul.set(key, targetIndex);
 				for (let i = 0; i < history.length; i++) {
 					history[i].undone = i > targetIndex;
 				}
@@ -8725,11 +10006,11 @@ class SIGNALS {
 				if (!history?.length) return undefined;
 	
 				const targetIndex = history.findIndex((entry) => entry.k === sequence);
-				const index = this.hub.wr._timeTravelMaul.get(key) ?? history.length - 1;
+				const index = this._timeTravelMaul.get(key) ?? history.length - 1;
 	
 				if (targetIndex < 0 || targetIndex === index) return undefined;
 	
-				this.hub.wr._timeTravelMaul.set(key, targetIndex);
+				this._timeTravelMaul.set(key, targetIndex);
 				for (let i = 0; i < history.length; i++) {
 					history[i].undone = i > targetIndex;
 				}
@@ -8793,7 +10074,7 @@ class SIGNALS {
 					throw new Error("[Sauron] A recording is already active");
 				}
 	
-				const registry = this.hub.wr._signals;
+				const registry = this._raptor_signals;
 				const targets = keys ?? [...registry.keys()];
 	
 				const entries: Array<{ key: SignalKey; value: A; previous: A; timestamp: number; source?: S }> = [];
@@ -8867,8 +10148,8 @@ class SIGNALS {
 		// #endregion
 		//                                                                                                                   SRC / DEST
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		public readonly SRC_DEFAULTS: rts = { sl: this.s, ms: this.m, rt: this.r };
-		public readonly DST_DEFAULTS: rts = { sl: this.s, ms: this.m, rt: this.r };
+		public readonly SRC_DEFAULTS: rts = { s: this.s, m: this.m, r: this.r };
+		public readonly DST_DEFAULTS: rts = { s: this.s, m: this.m, r: this.r };
 		public filter = <T,>(srcKey: A, destKey: A, pred: (v: T) => B, src: rts = this.SRC_DEFAULTS, dest: rts = this.DST_DEFAULTS) => {
 			/**const sk = this.resolveKey(srcKey, src.s, src.m, src.r);
 				 const dk = this.resolveKey(destKey, dest.s, dest.m, dest.r);
@@ -8876,7 +10157,7 @@ class SIGNALS {
 				 return this.subscribe<T>(
 					 sk,
 					 v => {
-						 if (pred(v)) this._writeResolved(dk, v, "derived", sk, dest.s, dest.m, dest.r);
+						 if (pred(v)) this._.writeResolved(dk, v, "derived", sk, dest.s, dest.m, dest.r);
 					 },
 					 src.s,
 					 src.m,
@@ -8894,7 +10175,7 @@ class SIGNALS {
 						 const now = Date.now();
 						 if (now - last >= m) {
 							 last = now;
-							 this._writeResolved(dk, v, "derived", sk, dest.s, dest.m, dest.r);
+							 this._.writeResolved(dk, v, "derived", sk, dest.s, dest.m, dest.r);
 						 }
 					 },
 					 src.s,
@@ -8906,7 +10187,7 @@ class SIGNALS {
 			/**	const dk = this.resolveKey(destKey, dest.s, dest.m, dest.r);
 			 const unsubs = srcKeys.map(k => {
 				 const sk = this.resolveKey(k, src.s, src.m, src.r);
-				 return this.subscribe(sk, v => this._writeResolved(dk, v, "derived", sk, dest.s, dest.m, dest.r), src.s, src.m, src.r);
+				 return this.subscribe(sk, v => this._.writeResolved(dk, v, "derived", sk, dest.s, dest.m, dest.r), src.s, src.m, src.r);
 			 });
 			 return () => unsubs.forEach(u => u()); */
 		};
@@ -8922,7 +10203,7 @@ class SIGNALS {
 						v => {
 							emitted.set(sk, v);
 							if (sks.every(k => emitted.has(k))) {
-								this._writeResolved(
+								this._.writeResolved(
 									dk,
 									sks.map(k => emitted.get(k)),
 									"derived",
@@ -8949,12 +10230,12 @@ class SIGNALS {
 				const dk = this.resolveKey(destKey, dest.s, dest.m, dest.r);
 		
 				let acc = seed;
-				this._writeResolved(dk, acc, "derived", sk, dest.s, dest.m, dest.r);
+				this._.writeResolved(dk, acc, "derived", sk, dest.s, dest.m, dest.r);
 		
 				return this.subscribe<T>(
 					(v: T) => {
 						acc = reducer(acc, v);
-						this._writeResolved(dk, acc, "derived", sk, dest.s, dest.m, dest.r);
+						this._.writeResolved(dk, acc, "derived", sk, dest.s, dest.m, dest.r);
 					},
 					sk,
 					src.s,
@@ -8973,7 +10254,7 @@ class SIGNALS {
 					 (targetKey: A) => {
 						 if (inner) inner();
 						 const k = this.resolveKey(targetKey, src.s, src.m, src.r);
-						 inner = this.subscribe(k, v => this._writeResolved(dk, v, "derived", k, dest.s, dest.m, dest.r), src.s, src.m, src.r);
+						 inner = this.subscribe(k, v => this._.writeResolved(dk, v, "derived", k, dest.s, dest.m, dest.r), src.s, src.m, src.r);
 					 },
 					 src.s,
 					 src.m,
@@ -8990,7 +10271,7 @@ class SIGNALS {
 					 v => {
 						 buf.push(v);
 						 if (buf.length >= count) {
-							 this._writeResolved(dk, [...buf], "derived", sk, dest.s, dest.m, dest.r);
+							 this._.writeResolved(dk, [...buf], "derived", sk, dest.s, dest.m, dest.r);
 							 buf.length = 0;
 						 }
 					 },
@@ -9006,7 +10287,7 @@ class SIGNALS {
 				 const buf: A[] = [];
 				 const iv = setInterval(() => {
 					 if (buf.length) {
-						 this._writeResolved(dk, [...buf], "derived", sk, dest.s, dest.m, dest.r);
+						 this._.writeResolved(dk, [...buf], "derived", sk, dest.s, dest.m, dest.r);
 						 buf.length = 0;
 					 }
 				 }, m);
@@ -9028,7 +10309,7 @@ class SIGNALS {
 					 const same = last !== undefined && (equals ? equals(last, v) : Object.is(last, v));
 					 if (!same) {
 						 last = v;
-						 this._writeResolved(dk, v, "derived", sk, dest.s, dest.m, dest.r);
+						 this._.writeResolved(dk, v, "derived", sk, dest.s, dest.m, dest.r);
 					 }
 				 },
 				 src.s,
@@ -9048,7 +10329,7 @@ class SIGNALS {
 						 latest = v;
 						 if (!timer) {
 							 timer = setTimeout(() => {
-								 this._writeResolved(dk, latest, "derived", sk, dest.s, dest.m, dest.r);
+								 this._.writeResolved(dk, latest, "derived", sk, dest.s, dest.m, dest.r);
 								 timer = null;
 							 }, m);
 						 }
@@ -9061,14 +10342,11 @@ class SIGNALS {
 	
 		// #endregion
 	})();
-
-	
+	// #endregion	
 	public r2x = new (class R2X {// EXAMPLE CLASS SHAPE
 		public hub: DEATH_STAR
 		public signals: SIGNALS
-		constructor(s: SIGNALS) {
-			this.hub = s.root
-			this.signals = s
+		constructor(s: SIGNALS) {  
 		}
 
 		
@@ -9078,9 +10356,7 @@ class SIGNALS {
         public hub: DEATH_STAR;
         public signals: SIGNALS;
 
-        constructor(s: SIGNALS) {
-            this.hub = s.root;
-            this.signals = s;
+        constructor(s: SIGNALS) {  
         }
     };
 }
@@ -9449,26 +10725,42 @@ class PidTable {
 //                                                                                                                   MESH STORE 
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class THE_MESH_STORE {
-	public r: A = "THE_WIZARD_ROOT_REG";
-	public m: A = "SAURON_MASTER_REG";
-	public s: A = "SAURON_SLAVE_REG";
-	public k: A = "__SAURON__";
+	//                                                                              CONSTANTS
+	// #region ═════════════════════════════════════════════════════════════════════════════════════
+	public r: S = "THE_WIZARD_ROOT_REG";
+	public m: S = "SAURON_MASTER_REG";
+	public s: S = "SAURON_SLAVE_REG";
+	public k: S = "__SAURON__";
+	public RTRN_TO_SDR = 'RTRN_TO_SDR'
 	public cache: c_type
     public DEVTOOLS_ACTIVE = false;
 
 	public THE_MESH_CACHE = new O2<S, O2<S, O2<S, O2<S, V>>>>();
-	public _the_mesh_cache = new O2<S, A>();
-	public _handlers = new O2();
+	public state_r: S = "THE_DARK_SIDE_STATE"
+	public bus_r: S = "THE_DARK_SIDE_BUS"
+	public signals_r: S = "THE_DARK_SIDE_SIGNALS"
+	public drs_r: S = "THE_DARK_SIDE_DRS"
+	public handlers_s: S = "_handlers"
+	public meta_s: S = "_meta"
+	public signals_s: S = "_signals"
+	public hooks_s: S = '_hooks'
+	public context_s: S = '_context'
+	public raptors_signals_s: S = '_raptor_signals'
+	public atoms_s: S = '_atoms'
+	public mesh_s: S = '_the_mesh_cache'
+	
+	// #endregion
+	//                                                                                CACHES
+	// #region ═════════════════════════════════════════════════════════════════════════════════════
+	public _the_mesh_cache: O2<S, A>
+	public _handlers: O2<S, A>
 	#subRoot = new O2<S, A>();
- 
-	#metaSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
-	public _meta = new O2<S, A>();
 
 	#signalsSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
 	public _signals = new O2<S, A>();
 
-	#nakedSignalsSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
-	public _naked_signals = new O2<S, A>();
+	#raptorSignalsSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
+	public _raptor_signals = new O2<S, A>();
 
 	#contextSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
 	public _context = new O2<S, A>();
@@ -9476,8 +10768,8 @@ class THE_MESH_STORE {
 	#atomsSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
 	public _atoms = new O2<S, A>();
 
-	#sauronSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
-	public _sauron = new O2<S, A>();
+	#hooksSubRoot = new O2<S, O2<S, O2<S, O2<S, Set<QuadSub<A>>>>>>();
+	public _hooks = new O2<S, A>();
 
 	constructor(hub: A, cache: c_type = "mesh") {
 		this.r = hub.r;
@@ -9486,17 +10778,13 @@ class THE_MESH_STORE {
 		this.k = hub.k;
 		this.cache = cache
 		this.DEVTOOLS_ACTIVE = hub.DEVTOOLS_ACTIVE
-		this._handlers = this.getS('_handlers', this.m, this.r );
-		const rL = ((globalThis as A)[this.r] ??= new O2());
-		const mL = (rL[this.m] ??= new O2());
-		this._handlers = mL['_handlers'] ??= new O2(); // this._globalThis
-		this._meta = this.getS('_meta', this.m, this.r);
-		this._signals = this.getS('_signals', this.m, this.r);
-		this._naked_signals = this.getS('_naked_signals', this.m, this.r);
-		this._context = this.getS('_context', this.m, this.r);
-		this._atoms = this.getS('_atoms', this.m, this.r);
-		this._sauron = this.getS('_sauron', this.m, this.r);
-		this._the_mesh_cache = this.getS('_the_mesh_cache', this.m, this.r);
+		this._handlers = this.getS(this.handlers_s, this.m, this.bus_r, 'globalThis');
+		this._signals = this.getS(this.signals_s, this.m, this.signals_r);
+		this._raptor_signals = this.getS(this.raptors_signals_s, this.m, this.signals_r);
+		this._atoms = this.getS(this.atoms_s, this.m, this.signals_r);
+		this._context = this.getS(this.context_s, this.m, this.state_r);
+		this._hooks = this.getS(this.hooks_s, this.m, this.state_r);
+		this._the_mesh_cache = this.getS(this.mesh_s, this.m, this.r);
 	}
 	public getS(s: S = this.s, m: S = this.m, r: S = this.r, c: c_type = "mesh") {
 		const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
@@ -9519,7 +10807,7 @@ class THE_MESH_STORE {
 	public handlers = (() => {
 		const fn = () => {};
 		fn.get = (() => {
-			const fn =<Z = A> (k: S, s: S = '_handlers', m: S = this.m, r: S = this.r, c: c_type = "mesh"): A | UD => { 
+			const fn =<Z = A> (k: S, s: S = '_handlers', m: S = this.m, r: S = this.bus_r, c: c_type = "mesh"): A | UD => { 
 				if (this.cache === 'globalThis' || c === 'globalThis') {
 					return (globalThis as A)[r]?.[m]?.[s]?.[k] as Z;
 				} else {
@@ -9531,7 +10819,7 @@ class THE_MESH_STORE {
 			return fn;
 		})();
 		fn.set = (() => {
-			const fn = (v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.r, c: c_type = "mesh"): this => {
+			const fn = (v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.bus_r, c: c_type = "mesh"): this => {
 				const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
 				const rL = (cache[r] ??= new O2());
 				const mL = (rL[m] ??= Object.create(null));
@@ -9541,14 +10829,14 @@ class THE_MESH_STORE {
 				this.handlers.emit(k, s, m, r, next);
 				return this;
 			}
-			fn.hotGT= <Z = A>(v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.r) => { 
+			fn.hotGT= <Z = A>(v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.bus_r) => { 
 				const sL = this._handlers[k];
 				const next = rv(v);
 				sL[k] = next;
 				this.handlers.emit(k, s, m, r, next);
 				return next as Z;
 			 };
-			fn.hotMesh = <Z = A,>(v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.r) => {
+			fn.hotMesh = <Z = A,>(v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.bus_r) => {
 				const sL = this._handlers[k];
 				const next = rv(v);
 				sL[k] = next;
@@ -9558,7 +10846,7 @@ class THE_MESH_STORE {
 			return fn;
 		})();
 		fn.has = (() => {
-			const fn = (k: S, s: S = '_handlers', m: S = this.m, r: S = this.r, c: c_type = "mesh"): B => { 
+			const fn = (k: S, s: S = '_handlers', m: S = this.m, r: S = this.bus_r, c: c_type = "mesh"): B => { 
 				return !!this.THE_MESH_CACHE[r]?.[m]?.[s] && k in this.THE_MESH_CACHE[r][m][s];
 				if (this.cache === 'globalThis' || c === 'globalThis') {
 					return k in (globalThis as A)[r]?.[m]?.[s] 
@@ -9570,7 +10858,7 @@ class THE_MESH_STORE {
 			return fn;
 		})();
 		fn.delete = (() => {
-			const fn = (k: S, s: S = '_handlers', m: S = this.m, r: S = this.r, c: c_type = "mesh"): B => {
+			const fn = (k: S, s: S = '_handlers', m: S = this.m, r: S = this.bus_r, c: c_type = "mesh"): B => {
 				const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
 				const rL = (cache[r] ??= new O2());
 				const mL = (rL[m] ??= Object.create(null));
@@ -9580,13 +10868,13 @@ class THE_MESH_STORE {
 				this.handlers.emit(k, s, m, r, undefined);
 				return true;
 			};
-			fn.hotMesh= (k: S, s: S = '_handlers', m: S = this.m, r: S = this.r, c: c_type = "mesh"): B => {
+			fn.hotMesh= (k: S, s: S = '_handlers', m: S = this.m, r: S = this.bus_r, c: c_type = "mesh"): B => {
 				if (!(k in this._handlers)) return false;
 				delete this._handlers[k];
 				this.handlers.emit(k, s, m, r, undefined);
 				return true;
 			};
-			fn.hotGT= <Z = A>(v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.r) => { 
+			fn.hotGT= <Z = A>(v: UF<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.bus_r) => { 
 				const sL = (globalThis as A)[s];
 				const next = rv(v);
 				sL[k] = next;
@@ -9595,7 +10883,7 @@ class THE_MESH_STORE {
 			 };
 			return fn;
 		})();
-		fn.on = (fn: QuadSub<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.r): (() => V) => {
+		fn.on = (fn: QuadSub<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.bus_r): (() => V) => {
 			const rL = (this.#subRoot[r] ??= Object.create(null));
 			const mL = (rL[m] ??= Object.create(null));
 			const sL = (mL[s] ??= Object.create(null));
@@ -9606,79 +10894,11 @@ class THE_MESH_STORE {
 				if (!set.size) delete sL[k];
 			};
 		};
-		fn.off = (fn: QuadSub<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.r): V => {
+		fn.off = (fn: QuadSub<A>, k: S, s: S = '_handlers', m: S = this.m, r: S = this.bus_r): V => {
 			this.#subRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
 		};
-		fn.emit = ( v: A | UD, k: S, s: S = '_atoms', m: S = this.m, r: S = this.r,): void => {
+		fn.emit = ( v: A | UD, k: S, s: S = '_atoms', m: S = this.m, r: S = this.bus_r,): void => {
 			const set = this.#subRoot[r]?.[m]?.[s]?.[k];
-			if (!set) return;
-			for (const fn of set) fn(v);
-		};
-		return fn;
-	})();
-	public meta = (() => {
-		const fn = () => {};
-		fn.get = (() => {
-			const fn = (k: S, s: S = '_meta', m: S = this.m, r: S = this.r): A | UD => { return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k]; };
-			fn.hot = <Z = A,>(k: S): A | UD => this._meta[k] as Z;
-			return fn;
-		})();
-		fn.set = (() => {
-			const fn = (v: UF<A>, k: S, s: S = '_meta', m: S = this.m, r: S = this.r): this => {
-				const rL = (this.THE_MESH_CACHE[r] ??= Object.create(null));
-				const mL = (rL[m] ??= Object.create(null));
-				const sL = (mL[s] ??= Object.create(null));
-				const next = rv(v);
-				sL[k] = next;
-				this.meta.emit(k, s, m, r, next);
-				return this;
-			};
-			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_meta', m: S = this.m, r: S = this.r) => {
-				const sL = this._meta;
-				const next = rv(v);
-				sL[k] = next;
-				this.meta.emit(k, s, m, r, next);
-				return next as Z;
-			};
-			return fn;
-		})();
-		fn.has = (() => {
-			const fn = (k: S, s: S = '_meta', m: S = this.m, r: S = this.r): B => { return !!this.THE_MESH_CACHE[r]?.[m]?.[s] && k in this.THE_MESH_CACHE[r][m][s]; };
-			fn.hot = (k: S): B => k in this._meta;
-			return fn;
-		})();
-		fn.delete = (() => {
-			const fn = (k: S, s: S = '_meta', m: S = this.m, r: S = this.r): B => {
-				const sL = this.THE_MESH_CACHE[r]?.[m]?.[s];
-				if (!sL || !(k in sL)) return false;
-				delete sL[k];
-				this.meta.emit(k, s, m, r, undefined);
-				return true;
-			};
-			fn.hot = (k: S, s: S = '_meta', m: S = this.m, r: S = this.r): B => {
-				if (!(k in this._meta)) return false;
-				delete this._meta[k];
-				this.meta.emit(k, s, m, r, undefined);
-				return true;
-			};
-			return fn;
-		})();
-		fn.on = (fn: QuadSub<A>, k: S, s: S = '_meta', m: S = this.m, r: S = this.r): (() => V) => {
-			const rL = (this.#metaSubRoot[r] ??= Object.create(null));
-			const mL = (rL[m] ??= Object.create(null));
-			const sL = (mL[s] ??= Object.create(null));
-			const set: Set<QuadSub<A>> = (sL[k] ??= new Set());
-			set.add(fn);
-			return () => {
-				set.delete(fn);
-				if (!set.size) delete sL[k];
-			};
-		};
-		fn.off = (fn: QuadSub<A>, k: S, s: S = '_meta', m: S = this.m, r: S = this.r): V => {
-			this.#metaSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
-		};
-		fn.emit = (v: A | UD, k: S, s: S = '_atoms', m: S = this.m, r: S = this.r, ): void => {
-			const set = this.#metaSubRoot[r]?.[m]?.[s]?.[k];
 			if (!set) return;
 			for (const fn of set) fn(v);
 		};
@@ -9687,14 +10907,14 @@ class THE_MESH_STORE {
 	public signals = (() => {
 		const fn = () => {};
 		fn.get = (() => {
-			const fn = (k: S, s: S = '_signals', m: S = this.m, r: S = this.r): A | UD => {
+			const fn = (k: S, s: S = '_signals', m: S = this.m, r: S = this.signals_r): A | UD => {
 				return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k];
 			};
 			fn.hot = <Z = A,>(k: S): A | UD => this._signals[k] as Z;
 			return fn;
 		})();
 		fn.set = (() => {
-			const fn = (v: UF<A>, k: S, s: S = '_signals', m: S = this.m, r: S = this.r): this => {
+			const fn = (v: UF<A>, k: S, s: S = '_signals', m: S = this.m, r: S = this.signals_r): this => {
 				const rL = (this.THE_MESH_CACHE[r] ??= Object.create(null));
 				const mL = (rL[m] ??= Object.create(null));
 				const sL = (mL[s] ??= Object.create(null));
@@ -9703,7 +10923,7 @@ class THE_MESH_STORE {
 				this.signals.emit(k, s, m, r, next);
 				return this;
 			};
-			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_signals', m: S = this.m, r: S = this.r) => {
+			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_signals', m: S = this.m, r: S = this.signals_r) => {
 				const sL = this._signals;
 				const next = rv(v);
 				sL[k] = next;
@@ -9713,21 +10933,21 @@ class THE_MESH_STORE {
 			return fn;
 		})();
 		fn.has = (() => {
-			const fn = (k: S, s: S = '_signals', m: S = this.m, r: S = this.r): B => {
+			const fn = (k: S, s: S = '_signals', m: S = this.m, r: S = this.signals_r): B => {
 				return !!this.THE_MESH_CACHE[r]?.[m]?.[s] && k in this.THE_MESH_CACHE[r][m][s];
 			};
 			fn.hot = (k: S): B => k in this._signals;
 			return fn;
 		})();
 		fn.delete = (() => {
-			const fn = (k: S, s: S = '_signals', m: S = this.m, r: S = this.r): B => {
+			const fn = (k: S, s: S = '_signals', m: S = this.m, r: S = this.signals_r): B => {
 				const sL = this.THE_MESH_CACHE[r]?.[m]?.[s];
 				if (!sL || !(k in sL)) return false;
 				delete sL[k];
 				this.signals.emit(k, s, m, r, undefined);
 				return true;
 			};
-			fn.hot = (k: S, s: S = '_signals', m: S = this.m, r: S = this.r): B => {
+			fn.hot = (k: S, s: S = '_signals', m: S = this.m, r: S = this.signals_r): B => {
 				if (!(k in this._signals)) return false;
 				delete this._signals[k];
 				this.signals.emit(k, s, m, r, undefined);
@@ -9735,7 +10955,7 @@ class THE_MESH_STORE {
 			};
 			return fn;
 		})();
-		fn.on = (fn: QuadSub<A>, k: S, s: S = '_signals', m: S = this.m, r: S = this.r): (() => V) => {
+		fn.on = (fn: QuadSub<A>, k: S, s: S = '_signals', m: S = this.m, r: S = this.signals_r): (() => V) => {
 			const rL = (this.#signalsSubRoot[r] ??= Object.create(null));
 			const mL = (rL[m] ??= Object.create(null));
 			const sL = (mL[s] ??= Object.create(null));
@@ -9746,69 +10966,69 @@ class THE_MESH_STORE {
 				if (!set.size) delete sL[k];
 			};
 		};
-		fn.off = (fn: QuadSub<A>, k: S, s: S = '_signals', m: S = this.m, r: S = this.r): V => {
+		fn.off = (fn: QuadSub<A>, k: S, s: S = '_signals', m: S = this.m, r: S = this.signals_r): V => {
 			this.#signalsSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
 		};
-		fn.emit = (v: A | UD, k: S, s: S = '_signals', m: S = this.m, r: S = this.r, ): void => {
+		fn.emit = (v: A | UD, k: S, s: S = '_signals', m: S = this.m, r: S = this.signals_r, ): void => {
 			const set = this.#signalsSubRoot[r]?.[m]?.[s]?.[k];
 			if (!set) return;
 			for (const fn of set) fn(v);
 		};
 		return fn;
 	})();
-	public naked_signals = (() => {
+	public raptors_signals = (() => {
 		const fn = () => {};
 		fn.get = (() => {
-			const fn = (k: S, s: S = '_naked_signals', m: S = this.m, r: S = this.r): A | UD => {
+			const fn = (k: S, s: S = '_raptor_signals', m: S = this.m, r: S = this.signals_r): A | UD => {
 				return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k];
 			};
-			fn.hot = <Z = A,>(k: S): A | UD => this._naked_signals[k] as Z;
+			fn.hot = <Z = A,>(k: S): A | UD => this._raptor_signals[k] as Z;
 			return fn;
 		})();
 		fn.set = (() => {
-			const fn = (v: UF<A>, k: S, s: S = '_naked_signals', m: S = this.m, r: S = this.r): this => {
+			const fn = (v: UF<A>, k: S, s: S = '_raptor_signals', m: S = this.m, r: S = this.signals_r): this => {
 				const rL = (this.THE_MESH_CACHE[r] ??= Object.create(null));
 				const mL = (rL[m] ??= Object.create(null));
 				const sL = (mL[s] ??= Object.create(null));
 				const next = rv(v);
 				sL[k] = next;
-				this.naked_signals.emit(k, s, m, r, next);
+				this.raptors_signals.emit(k, s, m, r, next);
 				return this;
 			};
-			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_naked_signals', m: S = this.m, r: S = this.r) => {
-				const sL = this._naked_signals;
+			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_raptor_signals', m: S = this.m, r: S = this.signals_r) => {
+				const sL = this._raptor_signals;
 				const next = rv(v);
 				sL[k] = next;
-				this.naked_signals.emit(k, s, m, r, next);
+				this.raptors_signals.emit(k, s, m, r, next);
 				return next as Z;
 			};
 			return fn;
 		})();
 		fn.has = (() => {
-			const fn = (k: S, s: S = '_naked_signals', m: S = this.m, r: S = this.r): B => {
+			const fn = (k: S, s: S = '_raptor_signals', m: S = this.m, r: S = this.signals_r): B => {
 				return !!this.THE_MESH_CACHE[r]?.[m]?.[s] && k in this.THE_MESH_CACHE[r][m][s];
 			};
-			fn.hot = (k: S): B => k in this._naked_signals;
+			fn.hot = (k: S): B => k in this._raptor_signals;
 			return fn;
 		})();
 		fn.delete = (() => {
-			const fn = (k: S, s: S = '_naked_signals', m: S = this.m, r: S = this.r): B => {
+			const fn = (k: S, s: S = '_raptor_signals', m: S = this.m, r: S = this.signals_r): B => {
 				const sL = this.THE_MESH_CACHE[r]?.[m]?.[s];
 				if (!sL || !(k in sL)) return false;
 				delete sL[k];
-				this.naked_signals.emit(k, s, m, r, undefined);
+				this.raptors_signals.emit(k, s, m, r, undefined);
 				return true;
 			};
-			fn.hot = (k: S, s: S = '_naked_signals', m: S = this.m, r: S = this.r): B => {
-				if (!(k in this._naked_signals)) return false;
-				delete this._naked_signals[k];
-				this.naked_signals.emit(k, s, m, r, undefined);
+			fn.hot = (k: S, s: S = '_raptor_signals', m: S = this.m, r: S = this.signals_r): B => {
+				if (!(k in this._raptor_signals)) return false;
+				delete this._raptor_signals[k];
+				this.raptors_signals.emit(k, s, m, r, undefined);
 				return true;
 			};
 			return fn;
 		})();
-		fn.on = (fn: QuadSub<A>, k: S, s: S = '_naked_signals', m: S = this.m, r: S = this.r): (() => V) => {
-			const rL = (this.#nakedSignalsSubRoot[r] ??= Object.create(null));
+		fn.on = (fn: QuadSub<A>, k: S, s: S = '_raptor_signals', m: S = this.m, r: S = this.signals_r): (() => V) => {
+			const rL = (this.#raptorSignalsSubRoot[r] ??= Object.create(null));
 			const mL = (rL[m] ??= Object.create(null));
 			const sL = (mL[s] ??= Object.create(null));
 			const set: Set<QuadSub<A>> = (sL[k] ??= new Set());
@@ -9818,11 +11038,11 @@ class THE_MESH_STORE {
 				if (!set.size) delete sL[k];
 			};
 		};
-		fn.off = (fn: QuadSub<A>, k: S, s: S = '_naked_signals', m: S = this.m, r: S = this.r): V => {
-			this.#nakedSignalsSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
+		fn.off = (fn: QuadSub<A>, k: S, s: S = '_raptor_signals', m: S = this.m, r: S = this.signals_r): V => {
+			this.#raptorSignalsSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
 		};
-		fn.emit = (v: A | UD, k: S, s: S = '_atoms', m: S = this.m, r: S = this.r,  ): void => {
-			const set = this.#nakedSignalsSubRoot[r]?.[m]?.[s]?.[k];
+		fn.emit = (v: A | UD, k: S, s: S = '_atoms', m: S = this.m, r: S = this.signals_r,  ): void => {
+			const set = this.#raptorSignalsSubRoot[r]?.[m]?.[s]?.[k];
 			if (!set) return;
 			for (const fn of set) fn(v);
 		};
@@ -9831,12 +11051,12 @@ class THE_MESH_STORE {
 	public context = (() => {
 		const fn = () => {};
 		fn.get = (() => {
-			const fn = (k: S, s: S = '_context', m: S = this.m, r: S = this.r): A | UD => { return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k]; };
+			const fn = (k: S, s: S = '_context', m: S = this.m, r: S = this.state_r): A | UD => { return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k]; };
 			fn.hot = <Z = A,>(k: S): A | UD => this._context[k] as Z;
 			return fn;
 		})();
 		fn.set = (() => {
-			const fn = (v: UF<A>, k: S, s: S = '_context', m: S = this.m, r: S = this.r): this => {
+			const fn = (v: UF<A>, k: S, s: S = '_context', m: S = this.m, r: S = this.state_r): this => {
 				const rL = (this.THE_MESH_CACHE[r] ??= Object.create(null));
 				const mL = (rL[m] ??= Object.create(null));
 				const sL = (mL[s] ??= Object.create(null));
@@ -9845,7 +11065,7 @@ class THE_MESH_STORE {
 				this.context.emit(k, s, m, r, next);
 				return this;
 			};
-			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_context', m: S = this.m, r: S = this.r) => {
+			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_context', m: S = this.m, r: S = this.state_r) => {
 				const sL = this._context;
 				const next = rv(v);
 				sL[k] = next;
@@ -9855,21 +11075,21 @@ class THE_MESH_STORE {
 			return fn;
 		})();
 		fn.has = (() => {
-			const fn = (k: S, s: S = '_context', m: S = this.m, r: S = this.r): B => {
+			const fn = (k: S, s: S = '_context', m: S = this.m, r: S = this.state_r): B => {
 				return !!this.THE_MESH_CACHE[r]?.[m]?.[s] && k in this.THE_MESH_CACHE[r][m][s];
 			};
 			fn.hot = (k: S): B => k in this._context;
 			return fn;
 		})();
 		fn.delete = (() => {
-			const fn = (k: S, s: S = '_context', m: S = this.m, r: S = this.r): B => {
+			const fn = (k: S, s: S = '_context', m: S = this.m, r: S = this.state_r): B => {
 				const sL = this.THE_MESH_CACHE[r]?.[m]?.[s];
 				if (!sL || !(k in sL)) return false;
 				delete sL[k];
 				this.context.emit(k, s, m, r, undefined);
 				return true;
 			};
-			fn.hot = (k: S, s: S = '_context', m: S = this.m, r: S = this.r): B => {
+			fn.hot = (k: S, s: S = '_context', m: S = this.m, r: S = this.state_r): B => {
 				if (!(k in this._context)) return false;
 				delete this._context[k];
 				this.context.emit(k, s, m, r, undefined);
@@ -9877,7 +11097,7 @@ class THE_MESH_STORE {
 			};
 			return fn;
 		})();
-		fn.on = (fn: QuadSub<A>, k: S, s: S = '_context', m: S = this.m, r: S = this.r): (() => V) => {
+		fn.on = (fn: QuadSub<A>, k: S, s: S = '_context', m: S = this.m, r: S = this.state_r): (() => V) => {
 			const rL = (this.#contextSubRoot[r] ??= Object.create(null));
 			const mL = (rL[m] ??= Object.create(null));
 			const sL = (mL[s] ??= Object.create(null));
@@ -9888,10 +11108,10 @@ class THE_MESH_STORE {
 				if (!set.size) delete sL[k];
 			};
 		};
-		fn.off = (fn: QuadSub<A>, k: S, s: S = '_context', m: S = this.m, r: S = this.r): V => {
+		fn.off = (fn: QuadSub<A>, k: S, s: S = '_context', m: S = this.m, r: S = this.state_r): V => {
 			this.#contextSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
 		};
-		fn.emit = (v: A | UD, k: S, s: S = '_atoms', m: S = this.m, r: S = this.r, ): void => {
+		fn.emit = (v: A | UD, k: S, s: S = '_atoms', m: S = this.m, r: S = this.state_r, ): void => {
 			const set = this.#contextSubRoot[r]?.[m]?.[s]?.[k];
 			if (!set) return;
 			for (const fn of set) fn(v);
@@ -9901,12 +11121,12 @@ class THE_MESH_STORE {
 	public atoms = (() => {
 		const fn = () => {};
 		fn.get = (() => {
-			const fn = (k: S, s: S = '_atoms', m: S = this.m, r: S = this.r): A | UD => { return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k]; };
+			const fn = (k: S, s: S = '_atoms', m: S = this.m, r: S = this.signals_r): A | UD => { return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k]; };
 			fn.hot = <Z = A,>(k: S): A | UD => this._atoms[k] as Z;
 			return fn;
 		})();
 		fn.set = (() => {
-			const fn = (v: UF<A>, k: S, s: S = '_atoms', m: S = this.m, r: S = this.r): this => {
+			const fn = (v: UF<A>, k: S, s: S = '_atoms', m: S = this.m, r: S = this.signals_r): this => {
 				const rL = (this.THE_MESH_CACHE[r] ??= Object.create(null));
 				const mL = (rL[m] ??= Object.create(null));
 				const sL = (mL[s] ??= Object.create(null));
@@ -9915,7 +11135,7 @@ class THE_MESH_STORE {
 				this.atoms.emit(k, s, m, r, next);
 				return this;
 			};
-			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_atoms', m: S = this.m, r: S = this.r) => {
+			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_atoms', m: S = this.m, r: S = this.signals_r) => {
 				const sL = this._atoms;
 				const next = rv(v);
 				sL[k] = next;
@@ -9925,21 +11145,21 @@ class THE_MESH_STORE {
 			return fn;
 		})();
 		fn.has = (() => {
-			const fn = (k: S, s: S = '_atoms', m: S = this.m, r: S = this.r): B => {
+			const fn = (k: S, s: S = '_atoms', m: S = this.m, r: S = this.signals_r): B => {
 				return !!this.THE_MESH_CACHE[r]?.[m]?.[s] && k in this.THE_MESH_CACHE[r][m][s];
 			};
 			fn.hot = (k: S): B => k in this._atoms;
 			return fn;
 		})();
 		fn.delete = (() => {
-			const fn = (k: S, s: S = '_atoms', m: S = this.m, r: S = this.r): B => {
+			const fn = (k: S, s: S = '_atoms', m: S = this.m, r: S = this.signals_r): B => {
 				const sL = this.THE_MESH_CACHE[r]?.[m]?.[s];
 				if (!sL || !(k in sL)) return false;
 				delete sL[k];
 				this.atoms.emit(k, s, m, r, undefined);
 				return true;
 			};
-			fn.hot = (k: S, s: S = '_atoms', m: S = this.m, r: S = this.r): B => {
+			fn.hot = (k: S, s: S = '_atoms', m: S = this.m, r: S = this.signals_r): B => {
 				if (!(k in this._atoms)) return false;
 				delete this._atoms[k];
 				this.atoms.emit(k, s, m, r, undefined);
@@ -9947,7 +11167,7 @@ class THE_MESH_STORE {
 			};
 			return fn;
 		})();
-		fn.on = (fn: QuadSub<A>, k: S, s: S = '_atoms', m: S = this.m, r: S = this.r): (() => V) => {
+		fn.on = (fn: QuadSub<A>, k: S, s: S = '_atoms', m: S = this.m, r: S = this.signals_r): (() => V) => {
 			const rL = (this.#atomsSubRoot[r] ??= Object.create(null));
 			const mL = (rL[m] ??= Object.create(null));
 			const sL = (mL[s] ??= Object.create(null));
@@ -9958,10 +11178,10 @@ class THE_MESH_STORE {
 				if (!set.size) delete sL[k];
 			};
 		};
-		fn.off = (fn: QuadSub<A>, k: S, s: S = '_atoms', m: S = this.m, r: S = this.r): V => {
+		fn.off = (fn: QuadSub<A>, k: S, s: S = '_atoms', m: S = this.m, r: S = this.signals_r): V => {
 			this.#atomsSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
 		};
-		fn.emit = (v: A | UD, k: S, s: S = '_atoms', m: S = this.m, r: S = this.r,  ): void => {
+		fn.emit = (v: A | UD, k: S, s: S = '_atoms', m: S = this.m, r: S = this.signals_r,  ): void => {
 			const set = this.#atomsSubRoot[r]?.[m]?.[s]?.[k];
 			if (!set) return;
 			for (const fn of set) fn(v);
@@ -9971,14 +11191,14 @@ class THE_MESH_STORE {
 	public sauron = (() => {
 		const fn = () => {};
 		fn.get = (() => {
-			const fn = (k: S, s: S = '_sauron', m: S = this.m, r: S = this.r): A | UD => {
+			const fn = (k: S, s: S = '_hooks', m: S = this.m, r: S = this.state_r): A | UD => {
 				return this.THE_MESH_CACHE[r]?.[m]?.[s]?.[k];
 			};
-			fn.hot = <Z = A,>(k: S): A | UD => this._sauron[k] as Z;
+			fn.hot = <Z = A,>(k: S): A | UD => this._hooks[k] as Z;
 			return fn;
 		})();
 		fn.set = (() => {
-			const fn = (v: UF<A>, k: S, s: S = '_sauron', m: S = this.m, r: S = this.r): this => {
+			const fn = (v: UF<A>, k: S, s: S = '_hooks', m: S = this.m, r: S = this.state_r): this => {
 				const rL = (this.THE_MESH_CACHE[r] ??= Object.create(null));
 				const mL = (rL[m] ??= Object.create(null));
 				const sL = (mL[s] ??= Object.create(null));
@@ -9987,8 +11207,8 @@ class THE_MESH_STORE {
 				this.sauron.emit(k, s, m, r, next);
 				return this;
 			};
-			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_sauron', m: S = this.m, r: S = this.r) => {
-				const sL = this._sauron;
+			fn.hot = <Z = A,>(v: UF<A>, k: S, s: S = '_hooks', m: S = this.m, r: S = this.state_r) => {
+				const sL = this._hooks;
 				const next = rv(v);
 				sL[k] = next;
 				this.sauron.emit(k, s, m, r, next);
@@ -9997,30 +11217,30 @@ class THE_MESH_STORE {
 			return fn;
 		})();
 		fn.has = (() => {
-			const fn = (k: S, s: S = '_sauron', m: S = this.m, r: S = this.r): B => {
+			const fn = (k: S, s: S = '_hooks', m: S = this.m, r: S = this.state_r): B => {
 				return !!this.THE_MESH_CACHE[r]?.[m]?.[s] && k in this.THE_MESH_CACHE[r][m][s];
 			};
-			fn.hot = (k: S): B => k in this._sauron;
+			fn.hot = (k: S): B => k in this._hooks;
 			return fn;
 		})();
 		fn.delete = (() => {
-			const fn = (k: S, s: S = '_sauron', m: S = this.m, r: S = this.r): B => {
+			const fn = (k: S, s: S = '_hooks', m: S = this.m, r: S = this.state_r): B => {
 				const sL = this.THE_MESH_CACHE[r]?.[m]?.[s];
 				if (!sL || !(k in sL)) return false;
 				delete sL[k];
 				this.sauron.emit(k, s, m, r, undefined);
 				return true;
 			};
-			fn.hot = (k: S, s: S = '_sauron', m: S = this.m, r: S = this.r): B => {
-				if (!(k in this._sauron)) return false;
-				delete this._sauron[k];
+			fn.hot = (k: S, s: S = '_hooks', m: S = this.m, r: S = this.state_r): B => {
+				if (!(k in this._hooks)) return false;
+				delete this._hooks[k];
 				this.sauron.emit(k, s, m,r, undefined);
 				return true;
 			};
 			return fn;
 		})();
-		fn.on = (fn: QuadSub<A>, k: S, s: S = '_sauron', m: S = this.m, r: S = this.r): (() => V) => {
-			const rL = (this.#sauronSubRoot[r] ??= Object.create(null));
+		fn.on = (fn: QuadSub<A>, k: S, s: S = '_hooks', m: S = this.m, r: S = this.state_r): (() => V) => {
+			const rL = (this.#hooksSubRoot[r] ??= Object.create(null));
 			const mL = (rL[m] ??= Object.create(null));
 			const sL = (mL[s] ??= Object.create(null));
 			const set: Set<QuadSub<A>> = (sL[k] ??= new Set());
@@ -10030,11 +11250,11 @@ class THE_MESH_STORE {
 				if (!set.size) delete sL[k];
 			};
 		};
-		fn.off = (fn: QuadSub<A>, k: S, s: S = '_sauron', m: S = this.m, r: S = this.r): V => {
-			this.#sauronSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
+		fn.off = (fn: QuadSub<A>, k: S, s: S = '_hooks', m: S = this.m, r: S = this.state_r): V => {
+			this.#hooksSubRoot[r]?.[m]?.[s]?.[k]?.delete(fn);
 		};
-		fn.emit = (v: A | UD, k: S, s: S = '_sauron', m: S = this.m, r: S = this.r ): void => {
-			const set = this.#sauronSubRoot[r]?.[m]?.[s]?.[k];
+		fn.emit = (v: A | UD, k: S, s: S = '_hooks', m: S = this.m, r: S = this.state_r ): void => {
+			const set = this.#hooksSubRoot[r]?.[m]?.[s]?.[k];
 			if (!set) return;
 			for (const fn of set) fn(v);
 		};
@@ -10053,6 +11273,7 @@ class THE_MESH_STORE {
 	public UU = () => {
 		return [this.m, this.r];
 	};
+	// #endregion 
 	//                                                                                 MSG Q
 	// #region ═════════════════════════════════════════════════════════════════════════════════════
 	public _cse_token: A;
@@ -10089,39 +11310,7 @@ class THE_MESH_STORE {
 		afterReceive: [],
 		onError: [],
 	};
-	public async invokeHandlers(msg: SIG_BUS_Message): P<U> {
-		const root = this.THE_MESH_CACHE
-		const rL = (root[msg.r] ??= Object.create(null));
-		const mL = (rL[msg.m] ??= Object.create(null));
-		const channel = mL[msg.s] ??= Object.create(null);
-		const set = channel[msg.k]?.handler;
-		if (!set || !set.size) return { success: false };
 	
-		const results = await Promise.all(
-			[...set].map((h: A) => Promise.resolve(h(msg.p)).catch(() => ({ success: false })))
-		);
-	
-		if (results.length === 1) return results[0];
-	
-		const merged: Record<string, unknown> = {};
-		const collisions: { key: string; r: string }[] = [];
-	
-		for (const result of results) {
-			if (result === undefined || result === null) continue;
-			if (typeof result !== "object") {
-				merged["value"] = result;
-				continue;
-			}
-			for (const [key, value] of Object.entries(result as Record<string, unknown>)) {
-				if (key in merged) collisions.push({ key, r: msg.r });
-				merged[key] = value;
-			}
-		}
-	
-		if (collisions.length > 0) (merged as A)._cse_collisions = collisions;
-	
-		return Object.keys(merged).length === 0 ? { success: true } : merged;
-	}
 	public schemas = new O2<S, SIG_BUS_Schema>()
 	public adapter: RuntimeAdapter | NU  = null  
 	public IS_WIN = process.platform === "win32"
@@ -10149,6 +11338,10 @@ class THE_MESH_STORE {
 		low:    1,
 	};
 	public defaultPriority: SIG_BUS_Priority = "normal";
+	
+	// #endregion
+	//                                                                               MSG Q FN
+	// #region ═════════════════════════════════════════════════════════════════════════════════════
 	serialExecutor_ = class {
 		private chain: Promise<void> = Promise.resolve();
 		enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -10968,6 +12161,37 @@ class THE_MESH_STORE {
 		return fn;
 	})();
 	binary = new BINARY_AVRO_CODEGEN(SIG_BUS_SCHEMA);
+	public async invokeHandlers(msg: SIG_BUS_Message): P<U> {
+		const root = this.THE_MESH_CACHE
+		const rL = (root[msg.r] ??= Object.create(null));
+		const mL = (rL[msg.m] ??= Object.create(null));
+		const channel = mL[msg.s] ??= Object.create(null);
+		const set = channel[msg.k]?.handler;
+		if (!set || !set.size) return { success: false };
+	
+		const results = await Promise.all( [...set].map((h: A) => Promise.resolve(h(msg.p)).catch(() => ({ success: false }))) );
+	
+		if (results.length === 1) return results[0];
+	
+		const merged: Record<string, unknown> = {};
+		const collisions: { key: string; r: string }[] = [];
+	
+		for (const result of results) {
+			if (result === undefined || result === null) continue;
+			if (typeof result !== "object") {
+				merged["value"] = result;
+				continue;
+			}
+			for (const [key, value] of Object.entries(result as Record<string, unknown>)) {
+				if (key in merged) collisions.push({ key, r: msg.r });
+				merged[key] = value;
+			}
+		}
+	
+		if (collisions.length > 0) (merged as A)._cse_collisions = collisions;
+	
+		return Object.keys(merged).length === 0 ? { success: true } : merged;
+	}
 	public DISPATCH = (() => {
 		const codecRegistry = new Map<S, BINARY_AVRO_CODEGEN>();
 
@@ -11085,132 +12309,94 @@ class THE_MESH_STORE {
 			// #endregion
 			//                                    SEND
 			// #region ═════════════════════════════════════════════════════════════════════════════════════
-			Promise.resolve().then(() => {
 				switch (adapter) {
-					case "http":
-						this.DISPATCH.sendMessage(msg, this.adp.http);
-						break;
-					case "cross_boundary":
-						this.DISPATCH.sendMessage(msg, this.adp.cross_boundary);
-						break;
-					case "same_boundary":
-						this.DISPATCH.sendMessage(msg, this.adp.same_boundary);
-						break;
-					case "atom_adapter":
-						this.DISPATCH.sendMessage(msg, this.adp.atom);
-						break;
-					case "ws":
-						this.DISPATCH.sendMessage(msg, this.adp.ws);
-						break;
-
-					case "reliableSocket":
-						this.DISPATCH.sendMessage(msg, this.adp.reliableSocket);
-						break;
-					case "workerThreadAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.workerThread);
-						break;
-					case "webTransportDatagramsAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.webTransportDatagrams);
-						break;
-					case "webTransportClientAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.webTransportClient);
-						break;
-					case "webRtcDataChannelHostAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelHost);
-						break;
-					case "webRtcDataChannelClientAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelClient);
-						break;
-					case "dataChannelAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.dataChannel);
-						break;
-					case "startWebTransportServer":
-						this.DISPATCH.sendMessage(msg, this.adp.startWebTransportServer);
-						break;
-					case "webTransportAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.webTransport);
-						break;
-					case "webRTCAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.webRTC);
-						break;
-					case "sseAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.sse);
-						break;
-					case "sharedArrayBufferAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.sharedArrayBuffer);
-						break;
-					case "sharedWorkerAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.sharedWorker);
-						break;
-					case "serviceWorkerAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.serviceWorker);
-						break;
-					case "postMessageAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.postMessage);
-						break;
-					case "startNamedPipeBroker":
-						this.DISPATCH.sendMessage(msg, this.adp.startNamedPipeBroker);
-						break;
-					case "startMQTTBroker":
-						this.DISPATCH.sendMessage(msg, this.adp.startMQTTBroker);
-						break;
-					case "mqttAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.mqtt);
-						break;
-					case "messageChannelAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.messageChannel);
-						break;
-					case "messageChannel":
-						this.DISPATCH.sendMessage(msg, this.adp.messageChannel);
-						break;
-					case "http2ClientAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.http2Client);
-						break;
-					case "http2ServerAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.http2Server);
-						break;
-					case "httpAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.http);
-						break;
-					case "electronIPCMainAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.electronIPCMain);
-						break;
-					case "electronIPCRendererAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.electronIPCRenderer);
-						break;
-					case "nativeMessagingHostAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingHost);
-						break;
-					case "nativeMessagingBrowserAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingBrowser);
-						break;
-					case "childProcessAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.childProcess);
-						break;
-					case "broadcastChannelAdapter2":
-						this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel2);
-						break;
-					case "broadcastChannelAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel);
-						break;
-					case "broadcastChannelAdapter":
-						this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel);
-						break;
-
-					default:
-						console.log("http adapter");
-						this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel);
+					case "http": this.DISPATCH.sendMessage(msg, this.adp.http);break;
+					case "cross_boundary": this.DISPATCH.sendMessage(msg, this.adp.cross_boundary); break;
+					case "same_boundary": this.DISPATCH.sendMessage(msg, this.adp.same_boundary); break;
+					case "atom_adapter": this.DISPATCH.sendMessage(msg, this.adp.atom); break;
+					case "ws": this.DISPATCH.sendMessage(msg, this.adp.ws); break;
+					case "reliableSocket": this.DISPATCH.sendMessage(msg, this.adp.reliableSocket); break;
+					case "workerThreadAdapter": this.DISPATCH.sendMessage(msg, this.adp.workerThread); break;
+					case "webTransportDatagramsAdapter": this.DISPATCH.sendMessage(msg, this.adp.webTransportDatagrams); break;
+					case "webTransportClientAdapter": this.DISPATCH.sendMessage(msg, this.adp.webTransportClient); break;
+					case "webRtcDataChannelHostAdapter": this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelHost); break;
+					case "webRtcDataChannelClientAdapter": this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelClient); break;
+					case "dataChannelAdapter": this.DISPATCH.sendMessage(msg, this.adp.dataChannel); break;
+					case "startWebTransportServer": this.DISPATCH.sendMessage(msg, this.adp.startWebTransportServer); break;
+					case "webTransportAdapter": this.DISPATCH.sendMessage(msg, this.adp.webTransport); break;
+					case "webRTCAdapter": this.DISPATCH.sendMessage(msg, this.adp.webRTC); break;
+					case "sseAdapter": this.DISPATCH.sendMessage(msg, this.adp.sse); break;
+					case "sharedArrayBufferAdapter": this.DISPATCH.sendMessage(msg, this.adp.sharedArrayBuffer); break;
+					case "sharedWorkerAdapter": this.DISPATCH.sendMessage(msg, this.adp.sharedWorker); break;
+					case "serviceWorkerAdapter": this.DISPATCH.sendMessage(msg, this.adp.serviceWorker); break;
+					case "postMessageAdapter": this.DISPATCH.sendMessage(msg, this.adp.postMessage); break;
+					case "startNamedPipeBroker": this.DISPATCH.sendMessage(msg, this.adp.startNamedPipeBroker); break;
+					case "startMQTTBroker": this.DISPATCH.sendMessage(msg, this.adp.startMQTTBroker); break;
+					case "mqttAdapter": this.DISPATCH.sendMessage(msg, this.adp.mqtt); break;
+					case "messageChannelAdapter": this.DISPATCH.sendMessage(msg, this.adp.messageChannel); break;
+					case "messageChannel": this.DISPATCH.sendMessage(msg, this.adp.messageChannel); break;
+					case "http2ClientAdapter": this.DISPATCH.sendMessage(msg, this.adp.http2Client); break;
+					case "http2ServerAdapter": this.DISPATCH.sendMessage(msg, this.adp.http2Server); break;
+					case "httpAdapter": this.DISPATCH.sendMessage(msg, this.adp.http); break;
+					case "electronIPCMainAdapter": this.DISPATCH.sendMessage(msg, this.adp.electronIPCMain); break;
+					case "electronIPCRendererAdapter": this.DISPATCH.sendMessage(msg, this.adp.electronIPCRenderer); break;
+					case "nativeMessagingHostAdapter": this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingHost); break;
+					case "nativeMessagingBrowserAdapter": this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingBrowser); break;
+					case "childProcessAdapter": this.DISPATCH.sendMessage(msg, this.adp.childProcess); break;
+					case "broadcastChannelAdapter2": this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel2); break;
+					case "broadcastChannelAdapter": this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel); break;
+					case "broadcastChannelAdapter": this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel); break;
+					default:this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel);
 					// this.sendMessage(msg, a.http);
 					// this.sendMessage(msg, a.same_boundary);
 				}
-			});
 			// #endregion
 			const result = await this.invokeHandlers(msg);
 			console.log(result, "emitter.dispatch.result");
 			return result;
 		};
-		fn.hot_dispatch = () => {
+		fn.hot_dispatch = async (raw: A, adapter?: string) => {
+			let msg: A = raw;
 
+			GateSmasher( adapter, () => ({
+				http: {  match: (e) => e === "http", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http), },
+				cross_boundary: {  match: (e) => e === "cross_boundary", execute: () => this.DISPATCH.sendMessage(msg, this.adp.cross_boundary), },
+				same_boundary: {  match: (e) => e === "same_boundary", execute: () => this.DISPATCH.sendMessage(msg, this.adp.same_boundary), },
+				atom: {  match: (e) => e === "atom", execute: () => this.DISPATCH.sendMessage(msg, this.adp.atom), },
+				ws: {  match: (e) => e === "ws", execute: () => this.DISPATCH.sendMessage(msg, this.adp.ws), },
+				reliableSocket: {  match: (e) => e === "reliableSocket", execute: () => this.DISPATCH.sendMessage(msg, this.adp.reliableSocket), },
+				workerThread: {  match: (e) => e === "workerThread", execute: () => this.DISPATCH.sendMessage(msg, this.adp.workerThread), },
+				webTransportDatagrams: {  match: (e) => e === "webTransportDatagrams", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransportDatagrams), },
+				webTransportClient: {  match: (e) => e === "webTransportClient", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransportClient), },
+				webRtcDataChannelHost: {  match: (e) => e === "webRtcDataChannelHost", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelHost), },
+				webRtcDataChannelClient: {  match: (e) => e === "webRtcDataChannelClient", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelClient), },
+				dataChannel: {  match: (e) => e === "dataChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.dataChannel), },
+				startWebTransportServer: {  match: (e) => e === "startWebTransportServer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startWebTransportServer), },
+				webTransport: {  match: (e) => e === "webTransport", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransport), },
+				webRTC: {  match: (e) => e === "webRTC", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRTC), },
+				sse: {  match: (e) => e === "sse", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sse), },
+				sharedArrayBuffer: {  match: (e) => e === "sharedArrayBuffer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sharedArrayBuffer), },
+				sharedWorker: {  match: (e) => e === "sharedWorker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sharedWorker), },
+				postMessage: {  match: (e) => e === "postMessage", execute: () => this.DISPATCH.sendMessage(msg, this.adp.postMessage), },
+				serviceWorker: {  match: (e) => e === "serviceWorker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.serviceWorker), },
+				startNamedPipeBroker: {  match: (e) => e === "startNamedPipeBroker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startNamedPipeBroker), },
+				startMQTTBroker: {  match: (e) => e === "startMQTTBroker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startMQTTBroker), },
+				mqtt: {  match: (e) => e === "mqtt", execute: () => this.DISPATCH.sendMessage(msg, this.adp.mqtt), },
+				messageChannel: {  match: (e) => e === "messageChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.messageChannel), },
+				http2Client: {  match: (e) => e === "http2Client", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http2Client), },
+				http2Server: {  match: (e) => e === "http2Server", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http2Server), },
+				electronIPCMain: {  match: (e) => e === "electronIPCMain", execute: () => this.DISPATCH.sendMessage(msg, this.adp.electronIPCMain), },
+				electronIPCRenderer: {  match: (e) => e === "electronIPCRenderer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.electronIPCRenderer), },
+				nativeMessagingHost: {  match: (e) => e === "nativeMessagingHost", execute: () => this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingHost), },
+				nativeMessagingBrowser: {  match: (e) => e === "nativeMessagingBrowser", execute: () => this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingBrowser), },
+				childProcess: {  match: (e) => e === "childProcess", execute: () => this.DISPATCH.sendMessage(msg, this.adp.childProcess), },
+				broadcastChannel2: {  match: (e) => e === "broadcastChannel2", execute: () => this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel2), },
+				broadcastChannel: {  match: (e) => e === "broadcastChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel), },
+			  })
+			);
+			const result = await this.invokeHandlers(msg);
+			console.log(result, "emitter.dispatch.result");
+			return result;
 		}
 		fn.sendMessage = (msg: SIG_BUS_Message, adapter: SIG_BUS_Adapter, boundary?: "same-app" | "same-node" | "cross-node") => {
 			// Prepare p - JSON serialize, strip functions
@@ -11225,12 +12411,8 @@ class THE_MESH_STORE {
 			}
 
 			// Send through adapter
-			if (this._auth_initialized) {
-				const secured = this.encryption.wrap(finalizedPayload);
-				adapter.send(secured as A);
-			} else {
-				adapter.send(finalizedPayload);
-			}
+			if (this._auth_initialized) { const secured = this.encryption.wrap(finalizedPayload); adapter.send(secured as A); } 
+			else { adapter.send(finalizedPayload); }
 		};
 		fn.drain = async (): P<V> => {
 			const startTime = Date.now();
@@ -11286,17 +12468,1761 @@ class THE_MESH_STORE {
 		};
 		return fn;
 	})();
-	public encryption = {
-        wrap: (f: any) => {
-            return f
-        },
-		unwrap: (f: any) => {
-            return f
-        },
-    }
+	public _register_adapters = (() => {
+		const fn = () =>{}
+		fn.registerAdapter=(adapter: SIG_BUS_Adapter, assign: number): (() => void) => {
+			if (assign === 0) this.adp.ws = adapter;
+			else if (assign === 1) this.adp.disruptor = adapter;
+			else if (assign === 2) this.adp.pipe = adapter;
+			else if (assign === 3) this.adp.http = adapter;
+			else if (assign === 4) this.adp.reliableSocket = adapter;
+			else if (assign === 5) this.adp.workerThread = adapter;
+			else if (assign === 6) this.adp.webTransportDatagrams = adapter;
+			else if (assign === 7) this.adp.webTransportClient = adapter;
+			else if (assign === 8) this.adp.webRtcDataChannelHost = adapter;
+			else if (assign === 11) this.adp.http = adapter;
+			else if (assign === 12) this.adp.webTransport = adapter;
+			else if (assign === 14) this.adp.webRTC = adapter;
+			else if (assign === 15) this.adp.sharedArrayBuffer = adapter;
+			else if (assign === 16) this.adp.sharedWorker = adapter;
+			else if (assign === 18) this.adp.http2Client = adapter;
+			else if (assign === 21) this.adp.mqtt = adapter;
+			else if (assign === 24) this.adp.nativeMessagingHost = adapter;
+			else if (assign === 26) this.adp.childProcess = adapter;
+			else if (assign === 27) this.adp.broadcastChannel2 = adapter;
+			else if (assign === 28) this.adp.broadcastChannel = adapter;
+			else if (assign === 30) this.adp.atom = adapter;
+			else if (assign === 33) this.adp.globalthis = adapter;
+			else if (assign === 34) this.adp.registry = adapter;
+			else if (assign === 35) this.adp.sith = adapter;
+			//else if (assign === 32) a.hadron_collider_adapter = adapter;
+			//  const id = adapter.id ?? `adapter:${Math.random().toString(36).slice(2)}`
+	
+			const unsub = adapter.onMessage(async (msg: A) => {
+				msg._adapter = adapter;
+				try { await this.receive(msg); } 
+				catch (e) { await this.BACK_END.run.onError(e as Error, msg); }
+			});
+			adapter.onConnect?.(() => {
+				this.online = true;
+				this.DISPATCH.drain().catch(console.error);
+			});
+			adapter.onDisconnect?.(() => {this.online = false;});	
+			return () => {unsub();};
+		}
+		fn.globalthis = () => { mesh._register_adapters.registerAdapter(this._adapters.globalthis(), 33); };
+		fn.store = () => { mesh._register_adapters.registerAdapter(this._adapters.store(), 34); };
+		fn.sith = () => { mesh._register_adapters.registerAdapter(this._adapters.pipe(), 34); };
+		fn.sith_2 = () => { mesh._register_adapters.registerAdapter(this._adapters.pipe(), 35); };
+		fn.disruptor = () => { mesh._register_adapters.registerAdapter(this._adapters.disruptor(this.k, this.s, this.m, this.r), 32); };
+		fn.reliableSocket = () => { mesh._register_adapters.registerAdapter(this._adapters.reliableSocket(), 4); };
+		fn.workerThread = () => { mesh._register_adapters.registerAdapter(this._adapters.workerThread(), 5); };
+		fn.webRtcDataChannelHost = () => { mesh._register_adapters.registerAdapter(this._adapters.webRtcDataChannelHost(), 8); };
+		fn.http = () => { mesh._register_adapters.registerAdapter(this._adapters.http(), 11); };
+		fn.webRTC= () => { mesh._register_adapters.registerAdapter(this._adapters.webRTC(), 14); };
+		fn.sharedArrayBuffer = () => { mesh._register_adapters.registerAdapter(this._adapters.sharedArrayBuffer(), 15); };
+		fn.http2Client = () => { mesh._register_adapters.registerAdapter(this._adapters.http2Client(), 18); };
+		fn.mqtt = () => { mesh._register_adapters.registerAdapter(this._adapters.mqtt(), 21); };
+		fn.nativeMessagingHost= () => { mesh._register_adapters.registerAdapter(this._adapters.nativeMessagingHost(), 24); };
+		fn.childProcess = () => { mesh._register_adapters.registerAdapter(this._adapters.childProcess(), 26); };
+		fn.broadcastChannel = () => { mesh._register_adapters.registerAdapter(this._adapters.broadcastChannel2(), 27); };
+		fn.broadcastChannel = () => { mesh._register_adapters.registerAdapter(this._adapters.broadcastChannel(), 28); };
+		fn.atom = () => { mesh._register_adapters.registerAdapter(this._adapters.atom(), 30); };
+		fn.ws = () => { mesh._register_adapters.registerAdapter(this._adapters.ws(), 0); };
+		return fn
+	})();
+	public _adapters =(() => {
+		const fn = () => {}
+		fn.globalthis = () => {};
+		fn.store = () => {};
+		fn.ws = (url: string = "ws://localhost:6453", protocols?: string | string[]): SIG_BUS_Adapter => {
+			let ws: WebSocket | null = null;
+			let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+			let reconnectDelay = 1000;
+			const maxReconnectDelay = 30000;
+			const messageQueue: SIG_BUS_Message[] = [];
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+
+			const connect = () => {
+				ws = new WebSocket(url, protocols);
+
+				ws.onopen = () => {
+					reconnectDelay = 1000;
+					while (messageQueue.length > 0) {
+						const msg = messageQueue.shift()!;
+						ws!.send(JSON.stringify(msg));
+					}
+					connectHandler?.();
+				};
+
+				ws.onmessage = (e) => { try { const msg = JSON.parse(e.data as string) as SIG_BUS_Message; messageHandler?.(msg); } catch {} };
+				ws.onclose = () => {
+					disconnectHandler?.();
+					reconnectTimer = setTimeout(() => { reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay); connect(); }, reconnectDelay);
+				};
+				ws.onerror = () => ws?.close();
+			};
+			connect();
+			return {
+				send(msg: any) {
+					if (ws?.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(msg)); } 
+					else { messageQueue.push(msg); }
+				},
+				onMessage(handler) { messageHandler = handler; return () => { messageHandler = null; }; },
+				onConnect(handler) { connectHandler = handler; },
+				onDisconnect(handler) { disconnectHandler = handler; },
+			};
+		};
+		fn.disruptor = (
+			k: string, s: string, m: string, r: string,
+			localAddressSpaceId: string = `disruptor:${Math.random().toString(36).slice(2)}`,
+			capacity: number = 1024,
+			maxPayloadBytes: number = 256,
+			overflowCapacityBytes: number = 64 * 1024,
+		  ): SIG_BUS_Adapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			const encoder = new TextEncoder();
+			const decoder = new TextDecoder();
+		  
+			// Phase 1: announce our side immediately, same as ws_adapter calling connect() right away
+			const bootstrapper = new ControlPlaneBootstrapper(
+			  localAddressSpaceId, k, s, m, r,
+			  (peer, pair) => {
+				// Phase 2: fires when the other side of this SAME_NODE boundary attaches
+				connectHandler?.();
+				const ac = new AbortController();
+				pair.rx.drainLoop((topicId, payload) => {
+				  try {
+					const msg = JSON.parse(decoder.decode(payload)) as SIG_BUS_Message;
+					messageHandler?.(msg);
+				  } catch (e) {
+					console.error('[disruptor_adapter] decode failed', e);
+				  }
+				}, ac.signal).catch(console.error);
+			  },
+			);
+		  
+			const pair = bootstrapper.announceDepot(capacity, maxPayloadBytes, overflowCapacityBytes);
+		  
+			return {
+			  send(msg: SIG_BUS_Message) {
+				const bytes = encoder.encode(JSON.stringify(msg));
+				// topicId=0: routing lives inside the message itself (k/s/m/r), same as ws_adapter
+				// sending the whole JSON object — the ring lane only decides fast-vs-overflow by size.
+				const ok = pair.tx.publish(0, bytes);
+				if (!ok) console.warn('[disruptor_adapter] publish dropped — fast lane full or payload too large for overflow');
+			  },
+			  onMessage(handler) {
+				messageHandler = handler;
+				return () => { messageHandler = null; };
+			  },
+			  onConnect(handler) { connectHandler = handler; },
+			  onDisconnect(handler) { disconnectHandler = handler; },
+			};
+		};
+		fn.atom = (): SIG_BUS_Adapter => {
+			const A = this.root.SIGNALS;
+			const unsubs = new Map<string, () => void>(); // address -> atom unsubscribe
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			let closed = false;
+			// one atom per address; first sight creates it and attaches the bus handler
+			const ensure = (m: SIG_BUS_Message) => {
+				const id = `${m.r}|${m.m}|${m.s}|${m.k}`;
+				if (unsubs.has(id)) return;
+				unsubs.set( id, A.sub( m.k, (current: SIG_BUS_Message) => { if (current && messageHandler) messageHandler(current); }, m.s, m.m, m.r, ), );
+			};
+			return {
+				id: "atom",
+				send(msg: SIG_BUS_Message) {
+					if (closed) throw new Error("atom adapter closed"); // register() demotes
+					ensure(msg);
+					A.create(msg.k, msg,  { triggerRender: false, source:"bus" }, msg.s, msg.m, msg.r);
+				},
+				onMessage(handler) {messageHandler = handler;return () => {messageHandler = null;};},
+				onConnect(handler) {connectHandler = handler;handler?.();}, // in-process: always connected
+				onDisconnect(handler) {disconnectHandler = handler;},
+				close() {
+					closed = true;
+					for (const u of unsubs.values()) u();
+					unsubs.clear();
+					disconnectHandler?.();
+				},
+			};
+		};
+		fn.pipe = (): SIG_BUS_Adapter => {
+			const net = slab.reg.maelstrom.rift.conjure.uncached({ moduleName: "net", fallback: () => null, });
+			const fs = slab.reg.maelstrom.rift.conjure.uncached({ moduleName: "fs", fallback: () => null, });
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | undefined;
+			let disconnectHandler: (() => void) | undefined;
+
+			let role: "hub" | "client" | null = null;
+			let server: typeof net.Server | null = null;
+			let upstream: typeof net.Socket | null = null; // client -> hub
+			const clients = new Set<typeof net.Socket>(); // hub -> clients
+
+			const setConnected = (r: "hub" | "client" | null) => {
+				const was = role !== null;
+				role = r;
+				if (!was && r) connectHandler?.();
+				else if (was && !r) disconnectHandler?.();
+			};
+
+			const deliver = (frame: Uint8Array) => {
+				try {
+					const decoded = BinaryFrameSerializer.decodeFrame(frame);
+					if (!decoded.topicName) return;
+					messageHandler?.(JSON.parse(new TextDecoder().decode(decoded.p)));
+				} catch (e) {
+					console.error("[pipe-adapter] bad frame", e);
+				}
+			};
+
+			// length-prefixed stream reader: [u32 LE length][frame]
+			const attachReader = (sock: typeof net.Socket, onFrame: (frame: Buffer) => void) => {
+				let buf: Buffer = Buffer.alloc(0);
+				sock.on("data", (chunk: string | Buffer) => {
+					const data = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+					buf = buf.length ? Buffer.concat([buf, data]) : data;
+					while (buf.length >= 4) {
+						const len = buf.readUInt32LE(0);
+						if (buf.length < 4 + len) break;
+						onFrame(buf.subarray(4, 4 + len));
+						buf = buf.subarray(4 + len);
+					}
+				});
+			};
+
+			const wrap = (frame: Uint8Array): Buffer => {
+				const header = Buffer.allocUnsafe(4);
+				header.writeUInt32LE(frame.byteLength, 0);
+				return Buffer.concat([header, frame]);
+			};
+
+			const retry = () => setTimeout(start, 50 + Math.random() * 150); // jitter so peers don't elect at once
+
+			// ---- hub role ----
+			const onHubSocket = (sock: typeof net.Socket) => {
+				clients.add(sock);
+				attachReader(sock, (frame) => {
+					deliver(frame); // hub consumes it too
+					const out = wrap(frame);
+					for (const c of clients) if (c !== sock && !c.destroyed) c.write(out); // relay to the others
+				});
+				const drop = () => clients.delete(sock);
+				sock.on("close", drop);
+				sock.on("error", drop);
+			};
+
+			// ---- client role ----
+			const connectAsClient = () => {
+				const sock = net.connect(this.PIPE_PATH);
+				let up = false;
+				sock.on("connect", () => {
+					up = true;
+					upstream = sock;
+					setConnected("client");
+				});
+				attachReader(sock, deliver);
+				sock.on("error", (e: NodeJS.ErrnoException) => {
+					if (!up && !this.IS_WIN && e.code === "ECONNREFUSED") {
+						try {
+							fs.unlinkSync(this.PIPE_PATH);
+						} catch {} // stale socket file from a dead hub
+					}
+				});
+				sock.on("close", () => {
+					if (upstream === sock) upstream = null;
+					if (up) setConnected(null);
+					retry();
+				});
+			};
+			const self = this;
+			// ---- election: first to listen is the hub, everyone else connects ----
+			function start() {
+				const srv = net.createServer(onHubSocket);
+				srv.once("error", (e: NodeJS.ErrnoException) => {
+					if (e.code === "EADDRINUSE") connectAsClient();
+					else {
+						console.error("[pipe-adapter] listen failed", e);
+						retry();
+					}
+				});
+				srv.listen(self.PIPE_PATH, () => {
+					server = srv;
+					setConnected("hub");
+				});
+			}
+			start();
+
+			return {
+				id: "named-pipe",
+
+				send(msg: SIG_BUS_Message) {
+					if (!role) throw new Error("pipe not connected"); // register() demotes
+					const out = wrap(BinaryFrameSerializer.encodeFrame(String(msg.k), JSON.stringify(msg)));
+					if (role === "hub") {
+						for (const c of clients) if (!c.destroyed) c.write(out);
+					} else {
+						if (!upstream || upstream.destroyed) throw new Error("pipe not connected");
+						upstream.write(out);
+					}
+				},
+
+				onMessage(handler: (msg: SIG_BUS_Message) => void) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+
+				onConnect(handler: () => void) {
+					connectHandler = handler;
+					if (role) handler?.();
+				},
+				onDisconnect(handler: () => void) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.reliableSocket = (
+			url: string = "ws://localhost:6455",
+			options: ReliableSocketOptions = {},
+		): CSEAdapter & {
+			onStatusChange(handler: (s: ReliableSocketStatus) => void): () => void;
+			status(): ReliableSocketStatus;
+			queueSize(): number;
+			close(): void;
+		} => {
+			const opts: Required<ReliableSocketOptions> = {
+				reconnect: true,
+				initialDelay: 1000,
+				maxDelay: 30000,
+				backoffMultiplier: 1.5,
+				jitter: true,
+				maxAttempts: Infinity,
+				queueEnabled: true,
+				maxQueueSize: 100,
+				maxQueueAge: 300000,
+				queueKey: `reliable-socket:queue:${url}`,
+				...options,
+			};
+
+			let socket: WebSocket | null = null;
+			let status: ReliableSocketStatus = "closed";
+			let reconnectAttempts = 0;
+			let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+			let allowReconnect = opts.reconnect;
+
+			const statusListeners = new Set<(s: ReliableSocketStatus) => void>();
+			const messageListeners = new Set<(msg: SIG_BUS_Message) => void>();
+			const openListeners = new Set<() => void>();
+			const closeListeners = new Set<() => void>();
+
+			function setStatus(s: ReliableSocketStatus) {
+				status = s;
+				statusListeners.forEach((l) => l(s));
+			}
+
+			function scheduleReconnect() {
+				if (reconnectAttempts >= opts.maxAttempts) return;
+				let delay = Math.min(opts.initialDelay * opts.backoffMultiplier ** reconnectAttempts, opts.maxDelay);
+				if (opts.jitter) delay *= 0.5 + Math.random() * 0.5;
+				reconnectTimer = setTimeout(() => {
+					reconnectAttempts++;
+					open();
+				}, delay);
+			}
+
+			function open() {
+				setStatus(reconnectAttempts > 0 ? "reconnecting" : "connecting");
+				const ws = new WebSocket(url);
+				socket = ws;
+
+				ws.onopen = () => {
+					reconnectAttempts = 0;
+					setStatus("open");
+					openListeners.forEach((l) => l());
+					flushQueue();
+				};
+
+				ws.onmessage = (e) => {
+					let msg: SIG_BUS_Message;
+					try {
+						msg = JSON.parse(String(e.data)) as SIG_BUS_Message;
+					} catch {
+						return;
+					}
+					messageListeners.forEach((l) => l(msg));
+				};
+				ws.onclose = () => {
+					setStatus("closed");
+					closeListeners.forEach((l) => l());
+					if (allowReconnect) scheduleReconnect();
+				};
+				ws.onerror = () => ws.close();
+			}
+			const self = this;
+			function flushQueue() {
+				if (status !== "open" || !socket) return;
+				const now = Date.now();
+				const queue = (self.root.SAURON.get(opts.queueKey) ?? []).filter((q: A) => now - q.queuedAt <= opts.maxQueueAge);
+				queue.forEach((q: A) => socket?.send(q.raw));
+				self.root.SAURON.set(opts.queueKey, []);
+			}
+
+			open();
+
+			return {
+				send(msg: SIG_BUS_Message): void {
+					const raw = JSON.stringify(msg);
+					if (status === "open" && socket) {
+						socket.send(raw);
+						return;
+					}
+					if (!opts.queueEnabled) return;
+					const queue = self.root.SAURON.get(opts.queueKey) ?? [];
+					queue.push({ raw, queuedAt: Date.now() });
+					if (queue.length > opts.maxQueueSize) queue.shift();
+					self.root.SAURON.set(opts.queueKey, queue);
+				},
+				onMessage(handler: (msg: SIG_BUS_Message) => void): () => void {
+					messageListeners.add(handler);
+					return () => {
+						messageListeners.delete(handler);
+					};
+				},
+				onConnect(handler: () => void): () => void {
+					openListeners.add(handler);
+					return () => {
+						openListeners.delete(handler);
+					};
+				},
+				onDisconnect(handler: () => void): () => void {
+					closeListeners.add(handler);
+					return () => {
+						closeListeners.delete(handler);
+					};
+				},
+				onStatusChange(handler: (s: ReliableSocketStatus) => void): () => void {
+					statusListeners.add(handler);
+					return () => {
+						statusListeners.delete(handler);
+					};
+				},
+				status(): ReliableSocketStatus {
+					return status;
+				},
+				queueSize(): number {
+					return (self.root.SAURON.get(opts.queueKey) ?? []).length;
+				},
+				close(): void {
+					allowReconnect = false;
+					if (reconnectTimer) clearTimeout(reconnectTimer);
+					socket?.close();
+				},
+			};
+		};
+		fn.workerThread = (worker: import("worker_threads").Worker = new Worker(new URL("./cse.worker.ts", import.meta.url))): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+
+			worker.on("message", (raw: A) => {
+				try {
+					messageHandler?.(typeof raw === "string" ? JSON.parse(raw) : (raw as SIG_BUS_Message));
+				} catch {}
+			});
+			worker.on("exit", () => disconnectHandler?.());
+			process.nextTick(() => connectHandler?.());
+
+			return {
+				send(msg) {
+					worker.postMessage(msg);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.webTransportDatagrams = (session: WebTransportDatagramsLike): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+
+			let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+			const encoder = new TextEncoder();
+			const decoder = new TextDecoder();
+
+			async function pump() {
+				const reader = session.datagrams.readable.getReader();
+				let buffer = "";
+				try {
+					while (true) {
+						const { value, done } = await reader.read();
+						if (done) break;
+						buffer += decoder.decode(value, { stream: true });
+						let idx: number;
+						while ((idx = buffer.indexOf("\n")) >= 0) {
+							const line = buffer.slice(0, idx);
+							buffer = buffer.slice(idx + 1);
+							if (!line) continue;
+							try {
+								messageHandler?.(JSON.parse(line) as SIG_BUS_Message);
+							} catch {}
+						}
+					}
+				} catch {}
+			}
+
+			session.ready
+				.then(async () => {
+					connectHandler?.();
+					writer = session.datagrams.writable.getWriter();
+					pump();
+				})
+				.catch(() => {});
+
+			session.closed.then(() => disconnectHandler?.()).catch(() => disconnectHandler?.());
+
+			return {
+				send(msg) {
+					if (!writer) return;
+					// Datagrams are unreliable — write and forget. Size cap applies
+					// (WebTransport datagram MTU), caller splits large frames upstream.
+					writer.write(encoder.encode(JSON.stringify(msg) + "\n")).catch(() => {});
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.webTransportClient = (url: string = "https://localhost:6457"): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+
+			const messageQueue: SIG_BUS_Message[] = [];
+			let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+			const encoder = new TextEncoder();
+			const decoder = new TextDecoder();
+
+			const wt = new WebTransport(url);
+
+			async function pump(readable: ReadableStream<Uint8Array>) {
+				const reader = readable.getReader();
+				let buffer = "";
+				try {
+					while (true) {
+						const { value, done } = await reader.read();
+						if (done) break;
+						buffer += decoder.decode(value, { stream: true });
+						let idx: number;
+						while ((idx = buffer.indexOf("\n")) >= 0) {
+							const line = buffer.slice(0, idx);
+							buffer = buffer.slice(idx + 1);
+							if (!line) continue;
+							try {
+								messageHandler?.(JSON.parse(line) as SIG_BUS_Message);
+							} catch {}
+						}
+					}
+				} catch {}
+			}
+
+			async function open() {
+				await wt.ready;
+				const stream = await wt.createBidirectionalStream();
+				writer = stream.writable.getWriter();
+				pump(stream.readable);
+				while (messageQueue.length > 0) {
+					writer.write(encoder.encode(JSON.stringify(messageQueue.shift()!) + "\n")).catch(() => {});
+				}
+				connectHandler?.();
+			}
+			open().catch(() => {});
+
+			wt.closed.then(() => disconnectHandler?.()).catch(() => disconnectHandler?.());
+
+			return {
+				send(msg) {
+					if (writer) writer.write(encoder.encode(JSON.stringify(msg) + "\n")).catch(() => {});
+					else messageQueue.push(msg);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		// next 3 all same adapter
+		fn.webRtcDataChannelHost = (
+			pc: RTCPeerConnection = new RTCPeerConnection({
+				iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+			}),
+			label = "cse",
+		): CSEAdapter => {
+			const dc = pc.createDataChannel(label, { ordered: true });
+			return this._adapters.dataChannel(dc);
+		};
+		fn.webRtcDataChannelClient = (
+			pc: RTCPeerConnection = new RTCPeerConnection({
+				iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+			}),
+			label = "cse",
+		): Promise<CSEAdapter> => {
+			return new Promise((resolve) => {
+				pc.ondatachannel = (e: RTCDataChannelEvent) => {
+					if (e.channel.label === label) {
+						resolve(this._adapters.dataChannel(e.channel));
+					}
+				};
+			});
+		};
+		fn.dataChannel = (dc: RTCDataChannel): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			const messageQueue: SIG_BUS_Message[] = [];
+
+			dc.onopen = () => {
+				while (messageQueue.length > 0) dc.send(JSON.stringify(messageQueue.shift()!));
+				connectHandler?.();
+			};
+			dc.onmessage = (e) => {
+				try {
+					messageHandler?.(JSON.parse(String(e.data)) as SIG_BUS_Message);
+				} catch {}
+			};
+			dc.onclose = () => disconnectHandler?.();
+			dc.onerror = () => dc.close();
+
+			return {
+				send(msg) {
+					if (dc.readyState === "open") dc.send(JSON.stringify(msg));
+					else messageQueue.push(msg);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.startWebTransportServer = async (options: { port?: number; host?: string; cert: string; privKey: string }) => {
+			// import { HTTP3Server, type WebTransportSession } from '@http3-server/server'
+			const HTTP3Server = slab.reg.maelstrom.rift.conjure.uncached({ moduleName: "@http3-server/server", comp_name: "HTTP3Server", fallback: () => null, });
+			const WebTransportSession = slab.reg.maelstrom.rift.conjure.uncached({ moduleName: "@http3-server/server", comp_name: "WebTransportSession", fallback: () => null, });
+			const handlers = new Map<string, (session: typeof WebTransportSession) => void>();
+
+			const server = new HTTP3Server().handle({
+				error(error) {
+					console.error("[WebTransport]", error.code, error.message, error.details);
+				},
+
+				session(session) {
+					const handler = handlers.get(session.path);
+					if (!handler) return false;
+
+					handler(session);
+				},
+
+				datagram(session, data) {
+					// Handle incoming datagrams if needed.
+				},
+
+				webTransportStream(stream) {
+					// Handle newly opened reliable streams.
+				},
+
+				webTransportData(stream, data) {
+					// Handle reliable incoming stream data.
+				},
+			});
+
+			await server.start({
+				address: options.host ?? "0.0.0.0",
+				port: options.port ?? 4433,
+				certificateFile: options.cert,
+				privateKeyFile: options.privKey,
+			});
+
+			return {
+				onPath(path: string, handler: (session:typeof WebTransportSession) => void): void {
+					handlers.set(path, handler);
+				},
+
+				async close(): Promise<void> {
+					handlers.clear();
+					await server.stop();
+				},
+			};
+		};
+		//= new WebTransport('https://localhost:6459')
+		fn.webTransport = (session: WebTransportSessionLike): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+
+			let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+			const encoder = new TextEncoder();
+			const decoder = new TextDecoder();
+
+			async function pump(readable: ReadableStream<Uint8Array>) {
+				const reader = readable.getReader();
+				let buffer = "";
+				try {
+					while (true) {
+						const { value, done } = await reader.read();
+						if (done) break;
+						buffer += decoder.decode(value, { stream: true });
+
+						let idx: number;
+						while ((idx = buffer.indexOf("\n")) >= 0) {
+							const line = buffer.slice(0, idx);
+							buffer = buffer.slice(idx + 1);
+							if (!line) continue;
+							try {
+								messageHandler?.(JSON.parse(line) as SIG_BUS_Message);
+							} catch {}
+						}
+					}
+				} catch {}
+			}
+
+			async function acceptIncoming() {
+				const reader = session.incomingBidirectionalStreams.getReader();
+				try {
+					while (true) {
+						const { value: stream, done } = await reader.read();
+						if (done) break;
+						pump(stream.readable);
+					}
+				} catch {}
+			}
+
+			session.ready
+				.then(async () => {
+					connectHandler?.();
+					const outgoing = await session.createBidirectionalStream();
+					writer = outgoing.writable.getWriter();
+					pump(outgoing.readable);
+					acceptIncoming();
+				})
+				.catch(() => {});
+
+			session.closed.then(() => disconnectHandler?.()).catch(() => disconnectHandler?.());
+
+			return {
+				send(msg) {
+					if (!writer) return;
+					writer.write(encoder.encode(JSON.stringify(msg) + "\n")).catch(() => {});
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.webRTC = (
+			options: webRTCAdapterOptions = {
+				signalingAdapter: fn.ws("ws://localhost:6460"),
+				peerId: "client-1",
+			},
+		): CSEAdapter => {
+			const { signalingAdapter, peerId, iceServers = [{ urls: "stun:stun.l.google.com:19302" }] } = options;
+			const peers = new Map<string, { pc: RTCPeerConnection; r: RTCDataChannel | null }>();
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			const outboundQueue: SIG_BUS_Message[] = [];
+
+			const createPeer = (remotePeerId: string, initiator: boolean): RTCPeerConnection => {
+				const pc = new RTCPeerConnection({ iceServers });
+				const entry: { pc: RTCPeerConnection; r: RTCDataChannel | null } = { pc, r: null };
+				peers.set(remotePeerId, entry);
+
+				pc.onicecandidate = (e: A) => {
+					if (e.candidate) {
+						signalingAdapter.send({
+							id: `ice:${peerId}:${Date.now()}`,
+							r: "staff:webrtc:ice",
+							p: { from: peerId, to: remotePeerId, candidate: e.candidate },
+							ts: Date.now(),
+						});
+					}
+				};
+
+				pc.onconnectionstatechange = () => {
+					if (pc.connectionState === "connected") {
+						connectHandler?.();
+						while (outboundQueue.length > 0) {
+							const msg = outboundQueue.shift()!;
+							entry.r?.send(JSON.stringify(msg));
+						}
+					}
+					if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+						peers.delete(remotePeerId);
+						disconnectHandler?.();
+					}
+				};
+
+				const setupChannel = (r: RTCDataChannel) => {
+					entry.r = r;
+					r.onmessage = (e) => {
+						try {
+							messageHandler?.(JSON.parse(e.data) as SIG_BUS_Message);
+						} catch {}
+					};
+				};
+
+				if (initiator) {
+					const r = pc.createDataChannel("staff");
+					setupChannel(r);
+
+					pc.createOffer().then((offer: A) => {
+						pc.setLocalDescription(offer);
+						signalingAdapter.send({
+							id: `offer:${peerId}:${Date.now()}`,
+							r: "staff:webrtc:offer",
+							p: { from: peerId, to: remotePeerId, sdp: offer },
+							ts: Date.now(),
+						});
+					});
+				} else {
+					pc.ondatachannel = (e: A) => setupChannel(e.r);
+				}
+
+				return pc;
+			};
+
+			signalingAdapter.onMessage((msg: A) => {
+				const p = msg.p as A;
+				if (!p?.to || p.to !== peerId) return;
+
+				if (msg.r === "staff:webrtc:offer") {
+					const pc = createPeer(p.from, false);
+					pc.setRemoteDescription(p.sdp).then(() =>
+						pc.createAnswer().then((answer) => {
+							pc.setLocalDescription(answer);
+							signalingAdapter.send({
+								id: `answer:${peerId}:${Date.now()}`,
+								r: "staff:webrtc:answer",
+								p: { from: peerId, to: p.from, sdp: answer },
+								ts: Date.now(),
+							});
+						}),
+					);
+				}
+
+				if (msg.r === "staff:webrtc:answer") {
+					peers.get(p.from)?.pc.setRemoteDescription(p.sdp);
+				}
+
+				if (msg.r === "staff:webrtc:ice") {
+					peers.get(p.from)?.pc.addIceCandidate(p.candidate);
+				}
+
+				if (msg.r === "staff:webrtc:discover") {
+					if (!peers.has(p.from)) createPeer(p.from, false);
+				}
+			});
+
+			signalingAdapter.send({
+				id: `discover:${peerId}:${Date.now()}`,
+				r: "staff:webrtc:discover",
+				p: { from: peerId, to: "*" },
+				ts: Date.now(),
+			});
+
+			return {
+				send(msg) {
+					let sent = false;
+					for (const [, entry] of peers) {
+						if (entry.r?.readyState === "open") {
+							entry.r.send(JSON.stringify(msg));
+							sent = true;
+						}
+					}
+					if (!sent) outboundQueue.push(msg);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.sse = (source: { req: import("http").IncomingMessage; res: import("http").ServerResponse } | { url: string }): CSEAdapter => {
+			// ── server side ──────────────────────────────────────────────
+			if ("res" in source) {
+				const { req, res } = source;
+				let connectHandler: (() => void) | null = null;
+				let disconnectHandler: (() => void) | null = null;
+
+				res.writeHead(200, {
+					"Content-Type": "text/event-stream",
+					"Cache-Control": "no-cache",
+					Connection: "keep-alive",
+				});
+
+				req.on("close", () => disconnectHandler?.());
+				setTimeout(() => connectHandler?.(), 0);
+
+				return {
+					send(msg) {
+						res.write(`data: ${JSON.stringify(msg)}\n\n`);
+					},
+					// no upstream over SSE — never fires
+					onMessage() {
+						return () => {};
+					},
+					onConnect(h) {
+						connectHandler = h;
+					},
+					onDisconnect(h) {
+						disconnectHandler = h;
+					},
+				};
+			}
+
+			// ── client side ──────────────────────────────────────────────
+			const { url } = source;
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+
+			const es = new EventSource(url);
+			es.onopen = () => connectHandler?.();
+			es.onmessage = (e) => {
+				try {
+					messageHandler?.(JSON.parse(e.data) as SIG_BUS_Message);
+				} catch {}
+			};
+			es.onerror = () => disconnectHandler?.();
+
+			return {
+				// no send over SSE — caller must use an upstream transport
+				send() {
+					throw new Error("sse: downstream-only transport, cannot send");
+				},
+				onMessage(h) {
+					messageHandler = h;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(h) {
+					connectHandler = h;
+				},
+				onDisconnect(h) {
+					disconnectHandler = h;
+				},
+			};
+		};
+		fn.sharedArrayBuffer = (buffer: SharedArrayBuffer = new SharedArrayBuffer(64 * 1024), ownToken: string = "worker-1"): CSEAdapter => {
+			const view = new Uint8Array(buffer);
+			const ints = new Int32Array(buffer);
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+
+			// Header layout: [0]=write cursor, [1]=read cursor, [2]=owner token hash,
+			// [3]=frame length ; p begins at byte 16.
+			const HEADER = 16;
+			const data = view.subarray(HEADER);
+
+			let readCursor = 0;
+
+			function write(msg: SIG_BUS_Message): boolean {
+				const encoded = new TextEncoder().encode(JSON.stringify(msg));
+				if (encoded.length > data.length - 4) return false; // too big
+				const writeAt = (Int32Array.prototype[Symbol.iterator] ?? (() => [])) as unknown as () => Iterator<number>;
+				const w = ints[0] % data.length;
+				// Simulated write — record length, stamp token, copy bytes.
+				ints[2] = hashToken(ownToken);
+				ints[3] = encoded.length;
+				data.set(encoded, 0);
+				ints[0] = (w + encoded.length) % data.length;
+				return true;
+			}
+
+			function read(): SIG_BUS_Message | null {
+				if (ints[3] === 0) return null;
+				const len = ints[3];
+				ints[3] = 0;
+				const raw = data.slice(0, len);
+				try {
+					return JSON.parse(new TextDecoder().decode(raw)) as SIG_BUS_Message;
+				} catch {
+					return null;
+				}
+			}
+
+			function hashToken(s: string): number {
+				let h = 0;
+				for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+				return h;
+			}
+
+			// Poll the ring — SharedArrayBuffer has no event push, so we poll with a
+			// short interval (only while the adapter is being listened to).
+			let timer: ReturnType<typeof setInterval> | null = null;
+			function ensurePolling() {
+				if (timer) return;
+				timer = setInterval(() => {
+					const m = read();
+					if (m && messageHandler) messageHandler(m);
+				}, 5);
+			}
+
+			queueMicrotask(() => connectHandler?.());
+
+			return {
+				send(msg) {
+					write(msg);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					ensurePolling();
+					return () => {
+						messageHandler = null;
+						if (timer) {
+							clearInterval(timer);
+							timer = null;
+						}
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.sharedWorker = (scriptUrl: string = this._adapters.sharedWorkerScript) => {
+			/** const worker = ''// new SharedWorker(scriptUrl)
+			const port = 6675//  worker.port
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null
+			let connectHandler: (() => void) | null = null
+
+			port.onmessage = (e: A) => {
+				if (e.data?.__cse_connect__) {
+					connectHandler?.()
+					return
+				}
+				try {
+					messageHandler?.(e.data as SIG_BUS_Message)
+				} catch { }
+			}
+
+			port.start()
+			port.postMessage({ __cse_connect__: true })
+
+			return {
+				send(msg) { port.postMessage(msg) },
+				onMessage(handler) {
+					messageHandler = handler
+					return () => { messageHandler = null }
+				},
+				onConnect(handler) { connectHandler = handler },
+				onDisconnect(_handler) { }
+			} */
+		};
+		fn.sharedWorkerScript = `
+const ports = new Set();
+
+self.onconnect = (e) => {
+	const port = e.ports[0];
+	ports.add(port);
+
+	port.onmessage = (event) => {
+		if (event.data?.__cse_connect__) {
+			port.postMessage({ __cse_connect__: true });
+			return;
+		}
+		for (const p of ports) {
+			if (p !== port) p.postMessage(event.data);
+		}
+		port.postMessage(event.data);
+	};
+
+	port.addEventListener('close', () => ports.delete(port));
+	port.start();
+};
+`;
+		fn.serviceWorker = (scriptUrl: string = this._adapters.serviceWorkerScript, scope?: string): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			let registration: ServiceWorkerRegistration | null = null;
+
+			const init = async () => {
+				if (!("serviceWorker" in navigator)) return;
+
+				registration = await navigator.serviceWorker.register(scriptUrl, scope ? { scope } : undefined);
+
+				navigator.serviceWorker.addEventListener("message", (e) => {
+					try {
+						messageHandler?.(e.data as SIG_BUS_Message);
+					} catch {}
+				});
+
+				navigator.serviceWorker.ready.then(() => connectHandler?.());
+
+				registration.addEventListener("updatefound", () => {
+					disconnectHandler?.();
+				});
+			};
+
+			init();
+
+			return {
+				send(msg) {
+					const sw = navigator.serviceWorker?.controller;
+					if (sw) {
+						sw.postMessage(msg);
+					} else {
+						registration?.active?.postMessage(msg);
+					}
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.serviceWorkerScript = `
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+
+const queue = [];
+
+self.addEventListener('message', async (e) => {
+	const msg = e.data;
+	if (!msg?.r) return;
+
+	const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+
+	if (clients.length === 0) {
+		queue.push(msg);
+		return;
+	}
+
+	for (const client of clients) {
+		client.postMessage(msg);
+	}
+});
+
+self.addEventListener('activate', async () => {
+	const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+	while (queue.length > 0) {
+		const msg = queue.shift();
+		for (const client of clients) {
+			client.postMessage(msg);
+		}
+	}
+});
+`;
+		fn.postMessage = (target: Window, targetOrigin: string): CSEAdapter => {
+			const messageHandlers = new Set<(msg: SIG_BUS_Message) => void>();
+			const connectHandlers = new Set<() => void>();
+			const disconnectHandlers = new Set<() => void>();
+
+			const listener = (event: MessageEvent) => {
+				if (event.origin !== targetOrigin) return;
+				const msg = event.data as SIG_BUS_Message;
+				if (!msg || typeof msg !== "object" || !("r" in msg)) return;
+				messageHandlers.forEach((h) => h(msg));
+			};
+
+			window.addEventListener("message", listener);
+
+			return {
+				send: (msg: SIG_BUS_Message) => target.postMessage(msg, targetOrigin),
+				onMessage: (handler: A) => {
+					messageHandlers.add(handler);
+					return () => messageHandlers.delete(handler);
+				},
+				onConnect: (handler: A) => {
+					connectHandlers.add(handler);
+					handler();
+					return () => connectHandlers.delete(handler);
+				},
+				onDisconnect: (handler: A) => {
+					disconnectHandlers.add(handler);
+					return () => disconnectHandlers.delete(handler);
+				},
+			};
+		};
+		fn.startNamedPipeBroker = (pipeName: string): (() => void) => {
+			const net = slab.reg.maelstrom.rift.conjure.uncached({ moduleName: "net", fallback: () => null, });
+			const pipePath = `\\\\.\\pipe\\${pipeName}`;
+			const clients = new Set<typeof net.Socket>();
+			const server = net.createServer((socket) => {
+				let buffer = "";
+				clients.add(socket);
+				socket.on("data", (data) => {
+					buffer += data.toString();
+					const lines = buffer.split("\n");
+					buffer = lines.pop() ?? "";
+					for (const line of lines) {
+						let msg: SIG_BUS_Message;
+						try {
+							msg = JSON.parse(line);
+						} catch {
+							continue;
+						}
+						for (const c of clients) {
+							if (c !== socket && !c.destroyed) c.write(JSON.stringify(msg) + "\n");
+						}
+					}
+				});
+				socket.on("close", () => clients.delete(socket));
+				socket.on("error", () => {
+					socket.destroy();
+					clients.delete(socket);
+				});
+			});
+			server.listen(pipePath);
+			return () => server.close();
+		};
+		fn.startMQTTBroker = (port: number = 6462): (() => void) => {
+			const Aedes = slab.reg.maelstrom.rift.conjure.uncached({ moduleName: "Aedes", fallback: () => null, });
+			const net = slab.reg.maelstrom.rift.conjure.uncached({ moduleName: "net", fallback: () => null, });
+
+			const broker = new Aedes();
+			const server = net.createServer(broker.handle);
+
+			server.listen(port);
+
+			return () => {
+				server.close();
+				broker.close();
+			};
+		};
+		fn.mqtt = (brokerUrl: string = "mqtt://localhost:6464", topic: string = "staff"): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			const messageQueue: SIG_BUS_Message[] = [];
+			const mqtt = slab.reg.maelstrom.rift.conjure.uncached({ moduleName: "mqtt", fallback: () => null, });
+
+			const client = mqtt.connect(brokerUrl);
+
+			client.on("connect", () => {
+				client.subscribe(topic);
+				while (messageQueue.length > 0) client.publish(topic, JSON.stringify(messageQueue.shift()!));
+				connectHandler?.();
+			});
+			client.on("message", (_topic: string, raw: Buffer) => {
+				try {
+					messageHandler?.(JSON.parse(raw.toString()) as SIG_BUS_Message);
+				} catch {}
+			});
+			client.on("close", () => disconnectHandler?.());
+
+			return {
+				send(msg) {
+					if (client.connected) {
+						client.publish(topic, JSON.stringify(msg));
+					} else {
+						messageQueue.push(msg);
+					}
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.messageChannelAdapter = (port1: MessagePort): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			let connected = true;
+
+			port1.onmessage = (e) => {
+				try {
+					messageHandler?.(e.data as SIG_BUS_Message);
+				} catch {}
+			};
+
+			port1.onmessageerror = () => {
+				connected = false;
+				disconnectHandler?.();
+			};
+
+			port1.start();
+
+			queueMicrotask(() => {
+				if (connected) connectHandler?.();
+			});
+
+			return {
+				send(msg) {
+					if (connected) port1.postMessage(msg);
+				},
+
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+
+				onConnect(handler) {
+					connectHandler = handler;
+					if (connected)
+						queueMicrotask(() => {
+							if (connected && connectHandler === handler) handler();
+						});
+				},
+
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.messageChannel = (): { adapter: CSEAdapter; port: MessagePort } => {
+			const { port1, port2 } = new MessageChannel();
+			return {
+				adapter: fn.messageChannelAdapter(port1),
+				port: port2,
+			};
+		};
+		fn.http2Client = (url: string = "http://localhost:6461"): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			const ctl = new AbortController();
+
+			async function listen() {
+				try {
+					const res = await fetch(url, { signal: ctl.signal });
+					const reader = res.body!.getReader();
+					const decoder = new TextDecoder();
+					let buffer = "";
+					while (true) {
+						const { value, done } = await reader.read();
+						if (done) break;
+						buffer += decoder.decode(value, { stream: true });
+						let idx: number;
+						while ((idx = buffer.indexOf("\n")) >= 0) {
+							const line = buffer.slice(0, idx);
+							buffer = buffer.slice(idx + 1);
+							if (!line) continue;
+							if (line.startsWith("data: ")) {
+								try {
+									messageHandler?.(JSON.parse(line.slice(6)) as SIG_BUS_Message);
+								} catch {}
+							}
+						}
+					}
+				} catch {}
+			}
+			listen();
+
+			return {
+				send(msg) {
+					void fetch(url, { method: "POST", body: JSON.stringify(msg), signal: ctl.signal });
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					setTimeout(() => handler(), 0);
+				},
+				onDisconnect(handler) {
+					ctl.abort();
+					handler();
+				},
+			};
+		};
+		fn.http2Server = (req: import("http").IncomingMessage, res: import("http").ServerResponse): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+
+			res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+			req.on("data", (chunk) => {
+				try {
+					messageHandler?.(JSON.parse(chunk.toString()) as SIG_BUS_Message);
+				} catch {}
+			});
+			req.on("close", () => {
+				/* client gone */
+			});
+
+			return {
+				send(msg) {
+					res.write(`data: ${JSON.stringify(msg)}\n\n`);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					setTimeout(() => handler(), 0);
+				},
+				onDisconnect(handler) {
+					req.on("close", handler);
+				},
+			};
+		};
+		fn.http = (baseUrl: string = "http://localhost:6458", intervalMs = 3000): CSEAdapter => {
+			let pollTimer: ReturnType<typeof setInterval> | null = null;
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			let lastTs = Date.now();
+			let online = true;
+
+			const poll = async () => {
+				try {
+					const res = await fetch(`${baseUrl}/staff/poll?since=${lastTs}`, {
+						method: "GET",
+						headers: { "Content-Type": "application/json" },
+					});
+					if (!res.ok) throw new Error(`Poll failed: ${res.status}`);
+					const messages: SIG_BUS_Message[] = await res.json();
+					if (!online) {
+						online = true;
+						connectHandler?.();
+					}
+					for (const msg of messages) {
+						lastTs = Math.max(lastTs, msg.ts! + 1);
+						messageHandler?.(msg);
+					}
+				} catch {
+					if (online) {
+						online = false;
+						disconnectHandler?.();
+					}
+				}
+			};
+
+			pollTimer = setInterval(poll, intervalMs);
+			poll();
+
+			return {
+				send(msg) {
+					fetch(`${baseUrl}/staff/send`, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(msg),
+					}).catch(() => {});
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.electronIPCMain = (ipcMain: { on: Function; handle: Function; removeHandler: Function }, win: { webContents: { send: Function; once: Function } }): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+
+			ipcMain.on("staff:msg", (_event: A, raw: A) => {
+				try {
+					messageHandler?.(typeof raw === "string" ? JSON.parse(raw) : (raw as SIG_BUS_Message));
+				} catch {}
+			});
+
+			win.webContents.once("did-finish-load", () => connectHandler?.());
+
+			return {
+				send(msg) {
+					win.webContents.send("staff:msg", msg);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {},
+			};
+		};
+		fn.electronIPCRenderer = (ipcRenderer: { on: Function; send: Function; invoke: Function; removeListener: Function }): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+
+			ipcRenderer.on("staff:msg", (_event: A, raw: A) => {
+				try {
+					messageHandler?.(typeof raw === "string" ? JSON.parse(raw) : (raw as SIG_BUS_Message));
+				} catch {}
+			});
+
+			setTimeout(() => connectHandler?.(), 0);
+
+			return {
+				send(msg) {
+					ipcRenderer.send("staff:msg", msg);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {},
+			};
+		};
+		fn.nativeMessagingHost = (): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			const fs = slab.reg.maelstrom.rift.conjure.uncached({ moduleName: "fs", fallback: () => null, });
+			process.nextTick(() => connectHandler?.());
+
+			const readLoop = () => {
+				const lenBuf = Buffer.alloc(4);
+				const bytesRead = fs.readSync(0, lenBuf, 0, 4, null);
+				if (bytesRead === 0) {
+					disconnectHandler?.();
+					return;
+				}
+				const len = lenBuf.readUInt32LE(0);
+				const msgBuf = Buffer.alloc(len);
+				fs.readSync(0, msgBuf, 0, len, null);
+				try {
+					messageHandler?.(JSON.parse(msgBuf.toString()) as SIG_BUS_Message);
+				} catch {}
+				setImmediate(readLoop);
+			};
+
+			setImmediate(readLoop);
+
+			return {
+				send(msg) {
+					const json = JSON.stringify(msg);
+					const buf = Buffer.alloc(4 + Buffer.byteLength(json));
+					buf.writeUInt32LE(Buffer.byteLength(json), 0);
+					buf.write(json, 4);
+					fs.writeSync(1, buf);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.nativeMessagingBrowser = (port: { onMessage: { addListener: Function }; onDisconnect: { addListener: Function }; postMessage: Function }): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+
+			port.onMessage.addListener((msg: A) => {
+				try {
+					messageHandler?.(msg as SIG_BUS_Message);
+				} catch {}
+			});
+			port.onDisconnect.addListener(() => disconnectHandler?.());
+			setTimeout(() => connectHandler?.(), 0);
+
+			return {
+				send(msg) {
+					port.postMessage(msg);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.childProcess = (proc: NodeJS.Process = process): CSEAdapter => {
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+
+			process.nextTick(() => connectHandler?.());
+
+			proc.on("message", (raw: A) => {
+				try {
+					messageHandler?.(JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw)) as SIG_BUS_Message);
+				} catch {}
+			});
+
+			return {
+				send(msg) {
+					if (proc.send) proc.send(JSON.stringify(msg));
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {},
+			};
+		};
+		fn.broadcastChannel2 = (channelName: string = "THE_WIZARD_CHANNEL"): CSEAdapter => {
+			const r = new BroadcastChannel(channelName);
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+
+			r.onmessage = (e) => {
+				try {
+					messageHandler?.(e.data as SIG_BUS_Message);
+				} catch {}
+			};
+
+			// BroadcastChannel is synchronous-ish: it's usable immediately after
+			// construction. Fire connect on next tick so handlers can attach.
+			queueMicrotask(() => connectHandler?.());
+
+			return {
+				send(msg) {
+					r.postMessage(msg);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => {
+						messageHandler = null;
+					};
+				},
+				onConnect(handler) {
+					connectHandler = handler;
+				},
+				onDisconnect(handler) {
+					disconnectHandler = handler;
+				},
+			};
+		};
+		fn.broadcastChannel = (name: string = "THE_WIZARD"): CSEAdapter => {
+			const bc = new BroadcastChannel(name);
+			let _handler: ((msg: SIG_BUS_Message) => void) | null = null;
+
+			bc.onmessage = (e) => _handler?.(e.data);
+
+			return {
+				send: (msg) => bc.postMessage(msg),
+				onMessage: (h) => {
+					_handler = h;
+					return () => {
+						_handler = null;
+					};
+				},
+				onConnect: (h) => h(),
+				onDisconnect: () => {},
+			};
+		};
+		return fn
+	})()
 	public adp =(() => {
 		const z = () => {}
+		z.globalthis =  undefined
+		z.sith =  undefined
+		z.registry =  undefined
 		z.ws =  undefined
+		z.pipe =  undefined
+		z.disruptor =  undefined
 		z.cross_boundary =  undefined
 		z.same_boundary =  undefined
 		z.atom =  undefined
@@ -11333,6 +14259,14 @@ class THE_MESH_STORE {
 		z.broadcastChannel =  undefined
 		return z
 	})()
+	public encryption = {
+        wrap: (f: any) => {
+            return f
+        },
+		unwrap: (f: any) => {
+            return f
+        },
+    }
 	public async receive(msg: SIG_BUS_Message): P<U> {
 		if (this.seen.has(msg.id)) return;
 		if (msg.ttl && msg.ts !== undefined && Date.now() - msg.ts > msg.ttl) return;
@@ -12137,7 +15071,6 @@ class THE_MESH_STORE {
 		}
 		// #endregion
 	})()
-
 	//public channel = new O2<S, Set<CSEHandler>>()
 	//public sub_channel = new O2<S, O2<S, Set<CSEHandler>>>()
 	//public trip_channel = new O2<S, O2<S, Set<CSEHandler>>>()
@@ -12257,14 +15190,14 @@ class THE_MESH_STORE {
 //                                                               [SITH] [PALPATINE] [DARTH VADER] [GALEN MAREK] [RULE OF 2] BUS 
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 export class SITH {
-	public root: DEATH_STAR;
-	public mesh_store: THE_MESH_STORE 
-	public state: RAVEN["state"] 
+	// public root: DEATH_STAR;
+	// public mesh_store: THE_MESH_STORE 
+	// public state: RAVEN 
 
-	public r: A = "THE_WIZARD_ROOT_REG";
-	public m: A = "SAURON_MASTER_REG";
-	public s: A = "SAURON_SLAVE_REG";
-	public k: A = "__SAURON__";
+	public r: S = "THE_DARK_SIDE_BUS";
+	public m: S = "SAURON_MASTER_REG";
+	public s: S = "SAURON_SLAVE_REG";
+	public k: S = "__SAURON__";
 	public capacity: N;
 	public pidCapacity
 	public schedule
@@ -12276,33 +15209,13 @@ export class SITH {
 	public i32Capacity = 1 << 18
 	public byteCapacity = 1 << 20
 	public DEVTOOLS_ACTIVE = false
-	constructor() {}
+	constructor() {
+		expose(this, 'bus');
+	}
 	public send = (() => {
 		//const msg: SIG_BUS_Message = { id: this.hub.reg._sid(), r: r, m: m, s: s, k: k,  p: p, ts: Date.now(), _ack: false };
-	const fn = <T = A>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, adapter = "ws") => {
-		let v: A = this.mesh_store.DISPATCH({ id: this.root.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
-		if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
-		else {
-			const tMs = 5000;
-			return MaybePromise( (() => {
-					return new P<T>((resolve, reject) => {
-						let timer: RT<typeof setTimeout> | UD;
-						if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
-						if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
-					});
-				})(),
-			);
-		}
-	};
-	fn.gt = (() => {
-		const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
-			const root = c === 'globalThis' ? globalThis as any : this.mesh_store.THE_MESH_CACHE;
-			const rL = (root[r] ??= Object.create(null));
-			const mL = (rL[m] ??= Object.create(null));
-			const channel = mL[s] ??= Object.create(null);
-			const handler = channel[k]?.handler;
-			if (!handler) return undefined;
-			const v: A = handler(p, { r, m, s, k, p: p });
+		const fn = <T = A>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, adapter = "ws") => {
+			let v: A = mesh.DISPATCH({ id: slab.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
 			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 			else {
 				const tMs = 5000;
@@ -12315,10 +15228,14 @@ export class SITH {
 					})(),
 				);
 			}
-		}
-		fn.hot = (() => {
-			const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
-				const handler = this.mesh_store[k]._handlers;
+		};
+		fn.gt = (() => {
+			const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
+				const root = c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
+				const rL = (root[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const channel = mL[s] ??= Object.create(null);
+				const handler = channel[k]?.handler;
 				if (!handler) return undefined;
 				const v: A = handler(p, { r, m, s, k, p: p });
 				if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
@@ -12334,65 +15251,83 @@ export class SITH {
 					);
 				}
 			}
+			fn.hot = (() => {
+				const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
+					const handler = mesh[k]._handlers;
+					if (!handler) return undefined;
+					const v: A = handler(p, { r, m, s, k, p: p });
+					if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+					else {
+						const tMs = 5000;
+						return MaybePromise( (() => {
+								return new P<T>((resolve, reject) => {
+									let timer: RT<typeof setTimeout> | UD;
+									if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+									if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+								});
+							})(),
+						);
+					}
+				}
+				return fn;
+			})();
 			return fn;
 		})();
-		return fn;
-	})();
-	fn.adapter = (() => {
-		const fn =()  => { }
-		fn.hot = (() => {
-			const fn = () =>{ }
+		fn.adapter = (() => {
+			const fn =()  => { }
+			fn.hot = (() => {
+				const fn = () =>{ }
+				return fn;
+			})();
 			return fn;
 		})();
-		return fn;
-	})();
-	fn.stream=<T = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'): T | P<T> | UD =>{
-		const root =  c === 'globalThis' ? globalThis as any : this.mesh_store.THE_MESH_CACHE;
-		const rL = (root[r] ??= Object.create(null));
-		const mL = (rL[m] ??= Object.create(null));
-		const _listeners = mL[s] ??= Object.create(null);
-		const handler = _listeners[k]?.handler;
-		if (!handler) return undefined;
-		const msg: SIG_BUS_Message1 = { r, m, s, k, p: p, _ack: false };
-		const result = handler(p, msg);
-		if (handler) { for (const listener of handler) listener(msg); }
-		return result as T | P<T> | UD;
-	}
-	fn.nested = (() => {
-		const fn =(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
-			const root =  c === 'globalThis' ? globalThis as any : this.mesh_store.THE_MESH_CACHE;
+		fn.stream=<T = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: S='mesh'): T | P<T> | UD =>{
+			const root =  c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
 			const rL = (root[r] ??= Object.create(null));
 			const mL = (rL[m] ??= Object.create(null));
 			const _listeners = mL[s] ??= Object.create(null);
-			const set = _listeners[k]?.handler;
-			if (!set) return;
-			for (const fn of set) { fn(p); }
-		 }
-		fn.hot = (() => {
-			const fn = (p: P, k: S, s: S = '_globalThis') =>{
-				const set = this.mesh_store._handlers[k]?.handler;
+			const handler = _listeners[k]?.handler;
+			if (!handler) return undefined;
+			const msg: SIG_BUS_Message1 = { r, m, s, k, p: p, _ack: false };
+			const result = handler(p, msg);
+			if (handler) { for (const listener of handler) listener(msg); }
+			return result as T | P<T> | UD;
+		}
+		fn.nested = (() => {
+			const fn =(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
+				const root =  c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
+				const rL = (root[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const _listeners = mL[s] ??= Object.create(null);
+				const set = _listeners[k]?.handler;
 				if (!set) return;
 				for (const fn of set) { fn(p); }
-			 }
+			}
+			fn.hot = (() => {
+				const fn = (p: P, k: S, s: S = '_globalThis') =>{
+					const set = mesh._handlers[k]?.handler;
+					if (!set) return;
+					for (const fn of set) { fn(p); }
+				}
+				return fn;
+			})();
 			return fn;
 		})();
 		return fn;
-	})();
-	return fn;
 	})();
 	public sub = (() => {
 		const fn = ( handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh" ): () => V => {
 			// CHANNEL LEVEL
-			const channelSet = (this.mesh_store.getR(r, c)[r] ??= new Set<A>()) as Set<A>;
+			const channelSet = (mesh.getR(r, c)[r] ??= new Set<A>()) as Set<A>;
 			channelSet.add(handler);
 
 			// SUB_CHANNEL LEVEL
-			const subMap = this.mesh_store.getM(m, r, c);
+			const subMap = mesh.getM(m, r, c);
 			const subSet = (subMap[r] ??= new Set<A>()) as Set<A>;
 			subSet.add(handler);
 
 			// TRIP_CHANNEL LEVEL
-			const tripMap = this.mesh_store.getS(s, m, r, c);
+			const tripMap = mesh.getS(s, m, r, c);
 			const tripSet = (tripMap[m] ??= new Set<A>()) as Set<A>;
 			tripSet.add(handler);
 
@@ -12417,15 +15352,15 @@ export class SITH {
 
 				// CHANNEL
 				channelSet.delete(handler);
-				if (!channelSet.size) delete this.mesh_store.getR(r, c)[r];
+				if (!channelSet.size) delete mesh.getR(r, c)[r];
 
 				// Remove empty hierarchy nodes
-				if (!Object.keys(subMap).length) { delete this.mesh_store.getR(c, r)[m]; }
-				if (!Object.keys(tripMap).length) { delete this.mesh_store.getR(c, r)[m]; }
+				if (!Object.keys(subMap).length) { delete mesh.getR(c, r)[m]; }
+				if (!Object.keys(tripMap).length) { delete mesh.getR(c, r)[m]; }
 			};
 		};
 		fn.hot = (handler: A, k: S ) => {
-			const root = this.mesh_store._handlers;
+			const root = mesh._handlers;
 			let handlers = root[k] as Set<A> | undefined;
 			if (!handlers) { handlers = new Set<A>(); root[k] = handlers as A; }
 			handlers.add(handler);
@@ -12433,7 +15368,7 @@ export class SITH {
 		}
 		fn.gt = (() => {
 			const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'): () => V=> {
-				const root =  c === 'globalThis' ? globalThis as any : this.mesh_store.THE_MESH_CACHE;
+				const root =  c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
 				const rL = (root[r] ??= new O2());
 				const mL = (rL[m] ??= new O2());
 				const sl = mL[s] ??= new O2(); 
@@ -12447,7 +15382,7 @@ export class SITH {
 			}
 			fn.hot = (() => {
 				const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis'): () => V =>{
-					const channel =  this.mesh_store._handlers[k]?.handler;
+					const channel =  mesh._handlers[k]?.handler;
 					channel.handler = handler;
 					return () => {
 						if (channel.handler === handler) {
@@ -12469,7 +15404,7 @@ export class SITH {
 		})();
 		fn.nested = (handler: (data: any) => void, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
 			if (r === this.r && m === this.m && s === this.s) {
-				const root =  this.mesh_store._handlers[k]?.handler; 
+				const root =  mesh._handlers[k]?.handler; 
 				const _listeners = root[k];
 				if (!_listeners.has(k)) {
 					_listeners.set(k, new Set());
@@ -12483,7 +15418,7 @@ export class SITH {
 					}
 				};
 			} else {
-				const root = c === 'globalThis' ? globalThis as any : this.mesh_store.THE_MESH_CACHE;
+				const root = c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
 				const rL = (root[r] ??= Object.create(null));
 				const mL = (rL[m] ??= Object.create(null));
 				let _listeners = mL[s] ??= Object.create(null);
@@ -12509,12 +15444,12 @@ export class SITH {
 		return fn;
 	})();
 	async *streamGen<P = A, R = A>(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, opts: { adapter?: S } = {}): AG<R, V, U> {
-		const replyTo = this.root.reg._sid();
+		const replyTo = slab.reg._sid();
 		const queue: R[] = [];
 		let closed = false;
 		let failure: U;
 		let wake: (() => V) | UD;
-		const handlers = this.mesh_store.getS(s, m, r).get(k);
+		const handlers = mesh.getS(s, m, r).get(k);
 		if (!handlers || !handlers.size) { throw new Error(`[rift] no subscriber for k="${k}"`); }
 		const reply = (value: R | Promise<R> | typeof END) => {
 			if (value === END) { closed = true; } 
@@ -12524,7 +15459,7 @@ export class SITH {
 			wake = undefined;
 		};
 		for (const handler of handlers) {
-			handler({ id: this.root.reg._sid(), r: r ?? this.r, m: m ?? this.m, s: s ?? this.s, k, p: { p }, ts: Date.now(), _ack: false, replyTo, stream: true }, reply);
+			handler({ id: slab.reg._sid(), r: r ?? this.r, m: m ?? this.m, s: s ?? this.s, k, p: { p }, ts: Date.now(), _ack: false, replyTo, stream: true }, reply);
 		}
 		while (true) {
 			if (queue.length) { yield queue.shift()!; continue; }
@@ -12586,7 +15521,7 @@ export class SITH {
 		}
 		const fn = () => stream
 		fn.request = (p: A, onChunk: (chunk: A) => V, k: S, s: S = this.s, m: S = this.m, r: S = this.r): P<V> => {
-			const streamId = this.root.reg._sid();// `[${r}][${m}][${s}][${k}][${_sid()}]`.replace(/[.\[\]]/g, match => (match === "." ? "_" : ""));
+			const streamId = slab.reg._sid();// `[${r}][${m}][${s}][${k}][${_sid()}]`.replace(/[.\[\]]/g, match => (match === "." ? "_" : ""));
 			const result = new Promise<void>((resolve, reject) => {
 				let closed = false;
 				let closeSubscription: (() => V) | UD;
@@ -12619,7 +15554,7 @@ export class SITH {
 		fn.openSync = (k: S, s?: S, m?: S, r = this.r, opts?: {windowSize?: N}) => {
 			// Like syncStream, but for continuous/unbounded emission — no known chunk count up front. Adds a bounded in-flight window so a fast sender backs off instead of flooding a slow receiver.
 			const cleanChannel = r.replace(/[\[\]]/g, "");
-			const streamId = this.root.reg._sid()//`${cleanChannel}-${m}-${Math.random().toString(36).slice(2)}`.replace(/\./g, "-");
+			const streamId = slab.reg._sid()//`${cleanChannel}-${m}-${Math.random().toString(36).slice(2)}`.replace(/\./g, "-");
 			const windowSize = opts?.windowSize ?? 32;
 
 			const unacked = new Map<number, {p: any; retries: number}>();
@@ -12706,7 +15641,7 @@ export class SITH {
 			return handle;
 		};
 		fn.hot = (key: string, fn: (message: ChannelMessage) => void, s: string = this.s, m: string = this.m, r: string = this.r, ): () => void => {
-				const channel = this.mesh_store[key]
+				const channel = mesh[key]
 				const streamLink: StreamLink = { fn, prev: channel.streamTail, next: undefined, };
 				if (channel.streamTail !== undefined) {channel.streamTail.next = streamLink;}
 				else {channel.streamHead = streamLink;}
@@ -13162,7 +16097,7 @@ export class SITH {
 			return dx;
 		};
 		fn.open = <T = any,>(opts = {highWaterMark: 32}, k: string, s = this.s, m = this.m, r = this.r) => {
-			const streamId = this.root.reg._sid()
+			const streamId = slab.reg._sid()
 	
 			const highWaterMark = opts?.highWaterMark ?? 32;
 	
@@ -13574,38 +16509,38 @@ export class SITH {
 		public m: S = "SAURON_MASTER_REG";
 		public s: S = "SAURON_SLAVE_REG";
 		public k: S = "__SAURON__";
-		public root: DEATH_STAR;
-		public hub: SITH;
-		public state:  RAVEN["state"] 
-		public bus: SITH 
+		//public root: DEATH_STAR;
+		//public hub: SITH;
+		//public state:  RAVEN
+		//public bus: SITH 
 		constructor() { }
 		public state_setter(v: U, k: S = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r) {
-			const existing = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
+			const existing = slab.state.get(k, { s: s, m: m, r: r });
 			if (existing !== undefined) return existing;
 			const t = UF(v)
-			this.hub.root.state.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
+			slab.state.set(k, t, { triggerRender: false, s: s, m: m, r: r });
 			return t;
 		}
 		public cell: SIG_BUS_CELL_FN = (() => {
 			const fn = <T = A,>(k: S, s: S = this.s, m: S = this.m, r: S = this.r, v?: T) => {
 				const [value, setValue] = darkState(() => { return this.state_setter(v, k, s, m, r); });
 
-				this.bus.sub( (i: A) => {
+				slab.bus.sub( (i: A) => {
 						const incoming = i.p;
-						this.hub.root.state.set(k, incoming, false, s, m, r);
+						slab.state.setDark(k, incoming, false, s, m, r);
 					}, k, s, m, r, );
-					this.hub.root.state.sub(k, (newValue: any) => setValue(newValue), s, m, r);
+					slab.state.sub(k, (newValue: any) => setValue(newValue), s, m, r);
 
 				return value; // still no setter — this one was never meant to write
 			};
 			fn.send = async (p: U, k: S, s = this.s, m = this.m, r = this.r): P<U> => {
-				const msgId = this.hub.root.reg._sid()
+				const msgId = slab.reg._sid()
 				const msg = {id: msgId, r: r, m: m, s: s, k: k, p: {p}, _ack: false};
 
-				await this.root.mesh.DISPATCH({id: msgId, r: r, m: m, s: s, k: k, p: {p}, _ack: false});
-				const rr = this.cell(`${k}${this.root.RTRN_TO_SDR}`, s, m, r);
+				await mesh.DISPATCH({id: msgId, r: r, m: m, s: s, k: k, p: {p}, _ack: false});
+				const rr = this.cell(`${k}${mesh.RTRN_TO_SDR}`, s, m, r);
 
-				await this.root.mesh.BACK_END.run.afterSend(msg, rr);
+				await mesh.BACK_END.run.afterSend(msg, rr);
 
 				return rr
 
@@ -13622,11 +16557,11 @@ export class SITH {
 				} */
 			};
 			fn.cell = <T = A,>(k: S, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "cell", chain?: CHAIN, v?: T) => {
-				const cellKey = `${k}:${this.root.RTRN_TO_SDR}`;
+				const cellKey = `${k}:${mesh.RTRN_TO_SDR}`;
 
 				const [value, setValue] = darkState(() => {return this.state_setter(v, k, s, m, r);});
 
-				this.bus.sub( (i: A) => {
+				slab.bus.sub( (i: A) => {
 						const incoming = i.p;
 						setDark(k, incoming, false, s, m, r);
 				}, k, s, m, r, );
@@ -13634,11 +16569,11 @@ export class SITH {
 
 				let rr: any;
 				if (type === "waitFor") {
-					this.bus.send({cmd: "waitFor", k, s, m, r}, k, s, m, r);
-					this.bus.sub((m: any) => setValue(m.p), cellKey, s, m, r);
+					slab.bus.send({cmd: "waitFor", k, s, m, r}, k, s, m, r);
+					slab.bus.sub((m: any) => setValue(m.p), cellKey, s, m, r);
 				} else if (type === "sub") {
-					this.bus.send({cmd: "subscribe", k, s, m, r}, k, s, m, r);
-					this.bus.sub((m: any) => setValue(m.p), cellKey, s, m, r);
+					slab.bus.send({cmd: "subscribe", k, s, m, r}, k, s, m, r);
+					slab.bus.sub((m: any) => setValue(m.p), cellKey, s, m, r);
 				} else if (type === "cell") {
 					r = this.cell(cellKey, s, m, r);
 				}
@@ -13652,7 +16587,7 @@ export class SITH {
 			fn.crdt = <T = A,>(k: A = this.k, s: S = this.s, m: S = this.m, r: S = this.r, chain?: CHAIN, v?: T) => {
 				const [value, setValue] = darkState(() => {return this.state_setter(v, k, s, m, r)	});
 
-				this.bus.sub( (i: A) => {
+				slab.bus.sub( (i: A) => {
 						const incoming = i.p;
 						setDark(k, incoming, true, s, m, r);
 					}, k, s, 	m, 	r, );
@@ -13663,18 +16598,18 @@ export class SITH {
 			return fn;
 		})();
 		public useCell = (() => {
-			const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none",  options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.root.reg._sid() ) => {
-				const cellKey = `${k}:${this.root.RTRN_TO_SDR}`;
+			const fn = (v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, type: CELL = "none",  options: StateOptions<A, any> = {}, __sauron_id__ = slab.reg._sid() ) => {
+				const cellKey = `${k}:${mesh.RTRN_TO_SDR}`;
 
 				const [state, setState] = darkState(() => { return this.state_setter(v, k, s, m, r); });
 
-				const senderTokenRef = this.root.signals.signals.atom(this.root.reg._sid()); // this.root._id.b();
+				const senderTokenRef = slab.signals.atom(slab.reg._sid()); // this.root._id.b();
 
 				if (type === "none") {
-					this.bus.sub( (i: A) => {
+					slab.bus.sub( (i: A) => {
 							const incoming = i.p;
 							if (incoming?.from === senderTokenRef.value) return;
-							this.root.state.set(k, incoming.value, false, s, m, r);
+							slab.state.setDark(k, incoming.value, false, s, m, r);
 							setState(incoming.value);
 					}, k, s, m, r, ); // stay in sync with local writes too (including our own setLive below)
 					sub( (newValue: any) => setState(newValue),k, s, m, r);
@@ -13684,16 +16619,16 @@ export class SITH {
 					const newValue = typeof next === "function" ? next(getDark(k, s, m, r)) : next;
 					setState(newValue);
 					setDark(k, newValue,  true, s, m , r); // local write
-					this.bus.send({value: newValue, from: senderTokenRef.value}, k, s, m, r,); // broadcast to the bus
+					slab.bus.send({value: newValue, from: senderTokenRef.value}, k, s, m, r,); // broadcast to the bus
 				};
 
 				let rr: any;
 				if (type === "waitFor") {
-					this.bus.send({cmd: "waitFor", k: cellKey, s, m, r}, k, s, m, r);
-					this.bus.sub((m: any) => setLive(m), cellKey, s, m, r);
+					slab.bus.send({cmd: "waitFor", k: cellKey, s, m, r}, k, s, m, r);
+					slab.bus.sub((m: any) => setLive(m), cellKey, s, m, r);
 				} else if (type === "sub") {
-					this.bus.send({cmd: "subscribe", k: cellKey, s, m, r}, k, s, m, r);
-					this.bus.sub((m: any) => setLive(m), cellKey, s, m, r);
+					slab.bus.send({cmd: "subscribe", k: cellKey, s, m, r}, k, s, m, r);
+					slab.bus.sub((m: any) => setLive(m), cellKey, s, m, r);
 				} else if (type === "cell") {
 					rr = this.cell(cellKey, s, m, r);
 					darkEffect(() => {
@@ -13747,7 +16682,9 @@ export class SITH {
 				};
 				return [value, actions] as const;
 			};
-			fn.mailbox = ( v?: A,k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.root.reg._sid(),		) => {
+			fn.mailbox = ( v?: A,k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = slab.reg._sid(),		) => {
+				const senderToken = slab.signals.atom(slab.reg._sid());
+				const queueRef = slab.signals.atom<Queue | null>(null);
 				return root.state.createHookCell("useCell.mailbox",__sauron_id__,() => ({
 						value: {
 							current: this.state_setter(v, k, s, m, r),
@@ -13757,8 +16694,7 @@ export class SITH {
 					(state, key, notify) => {
 						const st = state.value;
 
-						const senderToken = this.root.signals.signals.atom(this.root.reg._sid());
-						const queueRef = this.root.signals.signals.atom<Queue | null>(null);
+						
 
 						if (!queueRef.current) {
 							queueRef.current = new Queue(1);
@@ -13781,22 +16717,22 @@ export class SITH {
 							return next;
 						};
 
-						this.bus.sub((i: A) => {
+						slab.bus.sub((i: A) => {
 							const incoming = i.p;
 							if (incoming?.from === senderToken.value) return;
 							queueRef.current!.run(async () => {
-								const current = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
+								const current = slab.state.get(k, { s: s, m: m, r: r });
 								const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-								this.hub.root.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+								slab.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
 								return next;
 							});
 						}, k, s, m, r);
 
-						this.hub.root.state.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+						slab.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
 
 						const setLive = (next: any) => {
 							const t = typeof next === "function" ? next() : next;
-							this.bus.send({ value: t, from: senderToken.value }, k, s, m, r);
+							slab.bus.send({ value: t, from: senderToken.value }, k, s, m, r);
 						};
 
 						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
@@ -13811,8 +16747,9 @@ export class SITH {
 		})();
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		public useAntiMsgQ = (() => {
-			const fn = ( v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.root.reg._sid(),		) => {
-				return root.state.createHookCell( "useAntiMsgQ", __sauron_id__, () => ({
+			const fn = ( v: A, k: A = `_USECELL`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = slab.reg._sid(),		) => {
+						const senderToken = slab.signals.atom(slab.reg._sid());
+						return root.state.createHookCell( "useAntiMsgQ", __sauron_id__, () => ({
 						value: {
 							current: this.state_setter(v, k, s, m, r),
 							derived: undefined as A,
@@ -13821,7 +16758,6 @@ export class SITH {
 					(state, key, notify) => {
 						const st = state.value;
 
-						const senderToken = this.root.signals.signals.atom(this.root.reg._sid());
 
 						const equals: (a: any, b: any) => boolean = options.equals ?? ((a, b) => a === b);
 						const selector = options.selector ?? null;
@@ -13840,7 +16776,7 @@ export class SITH {
 							return next;
 						};
 
-						this.bus.sub((i: A) => {
+						slab.bus.sub((i: A) => {
 							const incoming = i.p;
 							if (incoming?.from === senderToken.value) return;
 							setDark(k, incoming.value, false, s, m, r);
@@ -13853,7 +16789,7 @@ export class SITH {
 							const newValue = typeof next === "function" ? next(getDark(k, s, m, r)) : next;
 							setValue(newValue);
 							setDark(k, newValue,true ,s, m , r);
-							this.bus.send({ value: newValue, from: senderToken.value }, k, s, m, r);
+							slab.bus.send({ value: newValue, from: senderToken.value }, k, s, m, r);
 						};
 
 						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
@@ -13863,10 +16799,10 @@ export class SITH {
 					},
 				);
 			};
-			fn.mailbox = ( v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = this.hub.root.reg._sid(),		) => {
+			fn.mailbox = ( v?: A, k: A = `_USECELL_MAILBOX`, s: S = this.s, m: S = this.m, r: S = this.r, options: StateOptions<A, any> = {}, __sauron_id__ = slab.reg._sid(),		) => {
 
-				const senderToken = this.hub.root.signals.signals.atom(this.hub.root.reg._sid());
-				const queueRef = this.hub.root.signals.signals.atom<Queue | null>(null);
+				const senderToken = slab.signals.atom(slab.reg._sid());
+				const queueRef = slab.signals.atom<Queue | null>(null);
 
 				return root.state.createHookCell( "useAntiMsgQ.mailbox", __sauron_id__, () => ({
 						value: {
@@ -13895,22 +16831,22 @@ export class SITH {
 							return next;
 						};
 
-						this.bus.sub((i: A) => {
+						slab.bus.sub((i: A) => {
 							const incoming = i.p;
 							if (incoming?.from === senderToken.value) return;
 							queueRef.current!.run(async () => {
-								const current = this.hub.root.state.state.get(k, { s: s, m: m, r: r });
+								const current = slab.state.get(k, { s: s, m: m, r: r });
 								const next = typeof incoming === "function" ? incoming(current) : (incoming?.value ?? incoming);
-								this.hub.root.state.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
+								slab.state.set(k, next, { triggerRender: false, s: s, m: m, r: r });
 								return next;
 							});
 						}, k, s, m, r);
 
-						this.hub.root.state.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
+						slab.state.subscribe(k, (newValue: any) => setValue(newValue), { s: s, m: m, r: r });
 
 						const setLive = (next: any) => {
 							const t = typeof next === "function" ? next() : next;
-							this.hub.root.bus.send({ value: t, from: senderToken.value }, k, s, m, r);
+							slab.bus.send({ value: t, from: senderToken.value }, k, s, m, r);
 						};
 
 						if (derive && st.derived === undefined) { st.derived = derive(st.current); }
@@ -13929,14 +16865,14 @@ export class SITH {
 		public m: A = "SAURON_MASTER_REG";
 		public s: A = "SAURON_SLAVE_REG";
 		public k: A = "__SAURON__";
-		public root: DEATH_STAR;
-		public hub: SITH;
+		//public root: DEATH_STAR;
+		//public hub: SITH;
 		//                                                                                                                  SPREADSHEET
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		public spreadsheet = (() => {
-			const fn = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r, chain?: "chain" | "rechain") => MCR_Combo(this.hub.drs.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.computed ?? 0, chain);
-			fn.raw = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.hub.drs.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.raw;
-			fn.range = (sheet: S, ref: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.spreadsheet.rangeKeys(ref, sheet).map(row => row.map(k => this.hub.drs.cell(this.spreadsheet.envKeyOf(k), s, m, r)?.computed ?? 0));
+			const fn = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r, chain?: "chain" | "rechain") => MCR_Combo(slab.bus.drs.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.computed ?? 0, chain);
+			fn.raw = (sheet: S, cell: S, s: S = this.s, m: S = this.m, r: S = this.r) => slab.bus.drs.cell(this.spreadsheet.envKey(sheet, cell), s, m, r)?.raw;
+			fn.range = (sheet: S, ref: S, s: S = this.s, m: S = this.m, r: S = this.r) => this.spreadsheet.rangeKeys(ref, sheet).map(row => row.map(k => slab.bus.drs.cell(this.spreadsheet.envKeyOf(k), s, m, r)?.computed ?? 0));
 			// HELPERS
 			fn.HISTORY_CAP = 200;
 			fn.envKey = (sheet: S, cell: S) => `${sheet}::${normalizeCellRef(cell)}`;
@@ -14140,7 +17076,7 @@ export class SITH {
 							return this.spreadsheet.peek(this.spreadsheet.envKey(sheet, cell), s, m, r);
 						}
 					);
-				const [getter, setter] = this.hub.drs.useCell(this.spreadsheet.envKey(sheet, cell), seed, s, m, r, type);
+				const [getter, setter] = slab.bus.drs.useCell(this.spreadsheet.envKey(sheet, cell), seed, s, m, r, type);
 
 				const read = (ref: S) => this.spreadsheet.peek(this.spreadsheet.envKey(sheet, ref), s, m, r);
 				const write = (ref: S, raw: A) => commit(this, sheet, ref, raw, s, m, r);
@@ -14156,7 +17092,7 @@ export class SITH {
 							return this.spreadsheet.peek(this.spreadsheet.envKey(sheet, cell), s, m, r);
 						}
 					);
-				const [getter, setter] = this.hub.drs.useCell(seed, this.spreadsheet.envKey(sheet, cell), s, m, r, type);
+				const [getter, setter] = slab.bus.drs.useCell(seed, this.spreadsheet.envKey(sheet, cell), s, m, r, type);
 
 				const read = (ref: S) => this.spreadsheet.peek(this.spreadsheet.envKey(sheet, ref), s, m, r);
 				const write = (ref: S, raw: A) => commit(this, sheet, ref, raw, s, m, r);
@@ -14655,11 +17591,9 @@ export class SITH {
 		// #endregion
 	})();
 
-
-
     public batching_raptor = new (class PALPATINE {// BATCHING NGIN: 1.5B OPS/SEC
-		public hub: SITH;
-		public root: DEATH_STAR;
+		//public hub: SITH;
+		//public root: DEATH_STAR;
 		/*
 		Per-lane shared control block layout:
 	
@@ -15031,8 +17965,8 @@ export class SITH {
 		public s: A = "SAURON_SLAVE_REG";
 		public k: A = "__SAURON__";
 		public capacity: number;
-		public hub: SITH;
-		public root: DEATH_STAR;
+		//public hub: SITH;
+		//public root: DEATH_STAR;
 		// ======================================================================
 		// Channel table: open-addressed hash of (r, m, s, k)
 		// ======================================================================
@@ -15070,9 +18004,7 @@ export class SITH {
 			if (SITH.capacity < 2 || (SITH.capacity & (SITH.capacity - 1)) !== 0) { throw new Error("capacity must be a power of two >= 2"); }
 			
 			this.capacity = SITH.capacity;
-			this.channelMask = SITH.capacity - 1;
-			this.hub = SITH;
-			this.root = SITH.root;
+			this.channelMask = SITH.capacity - 1; 
 			this.r = SITH.r;
 			this.m = SITH.m;
 			this.s = SITH.s;
@@ -15297,9 +18229,9 @@ export class SITH {
 				}
 			}
 			fn.switch = <T = A> (p: U, k: A, s: S = this.s, m: S = this.m, r: S = this.r,  adapter = "ws") => {
-				const msg: SIG_BUS_Message = { id: this.hub.root.reg._sid(), r: r, m: m, s: s, k: k, p: { p }, ts: Date.now(), _ack: false };
+				const msg: SIG_BUS_Message = { id: slab.reg._sid(), r: r, m: m, s: s, k: k, p: { p }, ts: Date.now(), _ack: false };
 	
-				let v: A = this.root.mesh.DISPATCH(msg, adapter);
+				let v: A = mesh.DISPATCH(msg, adapter);
 				if (v !== undefined && !(v instanceof Promise)) {
 					return MaybePromise<T>(v);
 				} else {
@@ -15695,8 +18627,8 @@ export class SITH {
 		// ── Cursors ────────────────────────────────────────────────────────────
 		public writeCursor = 0;
 		public readCursor = 0;
-		public root: DEATH_STAR;
-		public hub: SITH;
+		//public root: DEATH_STAR;
+		//public hub: SITH;
 		constructor(hub: SITH) {
 		   this.pids = new Int32Array(hub.capacity); 
 		   this.values = new Float64Array(hub.capacity);
@@ -15752,7 +18684,7 @@ export class SITH {
 		// Track which slots are currently in use (for debugging/validation)
 		private readonly inUse: Uint8Array;
 		private freeRanges: { offset: number; length: number }[] = [];
-		public hub: SITH;
+		//public hub: SITH;
 	
 		constructor(capacity: number = 1 << 20, slabCapacity = 1 << 20) {
 			
@@ -17554,19 +20486,9 @@ class OTracer<V = any> {
 //                                                                                                                [RAVEN] STATE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class RAVEN {
-	public hub: DEATH_STAR;
-	public t: A = {};
-
-	constructor(hub: DEATH_STAR = null) {
-		this.hub = hub;
-		this.r = hub.r;
-		this.m = hub.m;
-		this.s = hub.s;
-		this.k = hub.k;
-	}
-
+	//public hub: DEATH_STAR;
 	public online = false;
-	public r: A = "THE_WIZARD_ROOT_REG";
+	public r: A = "DARK_STATE";
 	public m: A = "SAURON_MASTER_REG";
 	public s: A = "SAURON_SLAVE_REG";
 	public k: A = "__SAURON__";
@@ -17591,8 +20513,9 @@ class RAVEN {
 	public currentScope: symbol | string = this.GLOBAL_SCOPE;
 	public loopScheduled = false;
 	public readonly instanceId: string = `instance_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-
+ 
+	//                                                                                                                           RX
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public drain1(): void {
 		this._flushScheduled = false;
 		if (this.dirty.size === 0) return;
@@ -17762,21 +20685,42 @@ class RAVEN {
 			reprioritize(next: Priority): void { priority = next; },
 		};
 	}
+	// #endregion
+	//                                                                                                                       CONSTS
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	// SAURON
-	public _pendingNotifications = new Set<string>();
-	public _externalSubscribers = new O2<string, Map<string, Map<string, Map<SignalKey, Set<(value: A) => void>>>>>();
-	public externalSubscribers = new Set<() => void>();
-	public _components = new O2<string, ComponentInstance>();
-	public _subscribers = new O2<string, Set<() => void>>();
-	_globalListeners = new Set<(key: S | symbol, value: A) => void>()
-	_globalNotifyCache = new O2<A, Map<A, () => void>>();
-	_notifyCache = new WeakMap<Map<A, Set<(value: A) => void>>, Map<A, () => void>>();
-	
-	_persistent: M<A, A>;
-	_persistent_keys: M<A, A>;
-	_gt: O2<A, A>;
-	public cache: c_type = "mesh"
 	public THE_STATE_CACHE = new O2<S, O2<S, O2<S, O2<S, V>>>>();
+	public _pendingNotifications = new Set<S>();
+	public _externalSubscribers = new O2<S, O2<S, O2<S, O2<SignalKey, Set<(value: A) => V>>>>>();
+	public externalSubscribers = new Set<() => V>();
+	public _components: O2<S, ComponentInstance>;
+	public _subscribers: O2<S, Set<() => V>>;
+	public _globalListeners = new Set<(key: S | SY, value: A) => V>();
+	public _waiters: O2<S | SY, Set<(value: A) => V>>;
+	public _listeners: O2<S, Set<(value: A) => V>>;
+	public _globalNotifyCache: O2<S, O2<A, () => V>>
+	public _notifyCache: O2<S, () => V>
+	public _persistent: O2<S, A>
+	public _persistent_keys: O2<S, A>
+	public _gt: O2<S, A> //= new O2<A, A>();// Object.create(null);
+	public cache: c_type = "mesh";
+	constructor(hub: DEATH_STAR = null) {
+		this.m = hub.m;
+		this.s = hub.s;
+		this.k = hub.k;
+		const cache = hub.cache === 'globalThis'  ? (globalThis as A) : mesh.THE_MESH_CACHE;
+		const rL = (cache[this.r] ??= new O2<S, A>());
+		const mL = (rL[this.m] ??= new O2<S, A>());
+		this._gt = (mL[this.s] ??= new O2<S, A>());
+		this._notifyCache = (mL[this.s] ??= new O2<S, () => V>());
+		this._persistent = (mL[this.s] ??= new O2<S, A>());
+		this._persistent_keys = (mL[this.s] ??= new O2<S, A>());
+		this._globalNotifyCache = (mL[this.s] ??= new O2<S, O2<S, () => V>>());
+		this._waiters = (mL[this.s] ??= new O2<S | SY, Set<(value: A) => V>>());
+		this._subscribers = (mL[this.s] ??= new O2<S, Set<() => V>>());
+		this._components = (mL[this.s] ??= new  O2<S, ComponentInstance>());
+		expose(this, 'state');
+	}
 	public getS(s: S = this.s, m: S = this.m, r: S = this.r, c: c_type = "mesh") {
 		const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_STATE_CACHE;
 		const rL = (cache[r] ??= new O2());
@@ -17784,62 +20728,59 @@ class RAVEN {
 		const sL = (mL[s] ??= new O2());
 		return sL;
 	}
-	public scheduleGlobalNotify(key: string | symbol, meta: A, opts: ScopeOptions): void {
-		let cache = this._globalNotifyCache.get(meta);
-		if (!cache) {
-			cache = new Map();
-			this._globalNotifyCache.set(meta, cache);
-		}
-		let fn = cache.get(key);
+	public scheduleGlobalNotify(key: string | symbol, opts: ScopeOptions): void {
+		const cache = (this._globalNotifyCache[key] ??= new O2<A, () => void>());
+		let fn = cache[key];
 		if (!fn) {
 			fn = () => {
-				cache!.delete(key);
+				delete cache[key];
 				const finalVal = this.store.get(key, opts);
-				const waiters = meta._waiters.get(key);
+				const waiters = this._waiters[key];
 				if (waiters) {
 					for (const resolveFn of waiters) {
-						try { resolveFn(finalVal); } 
+						try { resolveFn(finalVal); }
 						catch (err) { console.error(`[Sauron Waiter Error]:`, err); }
 					}
-					meta._waiters.delete(key);
+					delete this._waiters[key];
 				}
 				for (const listener of this._globalListeners) {
-					try { listener(key, finalVal); } 
+					try { listener(key, finalVal); }
 					catch (err) { console.error(`[Sauron Global Listener Error]:`, err); }
 				}
 			};
-			cache.set(key, fn);
+			cache[key] = fn;
 		}
 		this.onFlush(fn);
 	}
-	public scheduleNotify(key: A, _listeners: Map<A, Set<(value: A) => void>>, _state: A): void {
-		let cache = this._notifyCache.get(_listeners);
-		if (!cache) {
-			cache = new Map();
-			this._notifyCache.set(_listeners, cache);
-		}
-		let fn = cache.get(key);
+	public scheduleNotify(key: A, _listeners: O2<A, Set<(value: A) => void>>, _state: O2<A, A>): void {
+		let fn = this._notifyCache[key];
+	
 		if (!fn) {
 			fn = () => {
-				cache!.delete(key);
-				const val = _state.get(key);
-				_listeners.get(key)?.forEach((l) => l(val));
+				delete this._notifyCache[key];
+				const val = _state[key];
+				_listeners[key]?.forEach((l) => l(val));
 			};
-			cache.set(key, fn);
+	
+			this._notifyCache[key] = fn;
 		}
+	
 		this.onFlush(fn);
 	}
+	// #endregion
+	//                                                                                                                        STORE
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public store = {
 		get: <T = A,>(key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | undefined => {
 			const { s, m, r } = opts;
 			const _state = this._gt;
 			const _persistent = this._persistent;
 			const _persistKeys = this._persistent_keys;
-
-			if (_state.has(key)) return MaybePromise(_state.get(key));
-			if (_persistKeys.has(key) && _persistent.has(key)) {
-				const v = _persistent.get(key);
-				_state.set(key, v);
+	
+			if (Object.prototype.hasOwnProperty.call(_state, key)) return MaybePromise(_state[key]);
+			if (Object.prototype.hasOwnProperty.call(_persistKeys, key) && Object.prototype.hasOwnProperty.call(_persistent, key)) {
+				const v = _persistent[key];
+				_state[key] = v;
 				return MaybePromise(v);
 			}
 			return undefined;
@@ -17850,26 +20791,27 @@ class RAVEN {
 			const _persistent = this._persistent;
 			const _persistKeys = this._persistent_keys;
 			const _listeners = this._listeners;
-			const prev = _state.get(key);
+			const prev = _state[key];
 			const next = typeof value === "function" ? (value as (prev: T | undefined) => T)(prev) : value;
+	
 			if (Object.is(prev, next)) return;
+	
 			// TIME TRAVEL
-
-			_state.set(key, next);
-			if (_persistKeys.has(key)) _persistent.set(key, next);
-			if (triggerRender) this.scheduleGlobalNotify(key, this.hub.wr, opts);
+			_state[key] = next;
+			if (Object.prototype.hasOwnProperty.call(_persistKeys, key)) _persistent[key] = next;
+			if (triggerRender) this.scheduleGlobalNotify(key,  opts);
 			if (triggerRender) this.scheduleNotify(key, _listeners, _state);
 			return MaybePromise(next as T);
 		},
 		subscribe: <T = A,>(key: A, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
 			const { s, m, r } = opts;
 			const _listeners = this._listeners;
-
-			if (!_listeners.has(key)) _listeners.set(key, new Set());
-			_listeners.get(key)!.add(listener);
+	
+			(_listeners[key] ??= new Set()).add(listener);
+	
 			return () => {
-				_listeners.get(key)?.delete(listener);
-				if (_listeners.get(key)?.size === 0) _listeners.delete(key);
+				_listeners[key]?.delete(listener);
+				if (_listeners[key]?.size === 0) delete _listeners[key];
 			};
 		},
 		delete: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): boolean => {
@@ -17878,14 +20820,17 @@ class RAVEN {
 			const _persistent = this._persistent;
 			const _persistKeys = this._persistent_keys;
 			const _listeners = this._listeners;
-
-			const existed = _state.delete(key);
-			if (_persistKeys.has(key)) {
-				_persistKeys.delete(key);
-				_persistent.delete(key);
+	
+			const existed = Object.prototype.hasOwnProperty.call(_state, key);
+			delete _state[key];
+	
+			if (Object.prototype.hasOwnProperty.call(_persistKeys, key)) {
+				delete _persistKeys[key];
+				delete _persistent[key];
 			}
-			_listeners.get(key)?.forEach((l) => l(undefined));
-			_listeners.delete(key);
+	
+			_listeners[key]?.forEach((l) => l(undefined));
+			delete _listeners[key];
 			return MaybePromise(existed);
 		},
 		entries: <T = A,>(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): [A, T][] => {
@@ -17895,119 +20840,116 @@ class RAVEN {
 		},
 		persist: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
 			const { s, m, r } = opts;
-			const _persistKeys = this._persistent_keys;
-			_persistKeys.set(key, true);
+			this._persistent_keys[key] = true;
 		},
 		unpersist: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
 			const { s, m, r } = opts;
-			const _persistent = this._persistent;
-			const _persistKeys = this._persistent_keys;
-			_persistKeys.delete(key);
-			_persistent.delete(key);
+			delete this._persistent_keys[key];
+			delete this._persistent[key];
 		},
 		has: (key: A, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): boolean => {
 			const { s, m, r } = opts;
 			const _state = this._gt;
 			const _persistent = this._persistent;
 			const _persistKeys = this._persistent_keys;
-
-			return _state.has(key) || (_persistKeys.has(key) && _persistent.has(key));
+	
+			return Object.prototype.hasOwnProperty.call(_state, key) ||
+				(Object.prototype.hasOwnProperty.call(_persistKeys, key) && Object.prototype.hasOwnProperty.call(_persistent, key));
 		},
 		clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
 			const { s, m, r } = opts;
-			const _state = this._gt;
-			const _listeners = this._listeners;
-			_state.clear();
-			_listeners.clear();
+			this._gt.clear();
+			this._listeners.clear();
 		},
 		clearPersistent: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
 			const { s, m, r } = opts;
-			const _persistent = this._persistent;
-			const _persistKeys = this._persistent_keys;
-			_persistent.clear();
-			_persistKeys.clear();
+			this._persistent.clear();
+			this._persistent_keys.clear();
 		},
 		_emit: (key: string | symbol, s = this.s, m = this.m, r = this.r): void => {
 			const opts = { s, m, r };
 			const _state = this._gt;
 			const _listeners = this._listeners;
-			const _waiters = this.hub.wr;
+			const _waiters = this._waiters;
 			this.scheduleNotify(key, _listeners, _state);
-			this.scheduleGlobalNotify(key, _waiters, opts);
+			this.scheduleGlobalNotify(key,  opts);
 		},
-		// subscribe, delete, entries, persist, unpersist, has, clear,
-		// clearPersistent, _emit — all unchanged
 	};
-	public state: SauronState = {
-		get: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | undefined => {
-			return MaybePromise(this.store.get<T>(key, opts) as T);
-		},
-		set: <T = A,>(key: string | symbol, value: T | ((prev: T | undefined) => T), opts: { triggerRender?: boolean } & ScopeOptions = { s: this.s, m: this.m, r: this.r, triggerRender: true }): void => {
-			const { s, m, r, triggerRender = true } = opts;
-			this.store.set(key, value, { triggerRender, s, m, r });
-			return MaybePromise(value as T);
-		},
-		delete: (key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): boolean => {
-			const { s, m, r } = opts;
-			const meta = this.map("_globalListeners_raven", this.m, this.r);
-			const deleted = this.store.delete(key, opts);
-			if (deleted) {
-				for (const listener of this._globalListeners) {
-					try {
-						listener(key, undefined);
-					} catch (err) {
-						console.error(`[Sauron Global Listener Error]:`, err);
-					}
+	// #endregion
+	//                                                                                                                        STATE 
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	get<T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): T | undefined {
+		if (opts.r === this.r && opts.s === this.s && opts.m === this.m) return MaybePromise(this._gt[key]);
+		return MaybePromise(this.store.get<T>(key, opts) as T);
+	}
+	getHot(key: string) {
+		return this._gt[key]
+	}
+	setHot<T = A>(k: S, v: T | (() => T))   {
+		this._gt[k] = v
+	}
+	set<T = A,>(key: string | symbol, value: T | ((prev: T | undefined) => T), opts: { triggerRender?: boolean } & ScopeOptions = { s: this.s, m: this.m, r: this.r, triggerRender: true }): void {
+		const { s, m, r, triggerRender = true } = opts;
+		this.store.set(key, value, { triggerRender, s, m, r });
+		return MaybePromise(value as T);
+	}
+	delete(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): boolean {
+		const { s, m, r } = opts;
+		const deleted = this.store.delete(key, opts);
+	
+		if (deleted) {
+			for (const listener of this._globalListeners) {
+				try {
+					listener(key, undefined);
+				} catch (err) {
+					console.error(`[Sauron Global Listener Error]:`, err);
 				}
 			}
-			return deleted;
-		},
-		getByPrefix: <T = A,>(prefix: string, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): { key: string; value: T }[] => {
-			return this.store
-				.entries<T>(opts)
-				.filter(([key]) => typeof key === "string" && key.startsWith(prefix))
-				.map(([key, value]) => ({ key: key as string, value }));
-		},
-		getAll: <T = A,>(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Record<string | symbol, T> => {
-			const result: Record<string | symbol, T> = {};
-			for (const [key, value] of this.store.entries<T>(opts)) {
-				result[key] = value;
-			}
-			return result;
-		},
-		subscribe: <T = A,>(key: string | symbol, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
-			return this.store.subscribe<T>(key, listener, opts);
-		},
-		subscribeAll: (listener: (key: string | symbol, value: A) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) => {
-			const { s, m, r } = opts;
-			const meta = this.map("_globalListeners_raven", this.m, this.r);
+		}
+	
+		return deleted;
+	}
+	getByPrefix<T = A,>(prefix: string, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): { key: string; value: T }[] {
+		return this.store
+			.entries<T>(opts)
+			.filter(([key]) => typeof key === "string" && key.startsWith(prefix))
+			.map(([key, value]) => ({ key: key as string, value }));
+	}
+	getAll<T = A,>(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Record<string | symbol, T> {
+		const result: Record<string | symbol, T> = {};
+		for (const [key, value] of this.store.entries<T>(opts)) {
+			result[key] = value;
+		}
+		return result;
+	}
+	subscribe<T = A,>(key: string | symbol, listener: (value: T) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) {
+		return this.store.subscribe<T>(key, listener, opts);
+	}
+	subscribeAll(listener: (key: string | symbol, value: A) => void, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): (() => void) {
+		const { s, m, r } = opts;
 		this._globalListeners.add(listener);
-			return () => {
-				this._globalListeners.delete(listener);
-			};
-		},
-		clear: (opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void => {
-			const { s, m, r } = opts;
-			const meta = this.hub.wr;
-			this.store.clear(opts);
-			meta._waiters.clear();
-			const gl = this.map("_globalListeners_raven", this.m, this.r);
-			gl.clear();
-		},
-		waitFor: <T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Promise<T> => {
-			const { s, m, r } = opts;
-			const meta = this.hub.wr;
-
-			// If it already exists, resolve immediately
-			const existing = this.state.get<T>(key, opts);
-			if (existing !== undefined) return Promise.resolve(existing);
-
-			return new Promise<T>((resolve) => {
-				if (!meta._waiters.has(key)) meta._waiters.set(key, new Set());
-				meta._waiters.get(key)!.add(resolve as A);
-			});
-		},
-	};
+		return () => { this._globalListeners.delete(listener); };
+	}
+	clear(opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): void {
+		const { s, m, r } = opts;
+		this.store.clear(opts);
+		this._waiters.clear();
+		const gl = this.getS("_globalListeners", this.m, this.r);
+		gl.clear();
+	}
+	waitFor<T = A,>(key: string | symbol, opts: ScopeOptions = { s: this.s, m: this.m, r: this.r }): Promise<T> {
+		const { s, m, r } = opts;
+	
+		const existing = this.get<T>(key, opts);
+		if (existing !== undefined) return Promise.resolve(existing);
+	
+		return new Promise<T>((resolve) => {
+			(this._waiters[key] ??= new Set()).add(resolve as A);
+		});
+	}
+	// #endregion
+	//                                                                                                                        HOOKS
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public _devRecord: ((componentId: string, hookName: string, sauronId: string, key: string, value: A) => void) | null = null;
 	public devRecord(componentId: string, hookName: string, sauronId: string, key: string, value: A) {
 		return this._devRecord?.(componentId, hookName, sauronId, key, value);
@@ -18028,10 +20970,10 @@ class RAVEN {
 			return _root;
 		} else {
 			if (!init_hooks_context) {
-				this.set("_root", _root, true, this.s, this.m, this.r);
+				this.setDark("_root", _root, true, this.s, this.m, this.r);
 				init_hooks_context = true;
 			}
-			const updated_ctx = this.get("_root", this.s, this.m, this.r) as ComponentInstance;
+			const updated_ctx = this.getDark("_root", this.s, this.m, this.r) as ComponentInstance;
 			if (updated_ctx && updated_ctx.id === this.r) return updated_ctx;
 			else return _root;
 		}
@@ -18042,10 +20984,10 @@ class RAVEN {
 			return _root;
 		} else {
 			if (!init_hooks_context) {
-				this.set("_root", _root, true, this.s, this.m, this.r);
+				this.setDark("_root", _root, true, this.s, this.m, this.r);
 				init_hooks_context = true;
 			}
-			const updated_ctx = this.get("_root", this.s, this.m, this.r) as ComponentInstance;
+			const updated_ctx = this.getDark("_root", this.s, this.m, this.r) as ComponentInstance;
 			if (updated_ctx && updated_ctx.id === this.r) return updated_ctx;
 			else return _root;
 		}
@@ -18363,41 +21305,42 @@ class RAVEN {
 			}
 		}
 	}
+	// #endregion
+	//                                                                                                                       SAURON
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public _broadcastSS(key: A, value: A, storageType: S, fn: S, path?: S, domain?: S, options?: A) {
 		_localChange = true;
 		_channel?.postMessage({ key, value, storageType, fn, path, domain, options });
 	}
 	public getDark<T = A>(key: A, s?: S, m?: S, r?: S) {
-		return MaybePromise(this.state.get<T>(key, { s, m, r }));
+		return MaybePromise(this.get<T>(key, { s, m, r }));
 	}
 	public setDark<T = A>(label: S, value: T, triggerRender = true, s?: S, m?: S, r?: S) {
 		this._broadcastSS(label, value, "sauron", "set");
-		return MaybePromise(this.state.set(label, value, { triggerRender, s, m, r }));
+		return MaybePromise(this.set(label, value, { triggerRender, s, m, r }));
 	}
 	public getAllDark<T = A>(opts?: ScopeOptions): Record<S | symbol, T> {
-		return this.state.getAll<T>(opts);
+		return this.getAll<T>(opts);
 	}
 	public subAllDark(fn: (key: S | symbol, value: A) => V, s?: S, m?: S, r?: S): () => V {
 		if (!fn) return () => {};
-		return this.state.subscribeAll(fn, { s, m, r });
+		return this.subscribeAll(fn, { s, m, r });
 	}
 	public subDark<T = A>(k: A, fn: (value: T) => void, s?: S, m?: S, r?: S): () => void {
 		if (!k || !fn) return () => {};
-		return MaybePromise(this.state.subscribe<T>(k, fn, { s, m, r }));
+		return MaybePromise(this.subscribe<T>(k, fn, { s, m, r }));
 	}
 	public deleteDark(label: A, s?: S, m?: S, r?: S): B {
 		if (!label) return false;
-		const v = this.state.delete(label, { s, m, r });
+		const v = this.delete(label, { s, m, r });
 		this._broadcastSS(label, undefined, "sauron", "delete");
 		return v;
 	}
 	public waitForDark<T = A>(label: S, s?: S, m?: S, r?: S): P<T> {
-		return this.state.waitFor<T>(label, { s, m, r });
+		return this.waitFor<T>(label, { s, m, r });
 	}
 	public async deleteManyDark(keys: A[], s?: S, m?: S, r?: S): P<B> {
-		if (!Array.isArray(keys) || keys.length === 0) {
-			return false;
-		}
+		if (!Array.isArray(keys) || keys.length === 0) {return false;}
 		let allDeleted = true;
 
 		// Batch all deletes without triggering renders until the end
@@ -18410,80 +21353,71 @@ class RAVEN {
 
 		return allDeleted;
 	}
-	public async setManyDark<T = Record<S, A>>(entries: T): Promise<void> {
-		if (!entries || typeof entries !== "object") {
-			return;
-		}
+	public setManyDark<T = Record<S, A>>(entries: T): void {
+		if (!entries || typeof entries !== "object") { return; }
+	
 		// Batch all sets without triggering renders until the end
 		const entriesArray = Object.entries(entries);
+	
 		for (let i = 0; i < entriesArray.length; i++) {
 			const [key, value] = entriesArray[i];
+	
 			// Only trigger render on the last item to avoid multiple renders
 			const triggerRender = i === entriesArray.length - 1;
-			this.set(key, value, triggerRender);
+			this.set(key, value, { triggerRender });
 		}
 	}
-	public async getManyDark<T = A>(keys: S[], s?: S, m?: S, r?: S) {
-		if (!Array.isArray(keys) || keys.length === 0) {
-			return {};
-		}
-
+	public getManyDark<T = A>(keys: S[], s?: S, m?: S, r?: S) {
+		if (!Array.isArray(keys) || keys.length === 0) { return {}; }
+	
 		const result: Record<S, T | undefined> = {};
-
-		const promises = keys.map(async (key) => {
-			const value = await this.get<T>(key, s, m, r);
-			return { key, value };
-		});
-
-		const results = await Promise.all(promises);
-
-		for (const { key, value } of results) {
-			result[key] = value;
+	
+		for (const key of keys) {
+			result[key] = this.get<T>(key, { s, m, r });
 		}
-
+	
 		return result;
 	}
-
-	public getAll<T = A>(opts?: ScopeOptions): Record<S | SY, T> {
-		return this.state.getAll<T>(opts);
-	}
-	public get<T = A>(key: A, s?: S, m?: S, r?: S) {
-		return MaybePromise(this.state.get<T>(key, { s, m, r }));
-	}
+	// #endregion 
 	public getReChain<T = A>(key: A, s?: S, m?: S, r?: S) {
-		return MaybePromise(this.state.get<T>(key, { s, m, r }));
+		return MaybePromise(this.get<T>(key, { s, m, r }));
 	}
 	public setChain<T = A>(label: A, value: T, triggerRender = true, s?: S, m?: S, r?: S) {
-		return MaybePromise(this.state.set(label, value, { triggerRender, s, m, r }));
-	}
-	public set<T = A>(label: A, value: T, triggerRender = true, s?: S, m?: S, r?: S) {
-		this._broadcastSS(label, value, "sauron", "set");
-		return MaybePromise(this.state.set(label, value, { triggerRender, s, m, r }));
+		return MaybePromise(this.set(label, value, { triggerRender, s, m, r }));
 	}
 	public subChain<T = A>(label: S, fn: (value: T) => V, s?: S, m?: S, r?: S) {
-		return MaybePromise(this.state.subscribe<T>(label, fn, { s, m, r }));
+		return MaybePromise(this.subscribe<T>(label, fn, { s, m, r }));
 	}
 	public sub<T = A>(label: A, fn: (value: T) => V, s?: S, m?: S, r?: S): () => V {
 		if (!label || !fn) return () => {};
-		return MaybePromise(this.state.subscribe<T>(label, fn, { s, m, r }));
+		return MaybePromise(this.subscribe<T>(label, fn, { s, m, r }));
 	}
 	public subAll(fn: (key: A, value: A) => void, s?: S, m?: S, r?: S): () => V {
 		if (!fn) return () => {};
-		return this.state.subscribeAll(fn, { s, m, r });
+		return this.subscribeAll(fn, { s, m, r });
 	}
 	public delSauron(label: S, s?: S, m?: S, r?: S): B {
 		if (!label) return false;
-		const v = this.state.delete(label, { s, m, r });
+		const v = this.delete(label, { s, m, r });
 		this._broadcastSS(label, undefined, "sauron", "delete");
 		return v;
 	}
 	public deleteChain(label: A, s?: S, m?: S, r?: S) {
-		return MaybePromise(this.state.delete(label, { s, m, r }));
+		return MaybePromise(this.delete(label, { s, m, r }));
 	}
-	public waitFor<T = A>(label: S, s?: S, m?: S, r?: S): P<T> {
-		return this.state.waitFor<T>(label, { s, m, r });
+	public waitFor1<T = A>(label: S, s?: S, m?: S, r?: S): P<T> {
+		return this.waitFor<T>(label, { s, m, r });
 	}
-
+	public set1<T = A>(label: A, value: T, triggerRender = true, s?: S, m?: S, r?: S) {
+		this._broadcastSS(label, value, "sauron", "set");
+		return MaybePromise(this.set(label, value, { triggerRender, s, m, r }));
+	}
+	public ge1t<T = A>(key: A, s?: S, m?: S, r?: S) {
+		return MaybePromise(this.get<T>(key, { s, m, r }));
+	}
+	public getAl1l<T = A>(opts?: ScopeOptions): Record<S | SY, T> {
+		return this.getAll<T>(opts);
+	}
 	public __subscribers = new Map<string, Map<string, Map<string, Map<SignalKey, Set<(value: A) => void>>>>>();
 }
 // #endregion
@@ -18644,158 +21578,6 @@ async function deleteSS(key: string) {
 	});
 }
 // #endregion
-//                                                                                                                   [WAR ROOM] 
-// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-const rootRegistry = new M2<A, M2<A, M2<A, A>>>();
-export class WAR_ROOOM {
-	public r: A = "THE_WIZARD_ROOT_REG";
-	public m: A = "SAURON_MASTER_REG";
-	public s: A = "SAURON_SLAVE_REG";
-	public k: A = "__SAURON__";
-	public raven: DEATH_STAR;
-	//                                                                                                                  MAIN CACHES
-	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	#META = new M2<A, M2<A, M2<A, A>>>();
-	_meta: M2<A, A>;
-	#SIGNALS = new M2<A, M2<A, M2<A, A>>>();
-	_signals: M2<A, A>;
-	#NAKED_SIGNALS = new M2<A, M2<A, M2<A, A>>>();
-	_naked_signals: M2<A, A>;
-	#CONTEXT = new M2<A, M2<A, M2<A, A>>>();
-	_context: M2<A, A>;
-	#ATOMS = new M2<A, M2<A, M2<A, A>>>();
-	_atoms: M2<A, A>;
-	#SAURON = new M2<A, M2<A, M2<A, A>>>();
-	_sauron: M2<A, A>;
-	#BUS = new M2<A, M2<A, M2<A, A>>>();
-	_bus: M2<A, A>;
-
-	COMPONENTS = new M2<S, ComponentInstance>();
-	// #endregion
-	//                                                                                                                    THE CLOUD
-	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	_components: M<A, A>;
-	_batches: M<S | SY>;
-	_batchQueue: M<S | SY, A>;
-	_batchOpts: M<S | SY, { triggerRender?: B }>;
-	_sys: M<S, SysEntry>;
-	_sealed: M<S, SysEntry>;
-	_keyContracts: M<S, Set<S>>;
-	_conflicts: M<S, ConflictPolicy>;
-	_conflictStrategies: M<S, "latest" | "fail" | "accumulate">;
-	_causal: M<S, CausalEntry[]>;
-	_history: M<S | SY, HistoryEntry[]>;
-	_scopes: M<S, SignalScope>;
-	_msgHandlers: M<S, Set<(p: A) => V>>;
-	_lastWriteSource: M<S, S>;
-	_mainMap: M<A, S>;
-	_tupleCache: M<S, S>;
-	_weakMap: M<O, S>;
-	_boundaries: M<O, S>;
-
-	_global_subscribers: M2<S, Set<() => V>>;
-	_waiters: M2<S | SY, Set<(value: A) => V>>;
-	_listeners: M2<A, Set<(value: A) => void>>;
-	// #endregion
-	//                                                                                                                    SIGNALS
-	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-	_timeTravelMaul: MTracer<A, A>;
-	_historyMaul: MTracer<A, A>;
-
-	_subscribersMaul: M2<A, A>;
-	_listenersMaul: M2<A, A>;
-	// #endregion
-
-	get_root(c: S, r: S) {
-		let root;
-		switch (c) {
-			case "#CONTEXT": { root = this.#CONTEXT.get(r); break; }
-			case "#META": { root = this.#META.get(r); break; }
-			case "#SIGNALS": { root = this.#SIGNALS.get(r); break; }
-			case "#ATOMS": { root = this.#ATOMS.get(r); break; }
-			case "#SAURON": { root = this.#SAURON.get(r); break; }
-			case "#BUS": { root = this.#BUS.get(r); break; }
-			case "#NAKED_SIGNALS": { root = this.#NAKED_SIGNALS.get(r); break; }
-			case "gt": { root = rootRegistry.get(r); break; }
-			case "globalThis": { (globalThis as A)[r]; break; }
-		}
-		if (!root) {
-			root = new M2<A, M2<A, M2<A, A>>>();
-			switch (c) {
-				case "#CONTEXT": { root = this.#CONTEXT.set(r, root); break; }
-				case "#META": { root = this.#META.set(r, root); break; }
-				case "#SIGNALS": { root = this.#SIGNALS.set(r, root); break; }
-				case "#ATOMS": { root = this.#ATOMS.set(r, root); break; }
-				case "#SAURON": { root = this.#SAURON.set(r, root); break; }
-				case "#NAKED_SIGNALS": { root = this.#NAKED_SIGNALS.set(r, root); break; }
-				case "#BUS": { root = this.#BUS.set(r, root); break; }
-				case "gt": { rootRegistry.set(r, root); break; }
-				case "globalThis": { (globalThis as A)[r] = root; break; }
-			}
-		}
-		return root;
-	}
-	map<K = A, V = A>(s = this.s, m = this.m, r = this.r, c = "gt"): M2<K, V> | K | V {
-		const root = this.get_root(c, r);
-		let masterMap = root.get(m);
-		if (!masterMap) {
-			masterMap = new M2<A, M2<A, A>>();
-			root.set(m, masterMap);
-		}
-		let slaveMap = masterMap.get(s);
-		if (!slaveMap) {
-			slaveMap = new M2<K, V>();
-			masterMap.set(s, slaveMap);
-		}
-		return slaveMap;
-	}
-	tracer<K = A, V = A>(s = this.s, m = this.m, r = this.r, c = "gt"): MTracer<K, V> | K | V {
-		const root = this.get_root(c, r);
-		let masterMap = root.get(m);
-		if (!masterMap) {
-			masterMap = new M2<A, M2<A, A>>();
-			root.set(m, masterMap);
-		}
-		let slaveMap = masterMap.get(s);
-		if (!slaveMap) {
-			slaveMap = new MTracer<K, V>();
-			masterMap.set(s, slaveMap);
-		}
-		return slaveMap;
-	}
-	set<V = A>(s = this.s, m = this.m, r = this.r, c = "gt"): STracer<V> | K | V {
-		const root = this.get_root(c, r);
-		let masterMap = root.get(m);
-		if (!masterMap) {
-			masterMap = new M2<A, M2<A, A>>();
-			root.set(m, masterMap);
-		}
-		let slaveMap = masterMap.get(s);
-		if (!slaveMap) {
-			slaveMap = new STracer<V>();
-			masterMap.set(s, slaveMap);
-		}
-		return slaveMap;
-	}
-	obj<V = A>(s = this.s, m = this.m, r = this.r, c = "gt"): OTracer<V> | K | V {
-		const root = this.get_root(c, r);
-		let masterMap = root.get(m);
-		if (!masterMap) {
-			masterMap = new M2<A, M2<A, A>>();
-			root.set(m, masterMap);
-		}
-		let slaveMap = masterMap.get(s);
-		if (!slaveMap) {
-			slaveMap = new OTracer<V>();
-			masterMap.set(s, slaveMap);
-		}
-		return slaveMap;
-	}
-	
-}
-// (globalThis as A)[r] //  STATE_CONTEXT === "sauron" ? : null;
-// (globalThis as A)[r] = root;
-// #endregion
 //                                                                                                             [DEATH STAR] HUB
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 export class DEATH_STAR {
@@ -18806,13 +21588,13 @@ export class DEATH_STAR {
 	public governor: GOVERNOR;
 	public reg: Registry;
 
-	public wr: WAR_ROOOM;
 	//public MESH: Mesh;
 
 	public r: S = "THE_WIZARD_ROOT_REG";
 	public m: S = "SAURON_MASTER_REG";
 	public s: S = "SAURON_SLAVE_REG";
 	public k: A = "__SIGNALS__";
+	public cache = 'mesh'
 	public RTRN_TO_SDR = 'RTRN_TO_SDR'
 	public DEVTOOLS_ACTIVE = false
 	public capacity = 1 << 20
@@ -18831,49 +21613,6 @@ export class DEATH_STAR {
 	constructor(REGISTRY: A = null, MESH: THE_MESH_STORE = null) {
 		this.ready = (async () => {
 			const serial = executor();
-			await serial.enqueue(() => (this.wr = new WAR_ROOOM(this)));
-			await serial.enqueue(() => (
-				this.wr.raven = this,
-				this.wr.r = this.r ?? "THE_WIZARD_ROOT_REG",
-				this.wr.m = this.m ?? "SAURON_MASTER_REG",
-				this.wr.s = this.s ?? "SAURON_SLAVE_REG",
-				this.wr.k = this.k ?? "THE_K_KEY",
-				this.wr._meta = this.wr.map("_meta", this.m, this.r, "#META"),
-				this.wr._signals = this.wr.map("_signals", this.m, this.r, "#SIGNALS"),
-				this.wr._naked_signals = this.wr.map("_naked_signals", this.m, this.r, "#NAKED_SIGNALS"),
-				this.wr._context = this.wr.map("_context", this.m, this.r, "#CONTEXT"),
-				this.wr._atoms = this.wr.map("_atoms", this.m, this.r, "#ATOMS"),
-				this.wr._sauron = this.wr.map("_sauron", this.m, this.r, "#SAURON"),
-				this.wr._bus = this.wr.map("_bus", this.m, this.r, "#BUS"),
-				this.wr._gt = this.wr.map("_gt", this.m, this.r),
-				this.wr._listeners = this.wr.map("_listeners_raven", this.m, this.r),
-				this.wr._global_subscribers = this.wr.map<M<S, Set<() => V>>>("_global_subscribers_raven", this.m, this.r),
-				this.wr._waiters = this.wr.map<M<S | SY, Set<(value: A) => V>>>("_waiters_raven", this.m, this.r),
-				this.wr._persistent_keys = this.wr.map("_persistent_keys_raven", this.m, this.r),
-				this.wr._persistent = this.wr.map("_persistent_raven", this.m, this.r),
-				this.wr._components = this.wr.map("_components_raven", this.m, this.r),
-				this.wr._batches = this.wr.map("_batches_raven", this.m, this.r),
-				this.wr._batchQueue = this.wr.map("_batchQueue_raven", this.m, this.r),
-				this.wr._batchOpts = this.wr.map<M<S | SY, { triggerRender?: B }>>("_batchOpts_raven", this.m, this.r),
-				this.wr._sys = this.wr.map<M<S, SysEntry>>("_sys_raven", this.m, this.r),
-				this.wr._sealed = this.wr.map<M<S, SysEntry>>("_sealed_raven", this.m, this.r),
-				this.wr._keyContracts = this.wr.map<M<S, Set<S>>>("_keyContracts_raven", this.m, this.r),
-				this.wr._conflicts = this.wr.map<M<S, ConflictPolicy>>("_conflicts_raven", this.m, this.r),
-				this.wr._conflictStrategies = this.wr.map<M<S, "latest" | "fail" | "accumulate">>("_conflictStrategies_raven", this.m, this.r),
-				this.wr._causal = this.wr.map<M<S, CausalEntry[]>>("_causal_raven", this.m, this.r),
-				this.wr._history = this.wr.map<M<S | SY, HistoryEntry[]>>("_history_raven", this.m, this.r),
-				this.wr._scopes = this.wr.map<M<S, SignalScope>>("_scopes_raven", this.m, this.r),
-				this.wr._msgHandlers = this.wr.map<M<S, Set<(p: A) => V>>>("_msgHandlers_raven", this.m, this.r),
-				this.wr._lastWriteSource = this.wr.map<M<S, S>>("_lastWriteSource_raven", this.m, this.r),
-				this.wr._mainMap = this.wr.map("_mainMap_raven", this.m, this.r),
-				this.wr._tupleCache = this.wr.map<M<S, S>>("_tupleCache_raven", this.m, this.r),
-				this.wr._weakMap = this.wr.map<M<O, S>>("_weakMap_raven", this.m, this.r),
-				this.wr._boundaries = this.wr.map<M<O, S>>("_boundaries_raven", this.m, this.r),
-				this.wr._timeTravelMaul = this.wr.map<M<O, S>>("_timeTravel_maul", this.m, this.r, "#SIGNALS"),
-				this.wr._historyMaul = this.wr.map<M<O, S>>("_history_maul", this.m, this.r, "#SIGNALS"),
-				this.wr._subscribersMaul = this.wr.map<M2<O, S>>(" _subscribers_maul", this.m, this.r, "#SIGNALS"),
-				this.wr._listenersMaul = this.wr.map<M2<O, S>>(" _listeners_maul", this.m, this.r, "#SIGNALS")
-			));
 			await serial.enqueue(() => (this.state = new RAVEN(this)));
 
 			await serial.enqueue(() => {
@@ -18882,9 +21621,16 @@ export class DEATH_STAR {
 			});
 			await serial.enqueue(() => {
 				if (MESH) this.mesh = MESH;
-				else if (!MESH) this.mesh = new THE_MESH_STORE(this);
+				else if (!MESH) this.mesh = new THE_MESH_STORE({
+					r: this.r, 
+					m: this.m, 
+					s: this.s,
+					cache: this.cache,
+				});
 			});
-
+			
+			await serial.enqueue(() => (expose(this.reg, 'reg')));
+			await serial.enqueue(() => (expose(this.mesh, 'mesh')));
 			await serial.enqueue(() => (this.governor = new GOVERNOR(this)));
 			await serial.enqueue(() => (this.bus = new SITH()));
 			await serial.enqueue(() => (this.signals = new SIGNALS()));
@@ -18894,8 +21640,7 @@ export class DEATH_STAR {
 		})();
 	}
 	public update_mesh(MESH: THE_MESH_STORE) {
-		this.mesh = MESH
-		this.bus.mesh_store = MESH
+		this.mesh = MESH 
 	}
 	public init() {
 		//                                                                                                             SIGNALS.signals
@@ -18904,19 +21649,16 @@ export class DEATH_STAR {
 		// #endregion
 		//                                                                                                              signals.signals
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		this.signals.root = this
 		this.signals.r = this.r
 		this.signals.m = this.m
 		this.signals.s = this.s
-		this.signals.k = this.k
-		this.signals.hub = this
-		this.signals.signals = this.signals
-		this.signals._signal_cells = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_CELLS");
-		this.signals._signal_listeners = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_LISTENERS");
-		this.signals._signal_global_listeners = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_GLOBAL_LISTENERS");
-		this.signals._signal_waiters = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_WAITERS");
-		this.signals._signal_persistent = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_PERSISTENT");
-		this.signals._signal_persistent_keys = this.signals.signals.getS(this.s, this.m, this.r, "#SIGNAL_PERSISTENT_KEYS");
+		this.signals.k = this.k 
+		this.signals._signal_cells = this.signals.getS(this.s, this.m, this.r, "#SIGNAL_CELLS");
+		this.signals._signal_listeners = this.signals.getS(this.s, this.m, this.r, "#SIGNAL_LISTENERS");
+		this.signals._signal_global_listeners = this.signals.getS(this.s, this.m, this.r, "#SIGNAL_GLOBAL_LISTENERS");
+		this.signals._signal_waiters = this.signals.getS(this.s, this.m, this.r, "#SIGNAL_WAITERS");
+		this.signals._signal_persistent = this.signals.getS(this.s, this.m, this.r, "#SIGNAL_PERSISTENT");
+		this.signals._signal_persistent_keys = this.signals.getS(this.s, this.m, this.r, "#SIGNAL_PERSISTENT_KEYS");
 		this.signals.selfId = `SIGNALS_${this.reg._sid()}`
 		// #endregion
 		//                                                                                                       signals.signals_raptor
@@ -18930,12 +21672,12 @@ export class DEATH_STAR {
 		this.signals.signals_raptor.k = this.k;
 		this.signals.signals_raptor.signals = this.signals
 		this.signals.signals_raptor.DARTH_MAUL_ENGINE = this.signals.signals_raptor_ngin;
+		this.signals.signals_raptor._raptor_signals = this.signals.signals_raptor.getS(this.s, this.m, this.r)
+		this.signals.signals_raptor._timeTravelMaul = this.signals.signals_raptor.getS(this.s, this.m, this.r)
 		// #endregion
 		//                                                                                                                          bus
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		this.bus.root = this;
 		this.bus.shared = this.shared;
-		this.bus.state = this.state.state;
 		this.bus.wait = this.wait;
 		this.bus.maxBatch = this.maxBatch;
 		this.bus.capacity = this.capacity;
@@ -18948,15 +21690,13 @@ export class DEATH_STAR {
 		// #endregion
 		//                                                                                                          bus.batching_raptor
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		this.bus.batching_raptor.hub = this.bus;
-		this.bus.batching_raptor.root = this
+ 
 		// #endregion
 		//                                                                                                            bus.stream_raptor
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 		this.bus.stream_raptor.capacity = this.capacity;
 		this.bus.stream_raptor.channelMask = this.capacity - 1;
-		this.bus.stream_raptor.hub = this.bus;
-		this.bus.stream_raptor.root = this
+  
 		this.bus.stream_raptor.r = this.r;
 		this.bus.stream_raptor.m = this.m;
 		this.bus.stream_raptor.s = this.s;
@@ -18964,8 +21704,7 @@ export class DEATH_STAR {
 		// #endregion
 		//                                                                                                                      bus.ro2
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		this.bus.ro2.root = this;
-		this.bus.ro2.hub = this.bus;
+ 
 		this.bus.ro2.r = this.r;
 		this.bus.ro2.m = this.m;
 		this.bus.ro2.s = this.s;
@@ -18976,7 +21715,7 @@ export class DEATH_STAR {
 		// #endregion
 		//                                                                                                                   bus.exogul
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		this.bus.exogul.hub = this.bus;
+ 
 		if (!pow2(this.capacity)) throw new Error("slotCapacity must be a power of two");
 		// #endregion
 		//                                                                                                             SIGNALS.signals
@@ -18993,19 +21732,15 @@ export class DEATH_STAR {
 
 		//                                                                                                             SIGNALS.signals
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		this.bus.drs.root = this;
-		this.bus.drs.hub = this.bus;
+ 
 		this.bus.drs.r = this.r;
 		this.bus.drs.m = this.m;
 		this.bus.drs.s = this.s;
-		this.bus.drs.k = this.k;
-		this.bus.drs.state = this.state.state
-		this.bus.drs.bus = this.bus
+		this.bus.drs.k = this.k; 
 		// #endregion
 		//                                                                                                             SIGNALS.signals
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-		this.bus.spreadsheet.hub = this.bus;
-		this.bus.spreadsheet.root = this;
+ 
 		this.bus.spreadsheet.r = this.r;
 		this.bus.spreadsheet.m = this.m;
 		this.bus.spreadsheet.s = this.s;
@@ -19050,7 +21785,18 @@ export class DEATH_STAR {
 		this.reg = REGISTRY
 	}
 }
-
+declare module './slab.types' {
+	interface SlabServices {
+	  bus: SITH;
+	  state: RAVEN;
+	  mesh: THE_MESH_STORE;
+	  signals: SIGNALS;
+	  reg: Registry;
+	  m: S;
+	  s: S;
+	  k: S;
+	}
+}
 // send               p: U, k: A, s: S = '_globalThis', m: S = this.m, r: S = this.r, adapter = "ws"
 // send.gt.hot        p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'
 // sub                handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh"
@@ -19077,17 +21823,16 @@ class _serialExecutor {
 function executor() {
 	return new _serialExecutor();
 }
-
 function getDark<T = A>(key: A, s?: S, m?: S, r?: S) {
-	return MaybePromise(root.state.state.get<T>(key, { s, m, r }));
+	return MaybePromise(root.state.get<T>(key, { s, m, r }));
 }
 function setDark<T = A>(label: S, value: T, triggerRender:B = true, s?: S, m?: S, r?: S) {
 	root.state._broadcastSS(label, value, "sauron", "set");
-	return MaybePromise(root.state.state.set(label, value, { triggerRender, s, m, r }));
+	return MaybePromise(root.state.set(label, value, { triggerRender, s, m, r }));
 }
 function subDark<T = A>(fn: (value: T) => void, k: S, s?: S, m?: S, r?: S): () => void {
 	if (!k || !fn) return () => {};
-	return MaybePromise(root.state.state.subscribe<T>(k, fn, { s, m, r }));
+	return MaybePromise(root.state.subscribe<T>(k, fn, { s, m, r }));
 }
 // #endregion
 //                                                                                                                    USE STATE
