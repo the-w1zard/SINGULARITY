@@ -3323,8 +3323,149 @@ Average:                                11.36 M ops/sec
 ---------------------------------------------------------
 ```
 
+After performance update
+```txt
+------------ RAVEN.store.get ---------------
+Peak (Best Batch):                      259.34 M ops/sec
+Average:                                105.75 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.has ---------------
+Peak (Best Batch):                      251.70 M ops/sec
+Average:                                25.86 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.set ---------------
+Peak (Best Batch):                      64.93 M ops/sec
+Average:                                33.37 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.set.functional ---------------
+Peak (Best Batch):                      39.16 M ops/sec
+Average:                                26.11 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.get.set ---------------
+Peak (Best Batch):                      54.02 M ops/sec
+Average:                                48.20 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.entries ---------------
+Peak (Best Batch):                      7.51 M ops/sec
+Average:                                6.62 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.subscribe ---------------
+Peak (Best Batch):                      2.55 M ops/sec
+Average:                                2.32 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.persist.get ---------------
+Peak (Best Batch):                      59.26 M ops/sec
+Average:                                48.68 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.persist.has ---------------
+Peak (Best Batch):                      72.35 M ops/sec
+Average:                                64.40 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.persist.set ---------------
+Peak (Best Batch):                      50.32 M ops/sec
+Average:                                47.28 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.get ---------------
+Peak (Best Batch):                      53.19 M ops/sec
+Average:                                33.23 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.getHot ---------------
+Peak (Best Batch):                      145.39 M ops/sec
+Average:                                107.64 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.set ---------------
+Peak (Best Batch):                      33.32 M ops/sec
+Average:                                18.04 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.get.set ---------------
+Peak (Best Batch):                      80.10 M ops/sec
+Average:                                61.39 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.getAll ---------------
+Peak (Best Batch):                      6.68 M ops/sec
+Average:                                5.65 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.getByPrefix ---------------
+Peak (Best Batch):                      4.68 M ops/sec
+Average:                                4.17 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.subscribe ---------------
+Peak (Best Batch):                      2.90 M ops/sec
+Average:                                2.64 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.notify ---------------
+Peak (Best Batch):                      1.18 M ops/sec
+Average:                                0.96 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.get ---------------
+Peak (Best Batch):                      2.57 M ops/sec
+Average:                                2.08 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.set ---------------
+Peak (Best Batch):                      15.56 M ops/sec
+Average:                                14.42 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.get.set ---------------
+Peak (Best Batch):                      2.19 M ops/sec
+Average:                                1.80 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.selector.get ---------------
+Peak (Best Batch):                      2.46 M ops/sec
+Average:                                1.77 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.selector.set ---------------
+Peak (Best Batch):                      8.58 M ops/sec
+Average:                                8.18 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.derived.get ---------------
+Peak (Best Batch):                      2.47 M ops/sec
+Average:                                1.91 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.derived.set ---------------
+Peak (Best Batch):                      12.58 M ops/sec
+Average:                                12.15 M ops/sec
+---------------------------------------------------------
+```
+
 </details>
 
+> [!NOTE] BUILDERS LOG #16
+>
+> TLDR: design bench so that the test runs in the sub one sec time window or when 11 secs has elapsed. This rule would remove all variables concerning v8.
+> 
+> The discrepency in numbers... man, am I fucking so happy that... it dawned on me when it did hahaha, or else I would literally be here for days trying to figure this out...
+>
+> SOOOOO... couple of things are working against us, thankfully I only wasted like 20 mins on this, but since we are now benching against the real live implementation in place of a set up bench and harness it changes how we hit v8 than we did previously.
+>
+> The implementation has a ready boolean to signify once everything has been initalised, that is part of the problem.
+>
+> The second problem was where exactly during v8s execution window, were we hitting exactly. For those of you that dont know v8s execution window starts with the largest burst of performance fitting within a sub 1 second window. Which is how 99% of all users us v8, which is why this exists. If v8 continues to run, it sees a massive dip, obviously, following the burst up till around the 5-6 second mark. When it expereiences another dip, due to handing off the process to v8s turbo. From here... it takes till the around the 10 sec mark to finally start hitting v8s turbo when it has fully initialized.
+>
+> Basically... the hot paths we were testing fucking... just hit it at all the wrong times as you can see here: 
+> ```txt
+> ------------ RAVEN.state.getHot2 ---------------
+> Peak (Best Batch):                      1453.49 M ops/sec
+> Average:                                587.23 M ops/sec
+> ---------------------------------------------------------
+> ------------ RAVEN.state.getHot ---------------
+> Peak (Best Batch):                      376.36 M ops/sec
+> Average:                                206.64 M ops/sec
+> ---------------------------------------------------------
+> ```
+> Prior to this run, both hot paths were only hitting 100 mill lol... as you can see here, hot 2 is hitting the burst on its way down since it is only getting 1453 here, when it should be getting almost 1700. getHot, previousl runs at 100, now almost at the very end of the burst is at 375... sooo... 
+>
+> In order to have complete control and give each test the same variables... we need to design the tests differently, that way each test atleast has the same parameters to run that way we aren't accidently changing them from test to test and not making us wonder about life on why one test is so much slower then the next. When in reality, it literally has nothing to do with the code, the bench or the harness... but in fact, it was v8 all along.
+>
+> But let me be clear. We are NOT designing your average bench mark of warm up phase, fucking 5+ seconds of other bullshit and then finally start testing for another 10 secs or whatever stupid and dumb processs they designed. THAT IS NOT HOW THE REAL WORLD USES V8, but instead benchmarkers, for whatever reason, bench against a made up and unreal synthetic test. The numbers do not translate to the real world in any form, but maybe sub 1% of use cases.
+>
+> There is a reason why v8 sub 1 sec performance... bursts the way it does. Since users only hit either the sub 1 burst, or when turbo has already flattened. 
+>
+> The next time you create a test, keep that in mind. Because you may not even be hitting v8 at the exact timing you should be.
+>
+> If you do not beleive a fucking word of this... that's ok, go to the message queues repo... download the main test, and run vader, rule of 2, and raven and these three disruptors will give you an exact look into how v8s execution process actually runs in real time. And you can hit it as many times as you want to witness it. 
+>
+> I would suggest keeping the tests to sub 20secs because at the 26 sec mark, you will heat soak the core and performance will drop based on your thermal situation. To run these tests, there is literally 0 configuration, just run 'bun run test.ts' since buns performance is much higher than nodes, and run the non-bare metal test. As the bare metal test does not log the results per second, but instead once when the test ends.
+>
 
 <details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[THE DARK SIDE: USE STATE]</span> </strong></summary>
 
@@ -3438,3 +3579,77 @@ Average:                                11.36 M ops/sec
 
 </details>
 
+> [!NOTE] BUILDERS LOG #16
+>
+> I'm adding some final touches on the message queue and its adapters and an idea just came to me... along with a question... why do we always just create... a signle sub... when in reality there are in fact 2 subs, there is the one that devs usualy and almost 100% use which is the sub and unsub version, where you create the sub at the call site but also immediatly unsub the sub as soon as the first message comes in....
+> 
+> Then theres the second kind, the kind that you do not want to unsub, the long standing version and in fact want it to stay open... 
+>
+> It is super late in the game to change the api, but this would be adding to it in a way that won't disrupt the current paths, where they will stay the way they are as it already exposes the unsub version, and we simply just add the new one beside it.
+> 
+```tsx
+	public sub = (() => {
+		const fn = (handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "globalThis" ): () => V => {	
+			let unsub: () => V = () => {};
+			const once_handler: A = (p: U) => {unsub();handler(p);};
+			unsub = this.sub_infinity(once_handler, k, s, m, r, c);
+			return unsub;
+		};
+
+	public sub_infinity = (() => {
+		const fn = (handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "globalThis"): () => V => {
+			// CHANNEL LEVEL
+			const channelSet = (mesh.getR(r, c)[r] ??= new Set<A>()) as Set<A>;
+			channelSet.add(handler);
+	
+			// SUB_CHANNEL LEVEL
+			const subMap = mesh.getM(m, r, c);
+			const subSet = (subMap[r] ??= new Set<A>()) as Set<A>;
+			subSet.add(handler);
+	
+			// TRIP_CHANNEL LEVEL
+			const tripMap = mesh.getS(s, m, r, c);
+			const tripSet = (tripMap[m] ??= new Set<A>()) as Set<A>;
+			tripSet.add(handler);
+	
+			// QUAD_CHANNEL LEVEL
+			const quadMap = (tripMap[k] ??= Object.create(null)) as Record<S, Set<A>>;
+			const quadSet = (quadMap[s] ??= new Set<A>()) as Set<A>;
+			quadSet.add(handler);
+	
+			return () => {
+				// QUAD_CHANNEL
+				quadSet.delete(handler);
+				if (!quadSet.size) delete quadMap[s];
+				if (!Object.keys(quadMap).length) delete tripMap[k];
+	
+				// TRIP_CHANNEL
+				tripSet.delete(handler);
+				if (!tripSet.size) delete tripMap[m];
+	
+				// SUB_CHANNEL
+				subSet.delete(handler);
+				if (!subSet.size) delete subMap[r];
+	
+				// CHANNEL
+				channelSet.delete(handler);
+				if (!channelSet.size) delete mesh.getR(r, c)[r];
+	
+				// Remove empty hierarchy nodes
+				if (!Object.keys(subMap).length) { delete mesh.getR(c, r)[m]; }
+				if (!Object.keys(tripMap).length) { delete mesh.getR(c, r)[m]; }
+			};
+		};
+	
+		return fn;
+	})();
+```
+
+
+
+
+
+> [!NOTE] PERFORMANCE NOTES
+>
+> - replace all maps with objs, arrays even better if you have the use case for them but arrays aren't the best for real world app use cases 
+> - nesting fns in iiffes seems to experience a drop in total ops, from the results I have experienced. I still do this for erverything but hot paths due to increases ergo

@@ -49,8 +49,7 @@ import "@the-w1zard/alias_types"
 import "@the-w1zard/types"
 import "@the-w1zard/dx"
 import { Registry } from "@the-w1zard/the-registry";
-import { GateSmasher } from "../node_modules/@the-w1zard/solutions/dist/index.js";
-
+import { GateSmasher } from "#solutions";
 // import { Mesh } from "@the-w1zard/the-mesh"
 // import { darkState, useEffect } from "@the-w1zard/the-dark-side"
 import { queue, Queue } from "./comps/queue";
@@ -64,6 +63,8 @@ import { CellVM } from "./comps/cell-worker";
 import { expose } from './slab';
 import type { SlabServices } from './slab.types';
 import { slab } from './slab.types';
+import { BinaryFrameSerializer } from './comps/serializer';
+import { ControlPlaneBootstrapper } from "./comps/RULE_OF_2";
 
 // #endregion
 //                                                                                                                        M2 O2
@@ -1350,7 +1351,7 @@ type SIG_BUS_Message<P = A> = {
 	p: { p: P };
 	ts?: N;
 	_ack?: B;
-  
+	cache?: 'mesh'|'globalThis'
 	/** Correlates an async reply back to the awaiting send() call. */
 	replyTo?: S;
   
@@ -2631,8 +2632,9 @@ class SIGNALS {
 			if (atom && v === undefined) { return atom; }
 			if (atom && v !== undefined) {
 				const t = UF(v);
-				registry[k] = t;
-				return t;
+				atom = signal(t);
+				registry[k] = atom;
+				return atom;
 			}
 	
 			const initialValue = UF(v);
@@ -10778,6 +10780,7 @@ class THE_MESH_STORE {
 		this.k = hub.k;
 		this.cache = cache
 		this.DEVTOOLS_ACTIVE = hub.DEVTOOLS_ACTIVE
+
 		this._handlers = this.getS(this.handlers_s, this.m, this.bus_r, 'globalThis');
 		this._signals = this.getS(this.signals_s, this.m, this.signals_r);
 		this._raptor_signals = this.getS(this.raptors_signals_s, this.m, this.signals_r);
@@ -10786,20 +10789,20 @@ class THE_MESH_STORE {
 		this._hooks = this.getS(this.hooks_s, this.m, this.state_r);
 		this._the_mesh_cache = this.getS(this.mesh_s, this.m, this.r);
 	}
-	public getS(s: S = this.s, m: S = this.m, r: S = this.r, c: c_type = "mesh") {
+	public getS(s: S = this.s, m: S = this.m, r: S = this.r, c: c_type = "globalThis") {
 		const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
 		const rL = (cache[r] ??= new O2());
 		const mL = (rL[m] ??= new O2());
 		const sL = (mL[s] ??= new O2());
 		return sL;
 	}
-	public getM(m: S = this.m, r: S = this.r, c = "mesh") {
+	public getM(m: S = this.m, r: S = this.r, c = "globalThis") {
 		const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
 		const rL = (cache[r] ??= new O2());
 		const mL = (rL[m] ??= new O2());
 		return mL;
 	}
-	public getR(r: S = this.r, c = "mesh") {
+	public getR(r: S = this.r, c = "globalThis") {
 		const cache = this.cache === 'globalThis' || c === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
 		const rL = (cache[r] ??= new O2());
 		return rL;
@@ -12162,7 +12165,7 @@ class THE_MESH_STORE {
 	})();
 	binary = new BINARY_AVRO_CODEGEN(SIG_BUS_SCHEMA);
 	public async invokeHandlers(msg: SIG_BUS_Message): P<U> {
-		const root = this.THE_MESH_CACHE
+		const root = this.cache === 'globalThis' ? (globalThis as A) : this.THE_MESH_CACHE;
 		const rL = (root[msg.r] ??= Object.create(null));
 		const mL = (rL[msg.m] ??= Object.create(null));
 		const channel = mL[msg.s] ??= Object.create(null);
@@ -12309,7 +12312,7 @@ class THE_MESH_STORE {
 			// #endregion
 			//                                    SEND
 			// #region ═════════════════════════════════════════════════════════════════════════════════════
-				switch (adapter) {
+			switch (adapter) {
 					case "http": this.DISPATCH.sendMessage(msg, this.adp.http);break;
 					case "cross_boundary": this.DISPATCH.sendMessage(msg, this.adp.cross_boundary); break;
 					case "same_boundary": this.DISPATCH.sendMessage(msg, this.adp.same_boundary); break;
@@ -12349,55 +12352,12 @@ class THE_MESH_STORE {
 					default:this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel);
 					// this.sendMessage(msg, a.http);
 					// this.sendMessage(msg, a.same_boundary);
-				}
+			}
 			// #endregion
 			const result = await this.invokeHandlers(msg);
 			console.log(result, "emitter.dispatch.result");
 			return result;
 		};
-		fn.hot_dispatch = async (raw: A, adapter?: string) => {
-			let msg: A = raw;
-
-			GateSmasher( adapter, () => ({
-				http: {  match: (e) => e === "http", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http), },
-				cross_boundary: {  match: (e) => e === "cross_boundary", execute: () => this.DISPATCH.sendMessage(msg, this.adp.cross_boundary), },
-				same_boundary: {  match: (e) => e === "same_boundary", execute: () => this.DISPATCH.sendMessage(msg, this.adp.same_boundary), },
-				atom: {  match: (e) => e === "atom", execute: () => this.DISPATCH.sendMessage(msg, this.adp.atom), },
-				ws: {  match: (e) => e === "ws", execute: () => this.DISPATCH.sendMessage(msg, this.adp.ws), },
-				reliableSocket: {  match: (e) => e === "reliableSocket", execute: () => this.DISPATCH.sendMessage(msg, this.adp.reliableSocket), },
-				workerThread: {  match: (e) => e === "workerThread", execute: () => this.DISPATCH.sendMessage(msg, this.adp.workerThread), },
-				webTransportDatagrams: {  match: (e) => e === "webTransportDatagrams", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransportDatagrams), },
-				webTransportClient: {  match: (e) => e === "webTransportClient", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransportClient), },
-				webRtcDataChannelHost: {  match: (e) => e === "webRtcDataChannelHost", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelHost), },
-				webRtcDataChannelClient: {  match: (e) => e === "webRtcDataChannelClient", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelClient), },
-				dataChannel: {  match: (e) => e === "dataChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.dataChannel), },
-				startWebTransportServer: {  match: (e) => e === "startWebTransportServer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startWebTransportServer), },
-				webTransport: {  match: (e) => e === "webTransport", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransport), },
-				webRTC: {  match: (e) => e === "webRTC", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRTC), },
-				sse: {  match: (e) => e === "sse", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sse), },
-				sharedArrayBuffer: {  match: (e) => e === "sharedArrayBuffer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sharedArrayBuffer), },
-				sharedWorker: {  match: (e) => e === "sharedWorker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sharedWorker), },
-				postMessage: {  match: (e) => e === "postMessage", execute: () => this.DISPATCH.sendMessage(msg, this.adp.postMessage), },
-				serviceWorker: {  match: (e) => e === "serviceWorker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.serviceWorker), },
-				startNamedPipeBroker: {  match: (e) => e === "startNamedPipeBroker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startNamedPipeBroker), },
-				startMQTTBroker: {  match: (e) => e === "startMQTTBroker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startMQTTBroker), },
-				mqtt: {  match: (e) => e === "mqtt", execute: () => this.DISPATCH.sendMessage(msg, this.adp.mqtt), },
-				messageChannel: {  match: (e) => e === "messageChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.messageChannel), },
-				http2Client: {  match: (e) => e === "http2Client", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http2Client), },
-				http2Server: {  match: (e) => e === "http2Server", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http2Server), },
-				electronIPCMain: {  match: (e) => e === "electronIPCMain", execute: () => this.DISPATCH.sendMessage(msg, this.adp.electronIPCMain), },
-				electronIPCRenderer: {  match: (e) => e === "electronIPCRenderer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.electronIPCRenderer), },
-				nativeMessagingHost: {  match: (e) => e === "nativeMessagingHost", execute: () => this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingHost), },
-				nativeMessagingBrowser: {  match: (e) => e === "nativeMessagingBrowser", execute: () => this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingBrowser), },
-				childProcess: {  match: (e) => e === "childProcess", execute: () => this.DISPATCH.sendMessage(msg, this.adp.childProcess), },
-				broadcastChannel2: {  match: (e) => e === "broadcastChannel2", execute: () => this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel2), },
-				broadcastChannel: {  match: (e) => e === "broadcastChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel), },
-			  })
-			);
-			const result = await this.invokeHandlers(msg);
-			console.log(result, "emitter.dispatch.result");
-			return result;
-		}
 		fn.sendMessage = (msg: SIG_BUS_Message, adapter: SIG_BUS_Adapter, boundary?: "same-app" | "same-node" | "cross-node") => {
 			// Prepare p - JSON serialize, strip functions
 			let finalizedPayload = {...msg};
@@ -12468,6 +12428,49 @@ class THE_MESH_STORE {
 		};
 		return fn;
 	})();
+	public hot_dispatch = async (raw: A, adapter?: string) => {
+		let msg: A = raw;
+
+		GateSmasher(adapter, () => ({
+			http: {  match: (e) => e === "http", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http), },
+			cross_boundary: {  match: (e) => e === "cross_boundary", execute: () => this.DISPATCH.sendMessage(msg, this.adp.cross_boundary), },
+			same_boundary: {  match: (e) => e === "same_boundary", execute: () => this.DISPATCH.sendMessage(msg, this.adp.same_boundary), },
+			atom: {  match: (e) => e === "atom", execute: () => this.DISPATCH.sendMessage(msg, this.adp.atom), },
+			ws: {  match: (e) => e === "ws", execute: () => this.DISPATCH.sendMessage(msg, this.adp.ws), },
+			reliableSocket: {  match: (e) => e === "reliableSocket", execute: () => this.DISPATCH.sendMessage(msg, this.adp.reliableSocket), },
+			workerThread: {  match: (e) => e === "workerThread", execute: () => this.DISPATCH.sendMessage(msg, this.adp.workerThread), },
+			webTransportDatagrams: {  match: (e) => e === "webTransportDatagrams", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransportDatagrams), },
+			webTransportClient: {  match: (e) => e === "webTransportClient", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransportClient), },
+			webRtcDataChannelHost: {  match: (e) => e === "webRtcDataChannelHost", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelHost), },
+			webRtcDataChannelClient: {  match: (e) => e === "webRtcDataChannelClient", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelClient), },
+			dataChannel: {  match: (e) => e === "dataChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.dataChannel), },
+			startWebTransportServer: {  match: (e) => e === "startWebTransportServer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startWebTransportServer), },
+			webTransport: {  match: (e) => e === "webTransport", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransport), },
+			webRTC: {  match: (e) => e === "webRTC", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRTC), },
+			sse: {  match: (e) => e === "sse", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sse), },
+			sharedArrayBuffer: {  match: (e) => e === "sharedArrayBuffer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sharedArrayBuffer), },
+			sharedWorker: {  match: (e) => e === "sharedWorker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sharedWorker), },
+			postMessage: {  match: (e) => e === "postMessage", execute: () => this.DISPATCH.sendMessage(msg, this.adp.postMessage), },
+			serviceWorker: {  match: (e) => e === "serviceWorker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.serviceWorker), },
+			startNamedPipeBroker: {  match: (e) => e === "startNamedPipeBroker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startNamedPipeBroker), },
+			startMQTTBroker: {  match: (e) => e === "startMQTTBroker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startMQTTBroker), },
+			mqtt: {  match: (e) => e === "mqtt", execute: () => this.DISPATCH.sendMessage(msg, this.adp.mqtt), },
+			messageChannel: {  match: (e) => e === "messageChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.messageChannel), },
+			http2Client: {  match: (e) => e === "http2Client", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http2Client), },
+			http2Server: {  match: (e) => e === "http2Server", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http2Server), },
+			electronIPCMain: {  match: (e) => e === "electronIPCMain", execute: () => this.DISPATCH.sendMessage(msg, this.adp.electronIPCMain), },
+			electronIPCRenderer: {  match: (e) => e === "electronIPCRenderer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.electronIPCRenderer), },
+			nativeMessagingHost: {  match: (e) => e === "nativeMessagingHost", execute: () => this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingHost), },
+			nativeMessagingBrowser: {  match: (e) => e === "nativeMessagingBrowser", execute: () => this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingBrowser), },
+			childProcess: {  match: (e) => e === "childProcess", execute: () => this.DISPATCH.sendMessage(msg, this.adp.childProcess), },
+			broadcastChannel2: {  match: (e) => e === "broadcastChannel2", execute: () => this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel2), },
+			broadcastChannel: {  match: (e) => e === "broadcastChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel), },
+		  })
+		);
+		const result = await this.invokeHandlers(msg);
+		console.log(result, "emitter.dispatch.result");
+		return result;
+	}
 	public _register_adapters = (() => {
 		const fn = () =>{}
 		fn.registerAdapter=(adapter: SIG_BUS_Adapter, assign: number): (() => void) => {
@@ -12510,31 +12513,132 @@ class THE_MESH_STORE {
 			adapter.onDisconnect?.(() => {this.online = false;});	
 			return () => {unsub();};
 		}
-		fn.globalthis = () => { mesh._register_adapters.registerAdapter(this._adapters.globalthis(), 33); };
-		fn.store = () => { mesh._register_adapters.registerAdapter(this._adapters.store(), 34); };
 		fn.sith = () => { mesh._register_adapters.registerAdapter(this._adapters.pipe(), 34); };
 		fn.sith_2 = () => { mesh._register_adapters.registerAdapter(this._adapters.pipe(), 35); };
+		fn.globalthis = () => { mesh._register_adapters.registerAdapter(this._adapters.globalthis(), 33); };
+		fn.registry = () => { mesh._register_adapters.registerAdapter(this._adapters.registry(), 34); };
+		fn.ws = () => { mesh._register_adapters.registerAdapter(this._adapters.ws(), 0); };
 		fn.disruptor = () => { mesh._register_adapters.registerAdapter(this._adapters.disruptor(this.k, this.s, this.m, this.r), 32); };
+		fn.atom = () => { mesh._register_adapters.registerAdapter(this._adapters.atom(), 30); };
+		fn.pipe = () => { mesh._register_adapters.registerAdapter(this._adapters.pipe(), 30); };
 		fn.reliableSocket = () => { mesh._register_adapters.registerAdapter(this._adapters.reliableSocket(), 4); };
 		fn.workerThread = () => { mesh._register_adapters.registerAdapter(this._adapters.workerThread(), 5); };
+		fn.webTransportClient = () => { mesh._register_adapters.registerAdapter(this._adapters.webTransportClient(), 5); };
 		fn.webRtcDataChannelHost = () => { mesh._register_adapters.registerAdapter(this._adapters.webRtcDataChannelHost(), 8); };
-		fn.http = () => { mesh._register_adapters.registerAdapter(this._adapters.http(), 11); };
-		fn.webRTC= () => { mesh._register_adapters.registerAdapter(this._adapters.webRTC(), 14); };
+		fn.webRTC = () => { mesh._register_adapters.registerAdapter(this._adapters.webRTC(), 14); };
 		fn.sharedArrayBuffer = () => { mesh._register_adapters.registerAdapter(this._adapters.sharedArrayBuffer(), 15); };
+		fn.serviceWorker = () => { mesh._register_adapters.registerAdapter(this._adapters.serviceWorker(), 15); };
+		fn.broadcastChannel2 = () => { mesh._register_adapters.registerAdapter(this._adapters.broadcastChannel2(), 27); };
+		fn.broadcastChannel = () => { mesh._register_adapters.registerAdapter(this._adapters.broadcastChannel(), 28); };
+		fn.http = () => { mesh._register_adapters.registerAdapter(this._adapters.http(), 11); };
 		fn.http2Client = () => { mesh._register_adapters.registerAdapter(this._adapters.http2Client(), 18); };
 		fn.mqtt = () => { mesh._register_adapters.registerAdapter(this._adapters.mqtt(), 21); };
 		fn.nativeMessagingHost= () => { mesh._register_adapters.registerAdapter(this._adapters.nativeMessagingHost(), 24); };
 		fn.childProcess = () => { mesh._register_adapters.registerAdapter(this._adapters.childProcess(), 26); };
-		fn.broadcastChannel = () => { mesh._register_adapters.registerAdapter(this._adapters.broadcastChannel2(), 27); };
-		fn.broadcastChannel = () => { mesh._register_adapters.registerAdapter(this._adapters.broadcastChannel(), 28); };
-		fn.atom = () => { mesh._register_adapters.registerAdapter(this._adapters.atom(), 30); };
-		fn.ws = () => { mesh._register_adapters.registerAdapter(this._adapters.ws(), 0); };
 		return fn
 	})();
 	public _adapters =(() => {
 		const fn = () => {}
-		fn.globalthis = () => {};
-		fn.store = () => {};
+		fn.sith = () => {return null}
+		fn.sith_2 = () => {return null}
+		fn.globalthis = (): SIG_BUS_Adapter => {
+			type A = typeof globalThis & {[r: string]: O2<S, O2<S, O2<S, O2<S, (msg: SIG_BUS_Message) => void>>>>;};
+		
+			const G = globalThis as A;
+		
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			let closed = false;
+		
+			const unsubs = new O2<string, () => void>();
+			const ensure = (msg: SIG_BUS_Message) => {
+				const rL = (G[msg.r] ??= new O2());
+				const mL = (rL[msg.m] ??= new O2());
+				const sL = (mL[msg.s] ??= new O2());
+				const kL = (sL[msg.k] ??= new O2());
+				const id = `${msg.r}|${msg.m}|${msg.s}|${msg.k}`;
+				if (unsubs.has(id)) return;
+				unsubs.set(id, kL.sub((current: SIG_BUS_Message) => { if (current && messageHandler) messageHandler(current); }), );
+			};
+			return {
+				id: "globalthis",
+				send(msg: SIG_BUS_Message) {
+					if (closed) throw new Error("globalthis adapter closed");
+					ensure(msg);
+					const rL = (G[msg.r] ??= new O2());
+					const mL = (rL[msg.m] ??= new O2());
+					const sL = (mL[msg.s] ??= new O2());
+					sL.create(msg.k, msg);
+				},
+				onMessage(handler) {
+					messageHandler = handler;
+					return () => { messageHandler = null; };
+				},
+				onConnect(handler) {connectHandler = handler; handler?.(); },
+				onDisconnect(handler) {disconnectHandler = handler; },		
+				close() {
+					if (closed) return;
+					closed = true;
+					for (const u of unsubs.values()) u();
+					unsubs.clear();
+					disconnectHandler?.();
+				},
+			};
+		};
+		fn.registry = () => {
+			type A = typeof globalThis & {[r: string]: O2<S, O2<S, O2<S, O2<S, (msg: SIG_BUS_Message) => void>>>>;};
+		
+			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+			let closed = false;
+		
+			const unsubs = new O2<string, () => void>();
+			const ensure = (msg: SIG_BUS_Message) => {
+				try {
+					const kL = slab.mesh.handlers[msg.k]
+					const id = `${msg.r}|${msg.m}|${msg.s}|${msg.k}`;
+					if (unsubs.has(id)) return;
+					unsubs.set(id, kL.handler((current: SIG_BUS_Message) => { if (current && messageHandler) messageHandler(current); }), );
+				} catch {
+					const cache = msg.cache === 'globalThis' ? (globalThis as A) : slab.mesh.THE_MESH_CACHE;
+					const rL = (cache[msg.r] ??= new O2());
+					const mL = (rL[msg.m] ??= new O2());
+					const sL = (mL[msg.s] ??= new O2());
+					const kL = sL[msg.k]
+					const id = `${msg.r}|${msg.m}|${msg.s}|${msg.k}`;
+					if (unsubs.has(id)) return;
+					unsubs.set(id, kL.handler((current: SIG_BUS_Message) => { if (current && messageHandler) messageHandler(current); }), );
+				}
+			};
+			return {
+				id: "globalthis",
+				send(msg: SIG_BUS_Message) {
+					if (closed) throw new Error("globalthis adapter closed");
+					ensure(msg);
+					try {
+						return slab.mesh.handlers[msg.k]?.handler(msg);
+					} catch {
+						const cache = msg.cache === 'globalThis' ? (globalThis as A) : slab.mesh.THE_MESH_CACHE;
+						const rL = (cache[msg.r] ??= new O2());
+						const mL = (rL[msg.m] ??= new O2());
+						const sL = (mL[msg.s] ??= new O2());
+						sL[msg.k]?.handler(msg);
+					}
+				},
+				onMessage(handler) { messageHandler = handler; return () => { messageHandler = null; }; },
+				onConnect(handler) {connectHandler = handler; handler?.(); },
+				onDisconnect(handler) {disconnectHandler = handler; },		
+				close() {
+					if (closed) return;
+					closed = true;
+					for (const u of unsubs.values()) u();
+					unsubs.clear();
+					disconnectHandler?.();
+				},
+			};
+		};
 		fn.ws = (url: string = "ws://localhost:6453", protocols?: string | string[]): SIG_BUS_Adapter => {
 			let ws: WebSocket | null = null;
 			let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -12557,7 +12661,8 @@ class THE_MESH_STORE {
 					connectHandler?.();
 				};
 
-				ws.onmessage = (e) => { try { const msg = JSON.parse(e.data as string) as SIG_BUS_Message; messageHandler?.(msg); } catch {} };
+				//ws.onmessage = (e) => { try { const msg = JSON.parse(e.data as string) as SIG_BUS_Message; messageHandler?.(msg); } catch {} };
+				ws.onmessage = (e) => { try { const msg = e.data as SIG_BUS_Message; messageHandler?.(msg); } catch {} };
 				ws.onclose = () => {
 					disconnectHandler?.();
 					reconnectTimer = setTimeout(() => { reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay); connect(); }, reconnectDelay);
@@ -12567,7 +12672,8 @@ class THE_MESH_STORE {
 			connect();
 			return {
 				send(msg: any) {
-					if (ws?.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(msg)); } 
+					//if (ws?.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(msg)); } 
+					if (ws?.readyState === WebSocket.OPEN) { ws.send(msg); } 
 					else { messageQueue.push(msg); }
 				},
 				onMessage(handler) { messageHandler = handler; return () => { messageHandler = null; }; },
@@ -12625,7 +12731,7 @@ class THE_MESH_STORE {
 			};
 		};
 		fn.atom = (): SIG_BUS_Adapter => {
-			const A = this.root.SIGNALS;
+			const A = slab.signals;
 			const unsubs = new Map<string, () => void>(); // address -> atom unsubscribe
 			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
 			let connectHandler: (() => void) | null = null;
@@ -12642,7 +12748,7 @@ class THE_MESH_STORE {
 				send(msg: SIG_BUS_Message) {
 					if (closed) throw new Error("atom adapter closed"); // register() demotes
 					ensure(msg);
-					A.create(msg.k, msg,  { triggerRender: false, source:"bus" }, msg.s, msg.m, msg.r);
+					A.signal(msg, msg.k, msg.s, msg.m, msg.r);
 				},
 				onMessage(handler) {messageHandler = handler;return () => {messageHandler = null;};},
 				onConnect(handler) {connectHandler = handler;handler?.();}, // in-process: always connected
@@ -12872,9 +12978,9 @@ class THE_MESH_STORE {
 			function flushQueue() {
 				if (status !== "open" || !socket) return;
 				const now = Date.now();
-				const queue = (self.root.SAURON.get(opts.queueKey) ?? []).filter((q: A) => now - q.queuedAt <= opts.maxQueueAge);
+				const queue = (slab.state.get(opts.queueKey) ?? []).filter((q: A) => now - q.queuedAt <= opts.maxQueueAge);
 				queue.forEach((q: A) => socket?.send(q.raw));
-				self.root.SAURON.set(opts.queueKey, []);
+				slab.state.set(opts.queueKey, []);
 			}
 
 			open();
@@ -12887,10 +12993,10 @@ class THE_MESH_STORE {
 						return;
 					}
 					if (!opts.queueEnabled) return;
-					const queue = self.root.SAURON.get(opts.queueKey) ?? [];
+					const queue = slab.state.get(opts.queueKey) ?? [];
 					queue.push({ raw, queuedAt: Date.now() });
 					if (queue.length > opts.maxQueueSize) queue.shift();
-					self.root.SAURON.set(opts.queueKey, queue);
+					slab.state.set(opts.queueKey, queue);
 				},
 				onMessage(handler: (msg: SIG_BUS_Message) => void): () => void {
 					messageListeners.add(handler);
@@ -12920,7 +13026,7 @@ class THE_MESH_STORE {
 					return status;
 				},
 				queueSize(): number {
-					return (self.root.SAURON.get(opts.queueKey) ?? []).length;
+					return (slab.state.get(opts.queueKey) ?? []).length;
 				},
 				close(): void {
 					allowReconnect = false;
@@ -12929,37 +13035,37 @@ class THE_MESH_STORE {
 				},
 			};
 		};
-		fn.workerThread = (worker: import("worker_threads").Worker = new Worker(new URL("./cse.worker.ts", import.meta.url))): CSEAdapter => {
-			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
-			let connectHandler: (() => void) | null = null;
-			let disconnectHandler: (() => void) | null = null;
+/**		fn.workerThread = (worker: import("worker_threads").Worker = new Worker(new URL("./cse.worker.ts", import.meta.url))): CSEAdapter => {
+ let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+ let connectHandler: (() => void) | null = null;
+ let disconnectHandler: (() => void) | null = null;
 
-			worker.on("message", (raw: A) => {
-				try {
-					messageHandler?.(typeof raw === "string" ? JSON.parse(raw) : (raw as SIG_BUS_Message));
-				} catch {}
-			});
-			worker.on("exit", () => disconnectHandler?.());
-			process.nextTick(() => connectHandler?.());
+ worker.on("message", (raw: A) => {
+	 try {
+		 messageHandler?.(typeof raw === "string" ? JSON.parse(raw) : (raw as SIG_BUS_Message));
+	 } catch {}
+ });
+ worker.on("exit", () => disconnectHandler?.());
+ process.nextTick(() => connectHandler?.());
 
-			return {
-				send(msg) {
-					worker.postMessage(msg);
-				},
-				onMessage(handler) {
-					messageHandler = handler;
-					return () => {
-						messageHandler = null;
-					};
-				},
-				onConnect(handler) {
-					connectHandler = handler;
-				},
-				onDisconnect(handler) {
-					disconnectHandler = handler;
-				},
-			};
-		};
+ return {
+	 send(msg) {
+		 worker.postMessage(msg);
+	 },
+	 onMessage(handler) {
+		 messageHandler = handler;
+		 return () => {
+			 messageHandler = null;
+		 };
+	 },
+	 onConnect(handler) {
+		 connectHandler = handler;
+	 },
+	 onDisconnect(handler) {
+		 disconnectHandler = handler;
+	 },
+ };
+}; */
 		fn.webTransportDatagrams = (session: WebTransportDatagramsLike): CSEAdapter => {
 			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
 			let connectHandler: (() => void) | null = null;
@@ -13087,7 +13193,6 @@ class THE_MESH_STORE {
 				},
 			};
 		};
-		// next 3 all same adapter
 		fn.webRtcDataChannelHost = (
 			pc: RTCPeerConnection = new RTCPeerConnection({
 				iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -13097,6 +13202,7 @@ class THE_MESH_STORE {
 			const dc = pc.createDataChannel(label, { ordered: true });
 			return this._adapters.dataChannel(dc);
 		};
+		// NEED TO FIX
 		fn.webRtcDataChannelClient = (
 			pc: RTCPeerConnection = new RTCPeerConnection({
 				iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -13197,6 +13303,7 @@ class THE_MESH_STORE {
 				},
 			};
 		};
+		// NEED TO FIX
 		//= new WebTransport('https://localhost:6459')
 		fn.webTransport = (session: WebTransportSessionLike): CSEAdapter => {
 			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
@@ -13407,6 +13514,7 @@ class THE_MESH_STORE {
 				},
 			};
 		};
+		// NEED TO FIX
 		fn.sse = (source: { req: import("http").IncomingMessage; res: import("http").ServerResponse } | { url: string }): CSEAdapter => {
 			// ── server side ──────────────────────────────────────────────
 			if ("res" in source) {
@@ -15209,13 +15317,11 @@ export class SITH {
 	public i32Capacity = 1 << 18
 	public byteCapacity = 1 << 20
 	public DEVTOOLS_ACTIVE = false
-	constructor() {
-		expose(this, 'bus');
-	}
+	constructor() { expose(this, 'bus'); }
 	public send = (() => {
 		//const msg: SIG_BUS_Message = { id: this.hub.reg._sid(), r: r, m: m, s: s, k: k,  p: p, ts: Date.now(), _ack: false };
 		const fn = <T = A>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, adapter = "ws") => {
-			let v: A = mesh.DISPATCH({ id: slab.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
+			let v: A = slab.mesh.DISPATCH({ id: slab.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
 			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 			else {
 				const tMs = 5000;
@@ -15315,49 +15421,31 @@ export class SITH {
 		})();
 		return fn;
 	})();
+	public hot_send<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r, adapter: 'atom'): T | P<T> | UD {
+		try {
+			return slab.mesh.handlers[k]?.handler({ p: p });
+		} catch {
+			let v: A = slab.mesh.hot_dispatch({ id: slab.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
+			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+			else {
+				const tMs = 5000;
+				return MaybePromise( (() => {
+						return new P<T>((resolve, reject) => {
+							let timer: RT<typeof setTimeout> | UD;
+							if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+							if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+						});
+					})(),
+				);
+			}
+		}
+	}
 	public sub = (() => {
-		const fn = ( handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh" ): () => V => {
-			// CHANNEL LEVEL
-			const channelSet = (mesh.getR(r, c)[r] ??= new Set<A>()) as Set<A>;
-			channelSet.add(handler);
-
-			// SUB_CHANNEL LEVEL
-			const subMap = mesh.getM(m, r, c);
-			const subSet = (subMap[r] ??= new Set<A>()) as Set<A>;
-			subSet.add(handler);
-
-			// TRIP_CHANNEL LEVEL
-			const tripMap = mesh.getS(s, m, r, c);
-			const tripSet = (tripMap[m] ??= new Set<A>()) as Set<A>;
-			tripSet.add(handler);
-
-			// QUAD_CHANNEL LEVEL
-			const quadMap = (tripMap[k] ??= Object.create(null)) as Record<S, Set<A>>;
-			const quadSet = (quadMap[s] ??= new Set<A>()) as Set<A>;
-			quadSet.add(handler);
-
-			return () => {
-				// QUAD_CHANNEL
-				quadSet.delete(handler);
-				if (!quadSet.size) delete quadMap[s];
-				if (!Object.keys(quadMap).length) delete tripMap[k];
-
-				// TRIP_CHANNEL
-				tripSet.delete(handler);
-				if (!tripSet.size) delete tripMap[m];
-
-				// SUB_CHANNEL
-				subSet.delete(handler);
-				if (!subSet.size) delete subMap[r];
-
-				// CHANNEL
-				channelSet.delete(handler);
-				if (!channelSet.size) delete mesh.getR(r, c)[r];
-
-				// Remove empty hierarchy nodes
-				if (!Object.keys(subMap).length) { delete mesh.getR(c, r)[m]; }
-				if (!Object.keys(tripMap).length) { delete mesh.getR(c, r)[m]; }
-			};
+		const fn = (handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "globalThis" ): () => V => {	
+			let unsub: () => V = () => {};
+			const once_handler: A = (p: U) => {unsub();handler(p);};
+			unsub = this.sub_infinity(once_handler, k, s, m, r, c);
+			return unsub;
 		};
 		fn.hot = (handler: A, k: S ) => {
 			const root = mesh._handlers;
@@ -15367,7 +15455,7 @@ export class SITH {
 			return () => { handlers!.delete(handler); if (handlers!.size === 0) { delete root[k]; } };
 		}
 		fn.gt = (() => {
-			const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'): () => V=> {
+			const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='globalThis'): () => V=> {
 				const root =  c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
 				const rL = (root[r] ??= new O2());
 				const mL = (rL[m] ??= new O2());
@@ -15390,14 +15478,6 @@ export class SITH {
 						}
 					};
 				}
-				return fn;
-			})();
-			return fn;
-		})();
-		fn.adapter = (() => {
-			const fn =( handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh")  => { }
-			fn.hot = (() => {
-				const fn = () =>{ }
 				return fn;
 			})();
 			return fn;
@@ -15443,6 +15523,62 @@ export class SITH {
 		};
 		return fn;
 	})();
+	public sub_infinity = (() => {
+		const fn = (handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "globalThis"): () => V => {
+			// CHANNEL LEVEL
+			const channelSet = (mesh.getR(r, c)[r] ??= new Set<A>()) as Set<A>;
+			channelSet.add(handler);
+	
+			// SUB_CHANNEL LEVEL
+			const subMap = mesh.getM(m, r, c);
+			const subSet = (subMap[r] ??= new Set<A>()) as Set<A>;
+			subSet.add(handler);
+	
+			// TRIP_CHANNEL LEVEL
+			const tripMap = mesh.getS(s, m, r, c);
+			const tripSet = (tripMap[m] ??= new Set<A>()) as Set<A>;
+			tripSet.add(handler);
+	
+			// QUAD_CHANNEL LEVEL
+			const quadMap = (tripMap[k] ??= Object.create(null)) as Record<S, Set<A>>;
+			const quadSet = (quadMap[s] ??= new Set<A>()) as Set<A>;
+			quadSet.add(handler);
+	
+			return () => {
+				// QUAD_CHANNEL
+				quadSet.delete(handler);
+				if (!quadSet.size) delete quadMap[s];
+				if (!Object.keys(quadMap).length) delete tripMap[k];
+	
+				// TRIP_CHANNEL
+				tripSet.delete(handler);
+				if (!tripSet.size) delete tripMap[m];
+	
+				// SUB_CHANNEL
+				subSet.delete(handler);
+				if (!subSet.size) delete subMap[r];
+	
+				// CHANNEL
+				channelSet.delete(handler);
+				if (!channelSet.size) delete mesh.getR(r, c)[r];
+	
+				// Remove empty hierarchy nodes
+				if (!Object.keys(subMap).length) { delete mesh.getR(c, r)[m]; }
+				if (!Object.keys(tripMap).length) { delete mesh.getR(c, r)[m]; }
+			};
+		};
+	
+		return fn;
+	})();
+	public hot_sub<P = U, T = U>(handler: BUS_HANDLER<P, T>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): () => V {
+		const channel = (slab.mesh.handlers[k] ??= {});
+		channel.handler = handler;
+		return () => {
+			if (channel.handler === handler) {
+				channel.handler = undefined;
+			}
+		};
+	}
 	async *streamGen<P = A, R = A>(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, opts: { adapter?: S } = {}): AG<R, V, U> {
 		const replyTo = slab.reg._sid();
 		const queue: R[] = [];
@@ -20168,6 +20304,1335 @@ export class SITH {
 		return z
 		// #endregion
 	})(); 
+}
+class SITH_2 {
+	public r: S = "THE_DARK_SIDE_BUS";
+	public m: S = "SAURON_MASTER_REG";
+	public s: S = "SAURON_SLAVE_REG";
+	public k: S = "__SAURON__";
+	public capacity: N;
+	public pidCapacity
+	public schedule
+	public shared
+	public maxBatch
+	public wait
+	public f64Capacity = 1 << 18
+	public u32Capacity = 1 << 18
+	public i32Capacity = 1 << 18
+	public byteCapacity = 1 << 20
+	public DEVTOOLS_ACTIVE = false
+	public send = (() => {
+		//const msg: SIG_BUS_Message = { id: this.hub.reg._sid(), r: r, m: m, s: s, k: k,  p: p, ts: Date.now(), _ack: false };
+		const fn = <T = A>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, adapter = "ws") => {
+			let v: A = slab.mesh.DISPATCH({ id: slab.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
+			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+			else {
+				const tMs = 5000;
+				return MaybePromise( (() => {
+						return new P<T>((resolve, reject) => {
+							let timer: RT<typeof setTimeout> | UD;
+							if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+							if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+						});
+					})(),
+				);
+			}
+		};
+		fn.gt = (() => {
+			const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
+				const root = c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
+				const rL = (root[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const channel = mL[s] ??= Object.create(null);
+				const handler = channel[k]?.handler;
+				if (!handler) return undefined;
+				const v: A = handler(p, { r, m, s, k, p: p });
+				if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+				else {
+					const tMs = 5000;
+					return MaybePromise( (() => {
+							return new P<T>((resolve, reject) => {
+								let timer: RT<typeof setTimeout> | UD;
+								if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+								if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+							});
+						})(),
+					);
+				}
+			}
+			fn.hot = (() => {
+				const fn =<T = U, P = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
+					const handler = mesh[k]._handlers;
+					if (!handler) return undefined;
+					const v: A = handler(p, { r, m, s, k, p: p });
+					if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+					else {
+						const tMs = 5000;
+						return MaybePromise( (() => {
+								return new P<T>((resolve, reject) => {
+									let timer: RT<typeof setTimeout> | UD;
+									if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+									if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+								});
+							})(),
+						);
+					}
+				}
+				return fn;
+			})();
+			return fn;
+		})();
+		fn.adapter = (() => {
+			const fn =()  => { }
+			fn.hot = (() => {
+				const fn = () =>{ }
+				return fn;
+			})();
+			return fn;
+		})();
+		fn.stream=<T = U>(p: U, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: S='mesh'): T | P<T> | UD =>{
+			const root =  c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
+			const rL = (root[r] ??= Object.create(null));
+			const mL = (rL[m] ??= Object.create(null));
+			const _listeners = mL[s] ??= Object.create(null);
+			const handler = _listeners[k]?.handler;
+			if (!handler) return undefined;
+			const msg: SIG_BUS_Message1 = { r, m, s, k, p: p, _ack: false };
+			const result = handler(p, msg);
+			if (handler) { for (const listener of handler) listener(msg); }
+			return result as T | P<T> | UD;
+		}
+		fn.nested = (() => {
+			const fn =(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh')  => {
+				const root =  c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
+				const rL = (root[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				const _listeners = mL[s] ??= Object.create(null);
+				const set = _listeners[k]?.handler;
+				if (!set) return;
+				for (const fn of set) { fn(p); }
+			}
+			fn.hot = (() => {
+				const fn = (p: P, k: S, s: S = '_globalThis') =>{
+					const set = mesh._handlers[k]?.handler;
+					if (!set) return;
+					for (const fn of set) { fn(p); }
+				}
+				return fn;
+			})();
+			return fn;
+		})();
+		return fn;
+	})();
+	public sub = (() => {
+		const fn = ( handler: A, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c: c_type = "mesh" ): () => V => {
+			// CHANNEL LEVEL
+			const channelSet = (mesh.getR(r, c)[r] ??= new Set<A>()) as Set<A>;
+			channelSet.add(handler);
+
+			// SUB_CHANNEL LEVEL
+			const subMap = mesh.getM(m, r, c);
+			const subSet = (subMap[r] ??= new Set<A>()) as Set<A>;
+			subSet.add(handler);
+
+			// TRIP_CHANNEL LEVEL
+			const tripMap = mesh.getS(s, m, r, c);
+			const tripSet = (tripMap[m] ??= new Set<A>()) as Set<A>;
+			tripSet.add(handler);
+
+			// QUAD_CHANNEL LEVEL
+			const quadMap = (tripMap[k] ??= Object.create(null)) as Record<S, Set<A>>;
+			const quadSet = (quadMap[s] ??= new Set<A>()) as Set<A>;
+			quadSet.add(handler);
+
+			return () => {
+				// QUAD_CHANNEL
+				quadSet.delete(handler);
+				if (!quadSet.size) delete quadMap[s];
+				if (!Object.keys(quadMap).length) delete tripMap[k];
+
+				// TRIP_CHANNEL
+				tripSet.delete(handler);
+				if (!tripSet.size) delete tripMap[m];
+
+				// SUB_CHANNEL
+				subSet.delete(handler);
+				if (!subSet.size) delete subMap[r];
+
+				// CHANNEL
+				channelSet.delete(handler);
+				if (!channelSet.size) delete mesh.getR(r, c)[r];
+
+				// Remove empty hierarchy nodes
+				if (!Object.keys(subMap).length) { delete mesh.getR(c, r)[m]; }
+				if (!Object.keys(tripMap).length) { delete mesh.getR(c, r)[m]; }
+			};
+		};
+		fn.hot = (handler: A, k: S ) => {
+			const root = mesh._handlers;
+			let handlers = root[k] as Set<A> | undefined;
+			if (!handlers) { handlers = new Set<A>(); root[k] = handlers as A; }
+			handlers.add(handler);
+			return () => { handlers!.delete(handler); if (handlers!.size === 0) { delete root[k]; } };
+		}
+		fn.gt = (() => {
+			const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh'): () => V=> {
+				const root =  c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
+				const rL = (root[r] ??= new O2());
+				const mL = (rL[m] ??= new O2());
+				const sl = mL[s] ??= new O2(); 
+				const channel = (sl[k] ??= Object.create(null));
+				channel.handler = handler;
+					return () => {
+						if (channel.handler === handler) {
+							channel.handler = undefined;
+						}
+					};
+			}
+			fn.hot = (() => {
+				const fn =<P = U, T = U> (handler: BUS_HANDLER<P, T>, k: S, s: S = '_globalThis'): () => V =>{
+					const channel =  mesh._handlers[k]?.handler;
+					channel.handler = handler;
+					return () => {
+						if (channel.handler === handler) {
+							channel.handler = undefined;
+						}
+					};
+				}
+				return fn;
+			})();
+			return fn;
+		})();
+		fn.nested = (handler: (data: any) => void, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, c:S='mesh') => {
+			if (r === this.r && m === this.m && s === this.s) {
+				const root =  mesh._handlers[k]?.handler; 
+				const _listeners = root[k];
+				if (!_listeners.has(k)) {
+					_listeners.set(k, new Set());
+				}
+				_listeners[k]!.add(handler);
+				return () => {
+					const set = _listeners.get(k);
+					if (set) {
+						set.delete(handler);
+						if (set.size === 0) _listeners.delete(k);
+					}
+				};
+			} else {
+				const root = c === 'globalThis' ? globalThis as any : mesh.THE_MESH_CACHE;
+				const rL = (root[r] ??= Object.create(null));
+				const mL = (rL[m] ??= Object.create(null));
+				let _listeners = mL[s] ??= Object.create(null);
+				_listeners = _listeners[k]
+				if (!_listeners.has(k)) {
+					_listeners.set(k, new Set());
+				}
+				_listeners.get(k)!.add(handler);
+				return () => {
+					const set = _listeners.get(k);
+					if (set) {
+						set.delete(handler);
+						if (set.size === 0) _listeners.delete(k);
+					}
+				};
+			}
+		};
+		fn.nested3 = (p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r) => {
+			if (r === this.r && m === this.m && s === this.s) {
+			} else {
+			}
+		};
+		return fn;
+	})();
+	public hot_send<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r, adapter: 'atom'): T | P<T> | UD {
+		try {
+			return slab.mesh.handlers[k]?.handler({ p: p });
+		} catch {
+			let v: A = slab.mesh.hot_dispatch({ id: slab.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
+			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
+			else {
+				const tMs = 5000;
+				return MaybePromise( (() => {
+						return new P<T>((resolve, reject) => {
+							let timer: RT<typeof setTimeout> | UD;
+							if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+							if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
+						});
+					})(),
+				);
+			}
+		}
+	}
+	public hot_sub<P = U, T = U>(handler: BUS_HANDLER<P, T>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): () => V {
+		const channel = (slab.mesh.handlers[k] ??= {});
+		channel.handler = handler;
+		return () => {
+			if (channel.handler === handler) {
+				channel.handler = undefined;
+			}
+		};
+	}
+	async *streamGen<P = A, R = A>(p: P, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r, opts: { adapter?: S } = {}): AG<R, V, U> {
+		const replyTo = slab.reg._sid();
+		const queue: R[] = [];
+		let closed = false;
+		let failure: U;
+		let wake: (() => V) | UD;
+		const handlers = mesh.getS(s, m, r).get(k);
+		if (!handlers || !handlers.size) { throw new Error(`[rift] no subscriber for k="${k}"`); }
+		const reply = (value: R | Promise<R> | typeof END) => {
+			if (value === END) { closed = true; } 
+			else if (value instanceof Error) { failure = value; }
+			else { queue.push(value as R); }
+			wake?.();
+			wake = undefined;
+		};
+		for (const handler of handlers) {
+			handler({ id: slab.reg._sid(), r: r ?? this.r, m: m ?? this.m, s: s ?? this.s, k, p: { p }, ts: Date.now(), _ack: false, replyTo, stream: true }, reply);
+		}
+		while (true) {
+			if (queue.length) { yield queue.shift()!; continue; }
+			if (failure) throw failure;
+			if (closed) return;
+			await new P<V>((resolveWake) => { wake = resolveWake; });
+		}
+	}
+	public stream = (() => {
+		function stream(handler: (msg: SIG_BUS_Message1) => V, k: S, s: S, m?: S, r?: S): () => V;
+		function stream(k: S, s: S, m?: S, r?: S): AsyncIterableIterator<SIG_BUS_Message1>;
+		function stream(handlerOrSlave: ((msg: SIG_BUS_Message1) => V) | S, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) | AsyncIterableIterator<SIG_BUS_Message1> {
+				const handler = typeof handlerOrSlave === "function" ? handlerOrSlave : undefined;
+				const global = globalThis as any;
+				const channel = (this.channels[k] ??= {});
+				if (!channel) throw new Error("Channel does not exist");
+				const listeners = (channel.push ??= new Set());
+		
+				if (handler) {
+					listeners.add(handler);
+					return () => { listeners.delete(handler); if (!listeners.size) channel.push = undefined; };
+				}
+		
+				const queue: SIG_BUS_Message1[] = [];
+				const waiters: Array<{ resolve: (value: IteratorResult<SIG_BUS_Message1>) => void }> = [];
+				let offset = 0;
+				let closed = false;
+				const listener = (msg: SIG_BUS_Message1) => {
+					if (waiters.length) { waiters.shift()!.resolve({ value: msg, done: false }); } 
+					else { queue.push(msg); }
+				};
+				listeners.add(listener);
+				const close = () => {
+					if (closed) return;
+					closed = true;
+					listeners.delete(listener);
+					if (!listeners.size) channel.push = undefined;
+					for (const waiter of waiters) { waiter.resolve({ value: undefined, done: true }); }
+					waiters.length = 0;
+					queue.length = 0;
+					offset = 0;
+				};
+		
+				const iterator: AsyncIterableIterator<SIG_BUS_Message1> = {
+					next: (): Promise<IteratorResult<SIG_BUS_Message1>> => {
+						if (offset < queue.length) {
+							const value = queue[offset++];
+							if (offset === queue.length) { queue.length = 0; offset = 0; }
+							return Promise.resolve({ value, done: false });
+						}
+						if (closed) { return Promise.resolve({ value: undefined, done: true }); }
+						return new Promise((resolve) => waiters.push({ resolve }));
+					},
+					return: async () => { close(); return { value: undefined, done: true }; },
+					[Symbol.asyncIterator](): AsyncIterableIterator<SIG_BUS_Message1> { return iterator; },
+				};
+		
+				return iterator;
+		}
+		const fn = () => stream
+		fn.request = (p: A, onChunk: (chunk: A) => V, k: S, s: S = this.s, m: S = this.m, r: S = this.r): P<V> => {
+			const streamId = slab.reg._sid();// `[${r}][${m}][${s}][${k}][${_sid()}]`.replace(/[.\[\]]/g, match => (match === "." ? "_" : ""));
+			const result = new Promise<void>((resolve, reject) => {
+				let closed = false;
+				let closeSubscription: (() => V) | UD;
+				const finish = (error?: unknown) => {
+					if (closed) return;
+					closed = true;
+					closeSubscription?.();
+					if (error) { reject(error instanceof Error ? error : new Error(String(error))); }
+					else { resolve(); }
+				};
+				closeSubscription = this.sub(
+					(data: StreamEvent) => {
+						if (closed) return;
+
+						switch (data.type) {
+							case "chunk": onChunk(data.data); break;
+							case "done": finish(); break;
+							case "error": finish(data.error); break;
+						}
+					}, k, s, m, r, );
+
+				try { this.send({streamId, ...p}, k, s, m, r); }
+				catch (error) { finish(error); }
+			});
+			return result;
+		};
+		fn.native = (k?: string, s = this.s, m = this.m, r = this.r): WritableStream => {
+			return new WritableStream({ write: (chunk) => { this.send(chunk, k, s, m, r) }, });
+		};
+		fn.openSync = (k: S, s?: S, m?: S, r = this.r, opts?: {windowSize?: N}) => {
+			// Like syncStream, but for continuous/unbounded emission — no known chunk count up front. Adds a bounded in-flight window so a fast sender backs off instead of flooding a slow receiver.
+			const cleanChannel = r.replace(/[\[\]]/g, "");
+			const streamId = slab.reg._sid()//`${cleanChannel}-${m}-${Math.random().toString(36).slice(2)}`.replace(/\./g, "-");
+			const windowSize = opts?.windowSize ?? 32;
+
+			const unacked = new Map<number, {p: any; retries: number}>();
+			let nextSeq = 0;
+			let acknowledgedUpTo = -1;
+			const sendQueue: any[] = [];
+			let draining = false;
+
+			const closeAckSub = this.sub((ackData: any) => {
+					if (typeof ackData?.seq !== "number") return;
+					unacked.delete(ackData.seq);
+					if (ackData.seq > acknowledgedUpTo) acknowledgedUpTo = ackData.seq;
+					drain(); // an ack frees a window slot — try sending more
+				},k, `sync.${streamId}:ack`, m, r, );
+
+			const closeRetransmitSub = this.sub(async (reqData: any) => {
+					const missing = unacked.get(reqData?.seq);
+					if (missing) {missing.retries++;await this.send.gt.hot({streamId, seq: reqData.seq, data: missing.p, isRetry: true}, k, s, m, r);}
+				}, k, `sync.${streamId}:retransmit`, m, r, );
+
+			const drain = async () => {
+				if (draining) return;
+				draining = true;
+				while (sendQueue.length > 0 && unacked.size < windowSize) {
+					const p = sendQueue.shift();
+					const seq = nextSeq++;
+					unacked.set(seq, {p, retries: 0});
+					await this.send({streamId, seq, data: p, isRetry: false}, k, s, m, r);
+				}
+				draining = false;
+			};
+
+			return {/** Queue an op for send. Backs off automatically if the receiver hasn't acked enough of the window yet. */
+				push: (p: any) => {sendQueue.push(p);drain();},
+				pendingCount: () => unacked.size + sendQueue.length,
+				close: () => {closeAckSub();closeRetransmitSub();},
+			};
+		}; 
+		fn.sync = (k: S, s = this.s, m = this.m, r = this.r, opts: SyncStreamOptions = {}): SyncStreamSendHandle => {
+			const windowSize = opts.windowSize ?? 8;
+			const retransmitMs = opts.retransmitMs ?? 5000;
+			const inFlight = new Map<number, Outbound>();
+			let nextSeq = 0;
+			let closed = false;
+			self;
+			const unsub = this.sub( (data: unknown) => {
+					const d = data as {seq?: number} | null;
+					if (!d || typeof d.seq !== "number") return;
+					const o = inFlight.get(d.seq);
+					if (o && !o.acked) {
+						o.acked = true;
+						if (o.timer) clearTimeout(o.timer);
+						inFlight.delete(d.seq);
+					}
+				},`${k}:syncAck`,s,m,r,);
+			const unsubData = this.sub( (data: unknown) => {
+					const d = data as {sync?: boolean; seq?: number} | null;
+					if (d && d.sync === true && typeof d.seq === "number") {
+						this.send({seq: d.seq}, `${k}:syncAck`, s, m, r);
+					}
+				}, k, s, m, r, );
+
+			const push = (p: unknown): void => {
+				if (closed) throw new Error(`syncStream ${r}: push after close`);
+				if (inFlight.size >= windowSize) { throw new Error(`syncStream ${r}: window full (${windowSize})`); }
+				const o: Outbound = {seq: nextSeq++, p, acked: false, sentAt: Date.now()};
+				inFlight.set(o.seq, o);
+				const send = () => this.send({sync: true, seq: o.seq, p: o.p}, k, s, m, r);
+				send();
+				const arm = () => {o.timer = setTimeout(() => {if (!o.acked) { send(); arm(); } }, retransmitMs); };
+				arm();
+			};
+
+			const handle: SyncStreamSendHandle = {
+				push,
+				pendingCount: () => inFlight.size,
+				close: () => {
+					closed = true;
+					for (const o of inFlight.values()) if (o.timer) clearTimeout(o.timer);
+					unsub();
+					unsubData();
+				},
+			};
+			return handle;
+		};
+		fn.hot = (key: string, fn: (message: ChannelMessage) => void, s: string = this.s, m: string = this.m, r: string = this.r, ): () => void => {
+				const channel = mesh[key]
+				const streamLink: StreamLink = { fn, prev: channel.streamTail, next: undefined, };
+				if (channel.streamTail !== undefined) {channel.streamTail.next = streamLink;}
+				else {channel.streamHead = streamLink;}
+				channel.streamTail = streamLink;
+				return () => {
+					const previous = streamLink.prev;
+					const next = streamLink.next;
+		
+					if (next !== undefined) next.prev = previous;
+					else channel.streamTail = previous;
+		
+					if (previous !== undefined) previous.next = next;
+					else channel.streamHead = next;
+				};
+		}
+		return fn;
+	})();
+	public handler = (() => {
+		const fn = (handler: (d: A) => A, k: S = this.k, s: S = '_globalThis', m: S = this.m, r: S = this.r, binary = false): (() => V) => {
+			return this.sub(
+				async (inboundReq: any) => {
+					if (!inboundReq || !inboundReq.streamId) return;
+					const streamId = inboundReq.streamId;
+					let isCancelled = false;
+					let closeControlSubscription: (() => void) | null = null;
+					try {// 1. Await the control stream cancellation listener safely
+						closeControlSubscription = this.sub( () => { isCancelled = true; }, `stream.${streamId}:cancel`, s, m, r, );
+						const result = await handler(inboundReq);
+						let data = result;
+						if (result && typeof result === "object" && "ok" in result && "data" in result) { data = result.data; }
+						if (typeof data === "function") { data = data(); }
+						
+						if (data && typeof data[Symbol.asyncIterator] === "function") {// Core Async Generator Stream Loop
+							for await (const chunk of data) {
+								if (isCancelled) { if (typeof data.return === "function") { await data.return(); } break; }
+								await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
+							}
+							if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+							if (closeControlSubscription) closeControlSubscription();
+							return;
+						}// Sync Generator Stream Loop
+						if (data && typeof data[Symbol.iterator] === "function" && !Array.isArray(data)) {
+							for (const chunk of data) {
+								if (isCancelled) break;
+								await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
+							}
+							if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+							if (closeControlSubscription) closeControlSubscription();
+							return;
+						}// Array Handling Stream Loop
+						if (Array.isArray(data)) {
+							for (const chunk of data) {
+								if (isCancelled) break;
+								await this.send({type: "chunk", data: chunk}, k, `stream.${streamId}`, m, r);
+							}
+							if (!isCancelled) await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+							if (closeControlSubscription) closeControlSubscription();
+							return;
+						}// Fallback Single Value Response
+						if (!isCancelled) {
+							await this.send({type: "chunk", data: data}, k, `stream.${streamId}`, m, r);
+							await this.send({type: "done"}, k, `stream.${streamId}`, m, r);
+						}
+						if (closeControlSubscription) closeControlSubscription();
+					} catch (err: any) {
+						if (closeControlSubscription) closeControlSubscription();
+						//SE.deadLetters.push({id: streamId, r: r || this.r, p: inboundReq, ts: Date.now(), error: err.message});
+						this.send({type: "error", error: err.message}, k, `stream.${streamId}`, m, r);
+					}
+				}, k, s, m, r,
+			);
+		};
+		fn.native = (k?: S, s = '_globalThis', m = this.m, r = this.r) => {
+			let unsubscribe: (() => void) | null = null;
+			return new ReadableStream({
+				start: (controller) => { unsubscribe = this.sub( (data) => { try { controller.enqueue(data); } catch {}  }, k, s, m, r, ); },
+				cancel: () => { if (unsubscribe) { unsubscribe(); unsubscribe = null; } },
+			});
+		};
+		fn.openSync = (handler: (chunk: A, seq: N) => Promise<V> | V, k: S, s: S = '_globalThis', m: S = this.m, r: S = this.r): (() => V) => {
+			const expectedSeqMap = new Map<S, N>();
+			const bufferMap = new Map<S, Map<N, A>>();
+
+			return this.sub(
+				async (inbound: A) => {
+					if (!inbound?.streamId) return;
+					const {streamId, seq, data} = inbound;
+
+					if (!expectedSeqMap.has(streamId)) {
+						expectedSeqMap.set(streamId, 0);
+						bufferMap.set(streamId, new Map());
+					}
+					const expectedSeq = expectedSeqMap.get(streamId)!;
+					const buffer = bufferMap.get(streamId)!;
+
+					if (seq === expectedSeq) {
+						await handler(data, seq);
+						expectedSeqMap.set(streamId, expectedSeq + 1);
+						await this.send({seq}, k, `sync.${streamId}:ack`, m, r);
+
+						let next = expectedSeq + 1;
+						while (buffer.has(next)) {
+							await handler(buffer.get(next), next);
+							buffer.delete(next);
+							next++;
+							expectedSeqMap.set(streamId, next);
+							await this.send({seq: next - 1}, k, `sync.${streamId}:ack`, m, r);
+						}
+					} else if (seq > expectedSeq) {
+						buffer.set(seq, data);
+						for (let missing = expectedSeq; missing < seq; missing++) {
+							if (!buffer.has(missing)) {
+								await this.send({seq: missing}, k, `sync.${streamId}:retransmit`, m, r);
+							}
+						}
+					} else {
+						await this.send({seq}, k, `sync.${streamId}:ack`, m, r); // duplicate — re-ack, no reprocess
+					}
+				},
+				k,
+				s,
+				m,
+				r,
+			);
+		};
+		fn.sync = (k: string, s = '_globalThis', m = this.m, r = this.r): SyncStreamHandler => {
+			const seqs = new Map<number, unknown>();
+			const waiters = new Set<(p: unknown, seq: number) => void>();
+			const completes = new Set<() => void>();
+			let nextDeliver = 0;
+			let done = false;
+
+			const deliver = (): void => {
+				while (seqs.has(nextDeliver)) {
+					const p = seqs.get(nextDeliver)!;
+					seqs.delete(nextDeliver);
+					for (const cb of [...waiters]) {
+						try {
+							cb(p, nextDeliver);
+						} catch {
+							/* Consumable errors isolated */
+						}
+					}
+					nextDeliver++;
+				}
+			};
+
+			const unsub = this.sub(
+				(data: unknown) => {
+					const d = data as {sync?: boolean; seq?: number; p?: unknown; complete?: boolean} | null;
+					if (!d || d.sync !== true) return;
+					if (d.complete === true) {
+						done = true;
+						for (const cb of [...completes]) {
+							try {
+								cb();
+							} catch {
+								/* ignore */
+							}
+						}
+						return;
+					}
+					if (typeof d.seq !== "number") return;
+					if (d.seq >= nextDeliver && !seqs.has(d.seq)) {
+						seqs.set(d.seq, d.p);
+						deliver();
+					}
+				},
+				k,
+				s,
+				m,
+				r,
+			);
+
+			return {
+				onOrdered(cb) {
+					waiters.add(cb);
+				},
+				onComplete(cb) {
+					completes.add(cb);
+				},
+				close() {
+					unsub();
+					waiters.clear();
+					completes.clear();
+				},
+			};
+		};
+		return fn;
+	})();
+	public duplex = (() => {
+		const fn = async <A = any, B = any>(k: string, s = '_globalThis', m = this.m, r = this.r) => {
+			const hub = {k, s, m, r}
+			return  new this.duplexPlus(this, this, { k: k, s: s, m: m, r: r})
+		}	 
+		fn.stream = (
+			readConfig: { k: S; sl?: S; ms?: S; rt?: S },
+			writeConfig: { k?: S; sl?: S; ms?: S; rt?: S },
+		): { readable: ReadableStream; writable: WritableStream } => {
+			return {
+				readable: this.handler.native(readConfig.k,readConfig.sl,readConfig.ms,readConfig.rt,),
+				writable: this.stream.native(writeConfig.k,writeConfig.sl,writeConfig.ms,writeConfig.rt,),
+			};
+		};
+		fn.sx = <TUp = any, TDown = any>(k: string, s?: string, m?: string, r?: string, opts?: {windowSize?: number; livenessId?: string}) => {
+			const windowSize = opts?.windowSize ?? 32;
+			const up = this.stream.openSync(k, `${s}:up`, m, r, {windowSize});
+			const downHandlers = new Set<(chunk: TDown, seq: number) => void>();
+			const errorHandlers = new Set<(err: DuplexError) => void>();
+			const closeHandlers = new Set<() => void>();
+	
+			let upClosed = false;
+			let downClosed = false;
+			let fatallyErrored = false;
+	
+			let lastSeqSeen = -1;
+	
+			const down = this.handler.openSync(
+				(chunk: TDown, seq: number) => {
+					if (fatallyErrored) return;
+					if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
+						reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
+					}
+					lastSeqSeen = seq;
+					downHandlers.forEach(h => h(chunk, seq));
+				},
+				k,
+				`${s}:down`,
+				m,
+				r,
+			);
+	
+			// remote-reported errors arrive here — this is what makes error propagation BILATERAL,
+			// not just local: the other side explicitly tells us when something broke on their end
+			const errorSub = this.sub(
+				(err: DuplexError) => {
+					errorHandlers.forEach(h => h(err));
+					if (err.fatal) {
+						fatallyErrored = true;
+						teardown();
+					}
+				},
+				k,
+				`${s}:error`,
+				m,
+				r,
+			);
+	
+			// remote-reported half-close — lets THIS side know the peer will send no more, so onData
+			// consumers can know to expect a natural end rather than silence-as-ambiguity
+			const remoteCloseSub = this.sub(
+				(dir: "up" | "down") => {
+					if (dir === "up") downClosed = true; // peer's up = our down, from our perspective
+					closeHandlers.forEach(h => h());
+				},
+				k,
+				`${s}:remote-close`,
+				m,
+				r,
+			);
+	
+			const reportError = (err: DuplexError) => {
+				errorHandlers.forEach(h => h(err));
+				this.send(err, k, `${s}:error`, m, r); // propagate to the OTHER side too — bilateral, not local-only
+				if (err.fatal) {
+					fatallyErrored = true;
+					teardown();
+				}
+			};
+	
+			let tornDown = false;
+			const teardown = () => {
+				if (tornDown) return;
+				tornDown = true;
+				up.close();
+				down();
+				errorSub();
+				remoteCloseSub();
+				downHandlers.clear();
+				errorHandlers.clear();
+				closeHandlers.clear();
+			};
+	
+			return {
+				send: (p: TUp) => {
+					if (upClosed) {
+						reportError({dir: "up", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
+						return;
+					}
+					if (fatallyErrored) return;
+					try {
+						up.push(p);
+					} catch (err: any) {
+						reportError({dir: "up", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
+					}
+				},
+				onData: (handler: (chunk: TDown, seq: number) => void) => {
+					downHandlers.add(handler);
+					return () => downHandlers.delete(handler);
+				},
+				onError: (handler: (err: DuplexError) => void) => {
+					errorHandlers.add(handler);
+					return () => errorHandlers.delete(handler);
+				},
+				onRemoteClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => closeHandlers.delete(handler);
+				},
+				/** Half-close: stop sending, but keep receiving. Peer is notified so they know THIS side is done sending. */
+				closeUp: () => {
+					if (upClosed) return;
+					up.close();
+					upClosed = true;
+					this.send("up", k, `${s}:remote-close`, m, r);
+				},
+				/** Full close of both directions, notifies peer, tears down liveness tracking. */
+				close: () => {
+					if (!upClosed) this.send("up", k, `${s}:remote-close`, m, r);
+					upClosed = true;
+					downClosed = true;
+					teardown();
+				},
+				isFullyClosed: () => upClosed && downClosed,
+				isFatallyErrored: () => fatallyErrored,
+			};
+		};
+		fn.async = <TUp = any, TDown = any>(k = this.k, s = this.s, m = this.m, r = this.r, opts?: {windowSize?: number}) => {
+			const windowSize = opts?.windowSize ?? 32;
+	
+			const up = this.stream.sync(k, `${s}:up`, m, r, {windowSize});
+	
+			const downHandlers = new Set<(chunk: TDown, seq: number) => void>();
+			const errorHandlers = new Set<(err: DuplexError) => void>();
+			const closeHandlers = new Set<() => void>();
+	
+			let upClosed = false;
+			let downClosed = false;
+			let fatallyErrored = false;
+			let tornDown = false;
+	
+			let lastSeqSeen = -1;
+			let downUnsub: any;
+			let errorUnsub: any;
+			let remoteCloseUnsub: any;
+	
+			const down = () => {
+				const stream = this.handler.sync(k, `${s}:down`, m, r); // Accept p as unknown, then cast to TDown
+				stream.onOrdered((p: unknown, seq: number) => {
+					if (fatallyErrored) return;
+					const chunk = p as TDown;
+					if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
+						reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
+					}
+	
+					lastSeqSeen = seq;
+					downHandlers.forEach(h => h(chunk, seq));
+				});
+	
+				downUnsub = () => stream.close();
+			};
+			const errorSub = () => {
+				errorUnsub = this.sub(
+					(err: DuplexError) => {
+						errorHandlers.forEach(h => h(err));
+						if (err.fatal) {
+							fatallyErrored = true;
+							teardown();
+						}
+					},
+					k,
+					`${m}:error`,
+					m,
+					r,
+				);
+			};
+			const remoteCloseSub = () => {
+				remoteCloseUnsub = this.sub(
+					(dir: "up" | "down") => {
+						if (dir === "up") downClosed = true;
+						closeHandlers.forEach(h => h());
+					},
+					k,
+					`${s}:remote-close`,
+					m,
+					r,
+				);
+			};
+			const reportError = (err: DuplexError) => {
+				errorHandlers.forEach(h => h(err));
+				this.send(err, k, `${s}:error`, m, r);
+				if (err.fatal) {
+					fatallyErrored = true;
+					teardown();
+				}
+			};
+			const teardown = () => {
+				if (tornDown) return;
+				tornDown = true;
+				up.close();
+				downUnsub?.();
+				errorUnsub?.();
+				remoteCloseUnsub?.();
+	
+				downHandlers.clear();
+				errorHandlers.clear();
+				closeHandlers.clear();
+			};
+			down();
+			errorSub();
+			remoteCloseSub();
+			const dx = {
+				send: (p: TUp) => {
+					if (upClosed) {
+						reportError({dir: "up", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
+						return;
+					}
+					if (fatallyErrored) return;
+					try {
+						up.push(p);
+					} catch (err: any) {
+						reportError({dir: "up", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
+					}
+				},
+				onData: (handler: (chunk: TDown, seq: number) => void) => {
+					downHandlers.add(handler);
+					return () => downHandlers.delete(handler);
+				},
+				onError: (handler: (err: DuplexError) => void) => {
+					errorHandlers.add(handler);
+					return () => errorHandlers.delete(handler);
+				},
+				onRemoteClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => closeHandlers.delete(handler);
+				},
+				closeUp: () => {
+					if (upClosed) return;
+					up.close();
+					upClosed = true;
+					this.send("up", k, `${s}:remote-close`, m, r);
+				},
+				close: () => {
+					if (!upClosed) {
+						this.send("up", k, `${s}:remote-close`, m, r);
+					}
+					upClosed = true;
+					downClosed = true;
+					teardown();
+				},
+				isFullyClosed: () => upClosed && downClosed,
+				isFatallyErrored: () => fatallyErrored,
+			};
+			return dx;
+		};
+		fn.open = <T = any,>(opts = {highWaterMark: 32}, k: string, s = this.s, m = this.m, r = this.r) => {
+			const streamId = slab.reg._sid()
+	
+			const highWaterMark = opts?.highWaterMark ?? 32;
+	
+			const queue: T[] = [];
+			const handlers = new Set<(chunk: T) => void>();
+			const drainHandlers = new Set<() => void>();
+			const closeHandlers = new Set<() => void>();
+			const errorHandlers = new Set<(err: any) => void>();
+	
+			let writable = true;
+			let readable = true;
+			let draining = false;
+	
+			const write = async (chunk: T): Promise<void> => {
+				if (!writable) { throw new Error("Stream is not writable"); }
+				queue.push(chunk);
+				if (queue.length >= highWaterMark) {
+					await new Promise<void>(resolve => {
+						const check = () => {
+							if (queue.length < highWaterMark) {
+								drainHandlers.delete(check);
+								resolve();
+							}
+						};
+	
+						drainHandlers.add(check);
+						check();
+					});
+				}
+	
+				await drain();
+			};
+			const drain = async () => {
+				if (draining) return;
+				draining = true;
+				try {
+					while (queue.length > 0 && writable) {
+						const chunk = queue.shift()!;
+						await this.send({streamId, data: chunk}, k, s, m, r);
+						drainHandlers.forEach(handler => handler());
+					}
+				} finally {
+					draining = false;
+				}
+			};
+			const unsubscribe = this.sub( async (packet: any) => {
+					if (packet?.streamId !== streamId) return;
+					if (packet.type === "data") { handlers.forEach(handler => { handler(packet.data); }); }
+					if (packet.type === "close") { readable = false; closeHandlers.forEach(handler => handler()); }
+					if (packet.type === "error") { errorHandlers.forEach(handler => { handler(packet.error); }); }
+			}, k, s, m, r, );
+			return {
+				write,
+				onData: (handler: (chunk: T) => void) => {
+					handlers.add(handler);
+					return () => { handlers.delete(handler); };
+				},
+				onDrain: (handler: () => void) => {
+					drainHandlers.add(handler);
+					return () => { drainHandlers.delete(handler); };
+				},
+				onClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => { closeHandlers.delete(handler); };
+				},
+				onError: (handler: (err: any) => void) => {
+					errorHandlers.add(handler);
+					return () => { errorHandlers.delete(handler); };
+				},
+				close: async () => {
+					if (!writable && !readable) return;
+					writable = false;
+					await this.send({streamId, type: "close"}, k, s, m, r);
+					unsubscribe();
+					closeHandlers.forEach(handler => handler());
+				},
+				abort: async (reason?: any) => {
+					writable = false;
+					readable = false;
+					await this.send({streamId, type: "error", error: reason}, k, s, m, r);
+					unsubscribe();
+					errorHandlers.forEach(handler => handler(reason));
+				},
+				writable: () => writable,
+				readable: () => readable,
+				buffered: () => queue.length,
+			};
+		};
+		return fn;
+	})();
+	public d_handler = (() => {
+		const fn = () => {}
+		fn.sx = <TUp = any, TDown = any>(k: string, s?: string, m?: string, r?: string, opts?: {windowSize?: number; livenessId?: string}) => {
+			const windowSize = opts?.windowSize ?? 32;
+			const down = this.stream.openSync(k, `${s}:down`, m, r, {windowSize});
+			const upHandlers = new Set<(chunk: TUp, seq: number) => void>();
+			const errorHandlers = new Set<(err: DuplexError) => void>();
+			const closeHandlers = new Set<() => void>();
+
+			let downClosed = false;
+			let upClosed = false;
+			let fatallyErrored = false;
+
+			let lastSeqSeen = -1;
+			const up = this.handler.openSync(
+				(chunk: TUp, seq: number) => {
+					if (fatallyErrored) return;
+					if (lastSeqSeen !== -1 && seq !== lastSeqSeen + 1) {
+						reportError({dir: "down", message: `sequence gap: expected ${lastSeqSeen + 1}, got ${seq}`, fatal: false});
+					}
+					lastSeqSeen = seq;
+					upHandlers.forEach(h => h(chunk, seq));
+				},
+				k,
+				`${s}:up`,
+				m,
+				r,
+			);
+
+			const errorSub = this.sub(
+				(err: DuplexError) => {
+					errorHandlers.forEach(h => h(err));
+					if (err.fatal) {
+						fatallyErrored = true;
+						teardown();
+					}
+				},
+				k,
+				`${s}:error`,
+				m,
+				r,
+			);
+
+			const remoteCloseSub = this.sub(
+				(dir: "up" | "down") => {
+					if (dir === "up") upClosed = true; // peer's up = our up, from THIS side's receiving perspective
+					closeHandlers.forEach(h => h());
+				},
+				k,
+				`${s}:remote-close`,
+				m,
+				r,
+			);
+
+			const reportError = (err: DuplexError) => {
+				errorHandlers.forEach(h => h(err));
+				this.send(err, k, `${s}:error`, m, r);
+				if (err.fatal) {
+					fatallyErrored = true;
+					teardown();
+				}
+			};
+
+			let tornDown = false;
+			const teardown = () => {
+				if (tornDown) return;
+				tornDown = true;
+				down.close();
+				up();
+				errorSub();
+				remoteCloseSub();
+				upHandlers.clear();
+				errorHandlers.clear();
+				closeHandlers.clear();
+			};
+
+			return {
+				send: (p: TDown) => {
+					if (downClosed) {
+						reportError({dir: "down", message: "send after half-close", fatal: false, retryable: false, code: "HALF_CLOSED"});
+						return;
+					}
+					if (fatallyErrored) return;
+					try {
+						down.push(p);
+					} catch (err: any) {
+						reportError({dir: "down", message: err.message ?? String(err), fatal: false, retryable: true, code: "SEND_FAILED"});
+					}
+				},
+				onData: (handler: (chunk: TUp, seq: number) => void) => {
+					upHandlers.add(handler);
+					return () => upHandlers.delete(handler);
+				},
+				onError: (handler: (err: DuplexError) => void) => {
+					errorHandlers.add(handler);
+					return () => errorHandlers.delete(handler);
+				},
+				onRemoteClose: (handler: () => void) => {
+					closeHandlers.add(handler);
+					return () => closeHandlers.delete(handler);
+				},
+				closeDown: () => {
+					if (downClosed) return;
+					down.close();
+					downClosed = true;
+					this.send("down", k, `${s}:remote-close`, m, r);
+				},
+
+				close: () => {
+					if (!downClosed) this.send("down", k, `${s}:remote-close`, m, r);
+					downClosed = true;
+					upClosed = true;
+					teardown();
+				},
+
+				isFullyClosed: () => downClosed && upClosed,
+				isFatallyErrored: () => fatallyErrored,
+			};
+		};
+		return fn;
+	})();	
+	public duplexPlus = class duplex {
+		public r: A = "THE_WIZARD_ROOT_REG";
+		public m: A = "SAURON_MASTER_REG";
+		public s: A = "SAURON_SLAVE_REG";
+		public k: A = "__SAURON__";
+		public hub: SITH
+		public abus: A
+		public bbus: A
+		constructor(
+			abus: A, bbus: A, 
+			hub: { k: S; s: S; m: S; r: S } = { k: "__SAURON__", s: "SAURON_SLAVE_REG", m: "SAURON_MASTER_REG", r: "THE_WIZARD_ROOT_REG", }) {
+			this.r = hub.r;
+			this.m = hub.m;
+			this.s = hub.s;
+			this.k = hub.k;
+			this.abus = abus //new MAREK(SITH);
+			this.bbus = bbus //new this.MAREK(SITH);
+		}
+		public stream = (() => {
+			const fn = (k?: S, s = this.s, m = this.m, r = this.r) => {
+				return {
+					send: <T, P>(p: P, sendOpts?: { timeoutMs?: N }) => this.abus.stream( k, s, m, r),
+					sub: <P, R>(handler: hdr<P, R>) => this.abus.handler(k, s, m, r),
+				}
+			};
+			return fn;
+		})();
+		public handler = (() => {
+			const fn = (k?: S, s = this.s, m = this.m, r = this.r) => {
+				return {
+					send: <T, P>(p: P, sendOpts?: { timeoutMs?: N }) => this.abus.stream( k, s, m, r),
+					sub: <P, R>(handler: hdr<P, R>) => this.abus.handler(k, s, m, r),
+				}
+			};
+			return fn;
+		})();
+	};
+	public g_bus = new (class G_BUS<Z extends string = string, S extends string = string> {// 3.03B OPS/SEC
+		/**
+		Several peak runs followed by usage paths
+		Peak:                                       1_228.50 M ops/sec
+		Peak:                                       3_103.41 M ops/sec
+		Peak:                                       2_370.05 M ops/sec
+		Peak:                                       2_325.32 M ops/sec
+		These runs were all
+
+		FELKOR2.send
+		sec   |   M writes/s   |   best M/s   |   avg M/s   |    CPU %
+		12    |   1146.44      |   1146.44    |   1146.44   |    100.0
+		
+		FELKOR2.stream
+		sec   |   M writes/s   |   best M/s   |   avg M/s   |    CPU %
+		12    |   1319.94      |   1319.94    |   1319.94   |    100.0
+		PS F:\mq\src> bun run aa.ts
+		
+		FELKOR2.iterator.publish
+		sec   |   M writes/s   |   best M/s   |   avg M/s   |    CPU %
+		12    |     540.61     |   540.61     |  540.61     |    100.3
+		PS F:\mq\src> bun run aa.ts
+		
+		FELKOR2.duplex
+		sec | M writes/s | best M/s | avg M/s | CPU %
+		12 |     898.32 |   898.32 |  898.32 | 100.0
+		*/
+		public s: S;
+		public m: S;
+		public r: S;
+		public k: S;
+		public channels: Record<S, BUS_CHANNEL>;
+		hot_path_test: BUS_HANDLER
+		constructor() { }
+		// const msg: SIG_BUS_Message1 = { r, m, s, k, p: { p }, ts: Date.now(), _ack: false, };
+		// const result = handler(p, msg);
+		public send<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | P<T> | UD {
+			const channel = this.channels[k];
+			const handler = channel?.handler;
+			if (!handler) return undefined;
+			return handler(p, { r, m, s, k, p: p });
+		}
+		public hot_send<T = U>(p: U, k: S,  path: S ): T | P<T> | UD {
+			return this.channels[k]?.handler({ p: p });
+		}
+		public sendStream<T = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r): T | P<T> | UD {
+			const channel = this.channels[k];
+			const handler = channel?.handler;
+			if (!handler) return undefined;
+			const msg: SIG_BUS_Message1 = { r, m, s, k, p: p, _ack: false };
+			const result = handler(p, msg);
+			const listeners = channel.push;
+			if (listeners) {
+				for (const listener of listeners) listener(msg);
+			}
+			return result as T | P<T> | UD;
+		}
+		public sub<P = U, T = U>(handler: BUS_HANDLER<P, T>, k: S, s: S = this.s, m: S = this.m, r: S = this.r): () => V {
+			const channel = (this.channels[k] ??= {});
+			channel.handler = handler;
+			return () => {
+				if (channel.handler === handler) {
+					channel.handler = undefined;
+				}
+			};
+		}
+		public stream(handler: (msg: SIG_BUS_Message1) => V, k: S, s: S, m?: S, r?: S): () => V;
+		public stream(k: S, s: S, m?: S, r?: S): AsyncIterableIterator<SIG_BUS_Message1>;
+		public stream(handlerOrSlave: ((msg: SIG_BUS_Message1) => V) | S, k: S, s: S = this.s, m: S = this.m, r: S = this.r): (() => V) | AsyncIterableIterator<SIG_BUS_Message1> {
+			const handler = typeof handlerOrSlave === "function" ? handlerOrSlave : undefined;
+			const global = globalThis as any;
+			const channel = (this.channels[k] ??= {});
+
+			if (!channel) throw new Error("Channel does not exist");
+
+			const listeners = (channel.push ??= new Set());
+
+			if (handler) {
+				listeners.add(handler);
+
+				return () => {
+					listeners.delete(handler);
+					if (!listeners.size) channel.push = undefined;
+				};
+			}
+
+			const queue: SIG_BUS_Message1[] = [];
+			const waiters: Array<{ resolve: (value: IteratorResult<SIG_BUS_Message1>) => void }> = [];
+
+			let offset = 0;
+			let closed = false;
+
+			const listener = (msg: SIG_BUS_Message1) => {
+				if (waiters.length) {
+					waiters.shift()!.resolve({ value: msg, done: false });
+				} else {
+					queue.push(msg);
+				}
+			};
+
+			listeners.add(listener);
+
+			const close = () => {
+				if (closed) return;
+				closed = true;
+
+				listeners.delete(listener);
+				if (!listeners.size) channel.push = undefined;
+
+				for (const waiter of waiters) {
+					waiter.resolve({ value: undefined, done: true });
+				}
+
+				waiters.length = 0;
+				queue.length = 0;
+				offset = 0;
+			};
+
+			const iterator: AsyncIterableIterator<SIG_BUS_Message1> = {
+				next: (): Promise<IteratorResult<SIG_BUS_Message1>> => {
+					if (offset < queue.length) {
+						const value = queue[offset++];
+
+						if (offset === queue.length) {
+							queue.length = 0;
+							offset = 0;
+						}
+
+						return Promise.resolve({ value, done: false });
+					}
+
+					if (closed) {
+						return Promise.resolve({ value: undefined, done: true });
+					}
+
+					return new Promise((resolve) => waiters.push({ resolve }));
+				},
+
+				return: async () => {
+					close();
+					return { value: undefined, done: true };
+				},
+
+				[Symbol.asyncIterator](): AsyncIterableIterator<SIG_BUS_Message1> {
+					return iterator;
+				},
+			};
+
+			return iterator;
+		}
+		public duplex(k: S, s: S = this.s, m: S = this.m, r: S = this.r) {
+			return {
+				send: <T = U, P = U>(p: P) => this.sendStream<T>(p, k, s, m, r),
+				sub: <P = U, T = U>(handler: BUS_HANDLER<P, T>) => this.sub<P, T>(handler, k, s, m, r),
+				stream: (handler?: (msg: SIG_BUS_Message1) => V) => (handler ? this.stream(handler, k, s, m, r) : this.stream(k, s, m, r)),
+			};
+		}
+	})();
 }
 // #endregion
 // #endregion

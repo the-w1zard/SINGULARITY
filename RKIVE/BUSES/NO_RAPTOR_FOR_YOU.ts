@@ -1,16 +1,9 @@
 // bus-bench.ts
 // FIGHT=... bun --expose-gc bus-bench.ts
-import { YODA } from "./YODA";
-import { signal as vader_signal, computed as vader_computed, effect as vader_effect, effectScope as vader_effectsope, batch as vader_batch, startBatch as vader_startbatch, endBatch as vader_endbatch, untracked as vader_untracled, bindText as vader_bindtext, bindAttribute as vader_bindattr, bind as vader_bind, SIGNAL_BUS as vader_signalsbus } from "./VADER";
-import { signal as f_sig, computed as f_computed, effect as f_effect, batch as f_batch, startBatch as f_startbatch, endBatch as f_endbatch, untracked as f_untracked, bindText as f_bindtxt, bindAttribute as f_bindatr, bind as f_bind, SIGNALS as f_bus, ChannelMessage } from "./THE_FORCE";
-import { SKYWALKER } from "./SKYWALKER";
-import { SITH } from "./SITH";
-import { PALPATINE } from "./PALPATINE";
-import { JEDI } from "./JEDI";
+
 import { startBatch,   signal, computed, effect,batch } from "./class";
 
 import { signal as preact_signal, computed as preact_computed, batch as preact_batch, effect as preact_effect, action, createModel, type Model, type ModelConstructor, type ModelFactory, Signal, type ReadonlySignal, untracked as preact_untracked, type SignalOptions, type EffectOptions } from "@preact/signals-core";
-import { SIDIUS } from "./SIDIUS";
 import { persistedSignal } from "@kamod-ch/signals";
 
 

@@ -23,6 +23,9 @@ importers:
       '@the-w1zard/resolvers':
         specifier: ^1.0.3
         version: 1.0.3
+      '@the-w1zard/solutions':
+        specifier: ^1.0.6
+        version: 1.0.6(@the-w1zard/dx@1.0.46)
       '@the-w1zard/store':
         specifier: ^1.0.9
         version: 1.0.9
@@ -248,6 +251,11 @@ packages:
 
   '@the-w1zard/resolvers@1.0.3':
     resolution: {integrity: sha512-cpvl+T7vg8WvjMK7OumgDfP/Bmc0DE9tQEFv7gnEQOFzhwfD3P0MGRDgCkAnYpqAmG0DLKyDukmPQmIkpJT7Mw==}
+
+  '@the-w1zard/solutions@1.0.6':
+    resolution: {integrity: sha512-SvGFs/0C8Hp+eMLFDG8r95tmFADzr4N/gBDV/r7wpUeQDXTxiwL7TqTAuGoGi8ZzEIV0aFUo+qwjL9jBUWgObQ==}
+    peerDependencies:
+      '@the-w1zard/dx': ^1.0.27
 
   '@the-w1zard/store@1.0.9':
     resolution: {integrity: sha512-9jSbDyK1Dzwt3Qm3iO7MP4+5/COAXDDvQGhO61vKGd+Nho2bFf/r18jNG8qp3YyEh5H4TdKmhCa7iQcwLFL0Fw==}
@@ -671,6 +679,16 @@ snapshots:
 
   '@the-w1zard/resolvers@1.0.3':
     dependencies:
+      '@the-w1zard/store': 1.0.9
+    transitivePeerDependencies:
+      - '@module-federation/runtime-tools'
+      - '@rspack/dev-server'
+      - '@swc/helpers'
+
+  '@the-w1zard/solutions@1.0.6(@the-w1zard/dx@1.0.46)':
+    dependencies:
+      '@the-w1zard/dx': 1.0.46
+      '@the-w1zard/resolvers': 1.0.3
       '@the-w1zard/store': 1.0.9
     transitivePeerDependencies:
       - '@module-federation/runtime-tools'
