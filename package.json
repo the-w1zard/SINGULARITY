@@ -1,5 +1,5 @@
 {
-  "version": "1.0.13",
+  "version": "1.0.14",
   "name": "@the-w1zard/singularity",
   "author": "",
   "homepage": "https://github.com/the-w1zard",
@@ -14,7 +14,6 @@
     "7": "git push --tags",
     "8": "npm publish --access public",
     "build": "tsc",
-
     "build1": "tspc",
     "check": "tsc --noEmit",
     "build:sauron": "node scripts/build-sauron.mjs --project tsconfig.json",
