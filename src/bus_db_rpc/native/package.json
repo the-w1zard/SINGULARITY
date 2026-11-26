@@ -1,0 +1,8 @@
+{
+    "scripts": {
+      "build:native": "node-gyp rebuild"
+    },
+    "dependencies": {
+      "node-addon-api": "^8.0.0"
+    }
+  }

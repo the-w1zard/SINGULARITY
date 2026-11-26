@@ -4,6 +4,32 @@ import {    ATOM, MODULE, CLOUD, SAURON, DRS, MSG_Q, SLAB, S_CLASS, SPREADSHEET,
     AW_SET, CASUAL_CURSOR, DELTA_STORE, G_SET, VERSION_VECTOR, CIRCUIT_BREAKER, CQRS, RAFT, YJS, DIFFPATCH, HYBRID_LOGICAL_CLOCK, LWW, LWW_ELEMENTAL, MV, OPTIMISTIC, OR, PN, REVERSE_HEARTBEAT_MGR, SEMAPHORE, TOMBSTONE_COMPACTOR, YIMIR, HYBRID_LOGICAL_CLOCK_CRDT, ADAPTER, BEAM_CODEC, BINARY, BYTE_CODE_VM, CHANNEL, CHANNELS, CONCURRENCY, DEADLETTER, DESTRUCTION, ERROR, EVENT, EXTERNAL_SUBSCRIPTION, GATE, GLOBAL_SUBSCRIPTION, GOVERNOR, HOOK, HTTP_TRANSPORT, INJECTION_CODEC, METRICS, MIDDLEWARE, RIFTS_ACCESS, REACTIVE, ROUTE, RUN_ON, SEALED_ERROR, SESSION, SHELL, SIGNAL, SOA_QUAD_TIERED_REGISTRY, SUBSCRIPTION, TRANSFORM, WAITER, CONTRACTS, SCHEMA, VALUES_REGISTRY, COMPRESSION, CONFLICT, CONTEXT, ENCRYPTION, GROUPS, HISTORY, META, OFFSEC, PERMISSIONS, PERSISTENCE, PRIORITY, SNAPSHOT, TAGS, TIME_TRAVEL, TTL,  } from './signals'
 import { darkState as darkStateI, darkCallback as darkCallbackI, darkEffect as darkEffectI } from './signals'
 export {};
+
+
+  declare module '*.node' {
+	interface WalSharedMemoryChannel {
+	  publish(topicId: number, payload: Uint8Array): boolean;
+  
+	  drain(
+		callback: (topicId: number, payload: Uint8Array) => void,
+		signal: AbortSignal,
+	  ): void;
+  
+	  attach(descriptor: unknown): void;
+	}
+  
+	interface WalSharedMemoryModule {
+	  create(
+		name: string,
+		capacity: number,
+		maxPayloadBytes: number,
+		overflowCapacityBytes: number,
+	  ): WalSharedMemoryChannel;
+	}
+  
+	const walSharedMemory: WalSharedMemoryModule;
+	export default walSharedMemory;
+  }
 declare global {
 	var darkState: typeof darkStateI
 	var darkCallback: typeof darkCallbackI

@@ -11,7 +11,7 @@ const RUN_BARE_METAL_CPU_TEST = true;
 const pid = 1;
 let seq = 0;
 const v = `${++seq}`;
-const FIGHT = process.env.FIGHT ?? "bare";
+const FIGHT = process.env.FIGHT ?? "RAVEN";
 const r = "THE_WIZARD_ROOT_REG";
 const m = "SAURON_MASTER_REG";
 const s = "SAURON_SLAVE_REG";
@@ -1180,12 +1180,26 @@ if (FIGHT === 'bare') {
     bench("O2.size", () => { O2Test.size; });
 }
 if (FIGHT === "RAVEN") {
+    const storeKey = "bench-store";
+    let storeValue = '0';
+    await root.ready;
+    root.state.setHot("keyy", "1");
+    bench("RAVEN.state.getHot2", () => {
+        root.state.getHot2("keyy");
+    });
+    bench("RAVEN.state.getHot", () => {
+        root.state.getHot("keyy");
+    });
+    const stateKey = "keyy";
+    let stateValue = '0';
+    root.state.set("keyy", "1");
+    bench("RAVEN.state.get", () => {
+        root.state.get("keyy");
+    });
     /* ------------------------------------------------------------------ *
      * STORE
      * ------------------------------------------------------------------ */
-    const storeKey = "bench-store";
-    let storeValue = 0;
-    root.state.store.set(storeKey, 1, { triggerRender: false });
+    root.state.store.set(storeKey, "1", { triggerRender: false });
     bench("RAVEN.store.get", () => {
         root.state.store.get(storeKey);
     });
@@ -1193,7 +1207,7 @@ if (FIGHT === "RAVEN") {
         root.state.store.has(storeKey);
     });
     bench("RAVEN.store.set", () => {
-        root.state.store.set(storeKey, ++storeValue, { triggerRender: false });
+        root.state.store.set(storeKey, storeValue, { triggerRender: false });
     });
     bench("RAVEN.store.set.functional", () => {
         root.state.store.set(storeKey, (prev) => (prev ?? 0) + 1, {
@@ -1202,7 +1216,7 @@ if (FIGHT === "RAVEN") {
     });
     bench("RAVEN.store.get.set", () => {
         root.state.store.get(storeKey);
-        root.state.store.set(storeKey, ++storeValue, { triggerRender: false });
+        root.state.store.set(storeKey, storeValue, { triggerRender: false });
     });
     bench("RAVEN.store.entries", () => {
         root.state.store.entries();
@@ -1224,33 +1238,27 @@ if (FIGHT === "RAVEN") {
         root.state.store.has(persistKey);
     });
     bench("RAVEN.store.persist.set", () => {
-        root.state.store.set(persistKey, ++storeValue, { triggerRender: false });
+        root.state.store.set(persistKey, storeValue, { triggerRender: false });
     });
     root.state.store.unpersist(persistKey);
     /* ------------------------------------------------------------------ *
      * STATE
      * ------------------------------------------------------------------ */
-    const stateKey = "bench-state";
-    let stateValue = 0;
-    root.state.state.set(stateKey, 1, { triggerRender: false });
-    bench("RAVEN.state.get", () => {
-        root.state.state.get(stateKey);
-    });
     bench("RAVEN.state.set", () => {
-        root.state.state.set(stateKey, ++stateValue, { triggerRender: false });
+        root.state.set(stateKey, stateValue, { triggerRender: false });
     });
     bench("RAVEN.state.get.set", () => {
-        root.state.state.get(stateKey);
-        root.state.state.set(stateKey, ++stateValue, { triggerRender: false });
+        root.state.get(stateKey);
+        root.state.set(stateKey, stateValue, { triggerRender: false });
     });
     bench("RAVEN.state.getAll", () => {
-        root.state.state.getAll();
+        root.state.getAll();
     });
     bench("RAVEN.state.getByPrefix", () => {
-        root.state.state.getByPrefix("bench-");
+        root.state.getByPrefix("bench-");
     });
     bench("RAVEN.state.subscribe", () => {
-        const dispose = root.state.state.subscribe(stateKey, () => { });
+        const dispose = root.state.subscribe(stateKey, () => { });
         dispose();
     });
     /* ------------------------------------------------------------------ *
@@ -1259,66 +1267,29 @@ if (FIGHT === "RAVEN") {
     const notifyKey = "bench-state-notify";
     let notifyValue = 0;
     let notifyCount = 0;
-    root.state.state.set(notifyKey, 0, { triggerRender: false });
-    const disposeStateNotify = root.state.state.subscribe(notifyKey, () => {
+    root.state.set(notifyKey, 0, { triggerRender: false });
+    const disposeStateNotify = root.state.subscribe(notifyKey, () => {
         notifyCount++;
     });
     bench("RAVEN.state.notify", () => {
-        root.state.state.set(notifyKey, ++notifyValue);
+        root.state.set(notifyKey, ++notifyValue);
         root.state.flushSync();
     });
     disposeStateNotify();
     /* ------------------------------------------------------------------ *
      * HOOK: darkState
      * ------------------------------------------------------------------ */
-    const [darkValue, setDarkValue] = darkState(0, {}, "bench-darkState");
-    bench("RAVEN.darkState.get", () => {
-        darkState(0, {}, "bench-darkState");
+    const selector = (v) => v.count;
+    const [selectedValue, setSelectedValue] = darkState("0");
+    bench("RAVEN.darkState.selector.read", () => {
+        selectedValue;
     });
-    bench("RAVEN.darkState.set", () => {
-        setDarkValue(++storeValue);
-    });
-    bench("RAVEN.darkState.get.set", () => {
-        darkState(0, {}, "bench-darkState");
-        setDarkValue(++storeValue);
-    });
-    /* ------------------------------------------------------------------ *
-     * HOOK: darkState SELECTOR
-     * ------------------------------------------------------------------ */
-    const [selectedValue, setSelectedValue] = darkState({ count: 0, other: 0 }, {
-        selector: (v) => v.count,
-    }, "bench-darkState-selector");
-    bench("RAVEN.darkState.selector.get", () => {
-        darkState({ count: 0, other: 0 }, {
-            selector: (v) => v.count,
-        }, "bench-darkState-selector");
-    });
-    bench("RAVEN.darkState.selector.set", () => {
-        setSelectedValue((prev) => ({
-            ...prev,
-            count: prev.count + 1,
-        }));
-    });
-    /* ------------------------------------------------------------------ *
-     * HOOK: darkState DERIVED
-     * ------------------------------------------------------------------ */
-    const [derivedValue, setDerivedValue, derived] = darkState(1, {
-        derive: (v) => v * 2,
-    }, "bench-darkState-derived");
-    bench("RAVEN.darkState.derived.get", () => {
-        darkState(1, {
-            derive: (v) => v * 2,
-        }, "bench-darkState-derived");
-    });
-    bench("RAVEN.darkState.derived.set", () => {
-        setDerivedValue(++storeValue);
+    bench("RAVEN.darkState.selector.update", () => {
+        setSelectedValue("0");
     });
     /* ------------------------------------------------------------------ *
      * KEEP FIXTURES LIVE
      * ------------------------------------------------------------------ */
     void notifyCount;
-    void darkValue;
     void selectedValue;
-    void derivedValue;
-    void derived;
 }

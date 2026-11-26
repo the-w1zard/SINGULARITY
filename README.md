@@ -41,8 +41,7 @@
 </div>
 <br clear="right">
 
-
-
+ 
 > [!NOTE]
 >
 > The entire goal of the dark side, power and performance. Nothing else matters...
@@ -3645,8 +3644,119 @@ Average:                                12.15 M ops/sec
 	})();
 ```
 
+> [!NOTE] BUILDERS LOG #17
+>
+> With moving everything over onto the main platform now that the dark side is done... I thought, I'll spend an hour on the new signals implementation... currently alien is only winning in 8 tests, so I might jsut finish this out. Some areas its beating alien by... not so much but in others it is doing it by a 2-5x, not bad. But it is taking a while, since I have no idea what it is that I'm doing so its basically, make change... bench, make change, bench... lol.
+>
+> So an update, kept widdling it down where alien only wins in 4 tests now... Honestly, what I think I'll do now as far as the platform goes, is move the current signals solution over to the light side, and have my implemenation on the dark side. 
+>
+> This actually does meet the criteria of both, but I'm more than sure with some more time I can get the rest of the tests beaten as well. Because I beleive I've only worked on this for about 4-5 hours so far, so with time I'm hoping to beat the remaining tests... who knows.
+>
+> [update] now this is the first time an ai produced this state and its interesting:
+> - alien mean peak, 105.01 mill
+> - signals mean peak, 197,74 mill
+>
+> - alien mean average, 63.04 mill
+> - signals mean average, 97.68 mill
+>
+> and this is despite alien dominating in 2 out or the 3 categories it wins in, which I need to figure that category out... but still, it beats signals by liek a 2x as well which means signals has enough through put through out the other tests to produce that stat... Thought that was intersting.
+>
+> [update] I was able to widdle away the majority of the wins alien had, if I remember correctly in the one it was really winning at was a 2.1x to now being a 13% peak and 6% avg win for alien. The following numbers are 4 runs for alien and 4 runs for the new solution, averages each others scores seperatly then calculating the percentage based on each others averages so as to not have the test fluctuate to one side or the other due to harness / bench noise. So this gives the best look at it, on my machine anyways. The conducted tests are literally... line by line the exact same on the bench. The bench is available for you to run it yourself, if you don't like the numbers than your more than welcome to calculate the hundreds of values that the bench will output yourself so you can see that the results are genuine. As I won't be surprised if this pisses of a couple of people, which is why everything is available for you to run at home, or on a massively expensive node at work. 
+>
+> Tbh, I truly didn't think anything would come out of this, and I don't care whether its my solution that wins or not... because up till the decision I just made, alien was the only solution that was going to be available in the platform. Because why would I bother with something slower. Instead of getting rid of alien altogether, I'm moving it over to the light side and throwing my implementation into the dark side. For me, I'm truly switzerland in these tests and I just want the actual best solution. So rip apart the bench all you want, it won't hurt my feelings, LOL. Next year, there will be a new alien out there somewhere that will come out. Just like the toddler song, 'this is the game that never ends...', lol
 
+```tsx
+SIGNAL_ENGINE.signal.get
+8.85948894360474
+14.2209512048486
+SIGNAL_ENGINE.signal.peek
+240.540619067911
+259.435320672478
+SIGNAL_ENGINE.signal.set
+20.5109878387028
+39.4535923259304
+SIGNAL_ENGINE.signal.get.set
+236.13180659033
+177.617370892019
+SIGNAL_ENGINE.computed.get.cached
+101.736123119488
+96.651639502177
+SIGNAL_ENGINE.computed.invalidate
+-1.12156931738214
+7.36293495478004
+SIGNAL_ENGINE.computed.recompute
+39.5842885526517
+58.0365381066618
+SIGNAL_ENGINE.computed.chain.cached
+-13.8114948209468
+-6.60815047021943
+SIGNAL_ENGINE.computed.chain.recompute
+-8.75745071068318
+2.30439442658093
+SIGNAL_ENGINE.effect.create-dispose
+15.8163917657588
+10.7221006564552
+SIGNAL_ENGINE.effect.notify
+73.959673959674
+98.8611713665944
+SIGNAL_ENGINE.effect.cleanup-rerun
+66.9087464477424
+62.0821727019499
+SIGNAL_ENGINE.dependency.track
+55.0591327201052
+72.3458359821996
+SIGNAL_ENGINE.fanout.16
+45.7875457875458
+116.901408450704
+SIGNAL_ENGINE.fanout.64
+14.7239263803681
+17.9487179487179
+SIGNAL_ENGINE.batch.3-writes
+53.3158637371498
+41.2512658940025
+SIGNAL_ENGINE.batch.effect.3-writes
+91.2375096079938
+76.701030927835
+SIGNAL_ENGINE.graph.diamond.cached
+44.7262784338821
+37.2290784060908
+SIGNAL_ENGINE.graph.diamond.recompute
+2.8140013726836
+4.38917337234821
+SIGNAL_ENGINE.graph.branch.16.cached
+34.3943755535872
+37.3974800903364
+SIGNAL_ENGINE.graph.branch.16.recompute
+13.7777777777778
+14.6788990825688
+```
+> [!NOTE]
+>
+> Then for the average of peaks and averages
+> 
+> | Engine | Average peak (M ops/sec) | Average average (M ops/sec) |
+> |---|---:|---:|
+> | Alien | 135.38 | 67.24 |
+> | Signals | 202.09 | 109.08 |
+> The following numbers are 4 runs for alien and 4 runs for the new solution, averages each others scores seperatly then calculating the percentage based on each others averages so as to not have the test fluctuate to one side or the other due to harness / bench noise. So this gives the best look at it, on my machine anyways. The conducted tests are literally... line by line the exact same on the bench. The bench is available for you to run it yourself
 
+> [!NOTE] BUILDERS LOG #18
+>
+> Ah fuck... I don't think I can make the new db into an adapter that would just fit into the main db... thats fucking balls... mother fucker... 
+>
+> The adapters are basically simple file write translation betwen the api and the file itself...
+>
+> Where as this is, wal, pages, workers, encoding up the wazoo, manifests, recovery... well, more intense recovery that the current solution. Idk... maybe I might be able to swing it... I don't know man. Don't get me wrong I've pulled off crazier shit... its the uniqueness of just how... it deals with i/o that makes it so fast in comparison... which is exactly what makes it not a great fit for an adapter... it is far faster, then the current main db... so you what that means, I ain't going to let this go to waste that would just be stupid... sigh...
+
+> [!NOTE] BUILDERS LOG #19
+>
+> Not going to lie... forgot about the client -> server rpc adapter for the buses and db...
+>
+> named pipe is sooo slow though... does that mean we have to create our own transport now too?... **sigh**
+>
+> Both wal and bus run in excess of 700+ mill ops per sec, the bus does 2.1 bill... sooo... I think we have to go across a boundary for this... FUCK... while dusting off the good ol'disruptors is always fun... this means we are going to be at a minimum, bottlenecked due to serialization/encoding. While I do have access to the fastest binary encoder I could get my hands on and test... that is still short, a lot of millions... 
+>
+> Build our own specialty websocket... still have to encode the payload. No matter which way we slice it... 
 
 
 > [!NOTE] PERFORMANCE NOTES

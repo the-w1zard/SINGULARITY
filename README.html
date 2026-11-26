@@ -179,6 +179,263 @@
 <p align="left">The goal? To remove all friction, from everything.</p>
 </div>
 <br clear="right">
+<pre><code class="language-tsx"><span class="hljs-comment">// class</span>
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">signal</span>.<span class="hljs-property">get</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">1538.46</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">449.27</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">signal</span>.<span class="hljs-property">peek</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">1194.74</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">547.03</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">signal</span>.<span class="hljs-property">set</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">376.51</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">223.76</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">signal</span>.<span class="hljs-property">get</span>.<span class="hljs-property">set</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">424.09</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">205.91</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">computed</span>.<span class="hljs-property">get</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">161.50</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">153.30</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">computed</span>.<span class="hljs-property">invalidate</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">41.41</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">34.98</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">computed</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">17.27</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">16.75</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">computed</span>.<span class="hljs-property">chain</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">74.21</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">68.95</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">computed</span>.<span class="hljs-property">chain</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">6.48</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">6.29</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">effect</span>.<span class="hljs-property">create</span>-dispose ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">29.63</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">21.17</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">effect</span>.<span class="hljs-property">notify</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">14.04</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">12.55</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">effect</span>.<span class="hljs-property">cleanup</span>-rerun ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">21.30</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">17.95</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">dependency</span>.<span class="hljs-property">track</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">23.78</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">20.99</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">fanout</span><span class="hljs-number">.16</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">2.98</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">2.80</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">fanout</span><span class="hljs-number">.64</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">0.72</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">0.70</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">batch</span><span class="hljs-number">.3</span>-writes ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">31.24</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">26.66</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">batch</span>.<span class="hljs-property">effect</span><span class="hljs-number">.3</span>-writes ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">14.46</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">13.05</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">graph</span>.<span class="hljs-property">diamond</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">131.06</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">113.01</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">graph</span>.<span class="hljs-property">diamond</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">4.81</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">4.46</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">graph</span>.<span class="hljs-property">branch</span><span class="hljs-number">.16</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">160.57</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">138.04</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">graph</span>.<span class="hljs-property">branch</span><span class="hljs-number">.16</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">1.22</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">1.14</span> M ops/sec
+---------------------------------------------------------
+</code></pre>
+<pre><code class="language-tsx">------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">signal</span>.<span class="hljs-property">get</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">1453.49</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">479.81</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">signal</span>.<span class="hljs-property">peek</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">1270.65</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">583.82</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">signal</span>.<span class="hljs-property">set</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">377.07</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">196.89</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">signal</span>.<span class="hljs-property">get</span>.<span class="hljs-property">set</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">363.64</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">179.47</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">computed</span>.<span class="hljs-property">get</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">77.94</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">70.52</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">computed</span>.<span class="hljs-property">invalidate</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">41.94</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">35.91</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">computed</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">25.53</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">22.65</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">computed</span>.<span class="hljs-property">chain</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">74.32</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">70.52</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">computed</span>.<span class="hljs-property">chain</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">6.31</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">6.01</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">effect</span>.<span class="hljs-property">create</span>-dispose ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">28.45</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">20.51</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">effect</span>.<span class="hljs-property">notify</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">19.60</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">17.11</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">effect</span>.<span class="hljs-property">cleanup</span>-rerun ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">18.50</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">15.46</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">dependency</span>.<span class="hljs-property">track</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">17.85</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">15.87</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">fanout</span><span class="hljs-number">.16</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">2.85</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">2.73</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">fanout</span><span class="hljs-number">.64</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">0.78</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">0.76</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">batch</span><span class="hljs-number">.3</span>-writes ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">27.30</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">23.25</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">batch</span>.<span class="hljs-property">effect</span><span class="hljs-number">.3</span>-writes ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">12.34</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">10.81</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">graph</span>.<span class="hljs-property">diamond</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">138.75</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">98.59</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">graph</span>.<span class="hljs-property">diamond</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">5.06</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">4.64</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">graph</span>.<span class="hljs-property">branch</span><span class="hljs-number">.16</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">171.00</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">159.56</span> M ops/sec
+---------------------------------------------------------
+------------ <span class="hljs-variable constant_">SIGNAL_ENGINE</span>.<span class="hljs-property">graph</span>.<span class="hljs-property">branch</span><span class="hljs-number">.16</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">0.87</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">0.82</span> M ops/sec
+---------------------------------------------------------
+</code></pre>
+<pre><code class="language-tsx"><span class="hljs-comment">// alien</span>
+------------ alien.<span class="hljs-property">get</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">1206.27</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">437.22</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">peek</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">80.26</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">71.67</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">set</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">154.82</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">131.38</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">get</span>.<span class="hljs-property">set</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">53.93</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">51.81</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">computed</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">82.54</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">74.55</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">computed</span>.<span class="hljs-property">invalidate</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">66.93</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">65.79</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">computed</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">23.17</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">21.20</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">computed</span>.<span class="hljs-property">chain</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">185.49</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">147.45</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">computed</span>.<span class="hljs-property">chain</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">7.23</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">6.59</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">effect</span>.<span class="hljs-property">create</span>-dispose ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">20.98</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">16.61</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">effect</span>.<span class="hljs-property">notify</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">6.84</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">6.25</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">effect</span>.<span class="hljs-property">cleanup</span>-rerun ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">11.39</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">9.99</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">dependency</span>.<span class="hljs-property">track</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">12.33</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">11.54</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">fanout</span><span class="hljs-number">.16</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">1.78</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">1.31</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">fanout</span><span class="hljs-number">.64</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">0.53</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">0.49</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">batch</span><span class="hljs-number">.3</span>-writes ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">32.81</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">29.46</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">batch</span>.<span class="hljs-property">effect</span><span class="hljs-number">.3</span>-writes ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">9.44</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">8.44</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">graph</span>.<span class="hljs-property">diamond</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">124.18</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">116.90</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">graph</span>.<span class="hljs-property">diamond</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">4.82</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">4.38</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">graph</span>.<span class="hljs-property">branch</span><span class="hljs-number">.16</span>.<span class="hljs-property">cached</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">118.71</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">110.17</span> M ops/sec
+---------------------------------------------------------
+------------ alien.<span class="hljs-property">graph</span>.<span class="hljs-property">branch</span><span class="hljs-number">.16</span>.<span class="hljs-property">recompute</span> ---------------
+<span class="hljs-title class_">Peak</span> (<span class="hljs-title class_">Best</span> <span class="hljs-title class_">Batch</span>):                      <span class="hljs-number">0.75</span> M ops/sec
+<span class="hljs-title class_">Average</span>:                                <span class="hljs-number">0.72</span> M ops/sec
+---------------------------------------------------------
+</code></pre>
 <div class="markdown-alert markdown-alert-note"><p class="markdown-alert-title"><svg class="octicon octicon-info mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>Note</p><p></p>
 <p>The entire goal of the dark side, power and performance. Nothing else matters...</p>
 <p>We remove all frivolous features.</p>
@@ -3188,7 +3445,133 @@ Peak (Best Batch):                      12.12 M ops/sec
 Average:                                11.36 M ops/sec
 ---------------------------------------------------------
 </code></pre>
+<p>After performance update</p>
+<pre><code class="language-txt">------------ RAVEN.store.get ---------------
+Peak (Best Batch):                      259.34 M ops/sec
+Average:                                105.75 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.has ---------------
+Peak (Best Batch):                      251.70 M ops/sec
+Average:                                25.86 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.set ---------------
+Peak (Best Batch):                      64.93 M ops/sec
+Average:                                33.37 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.set.functional ---------------
+Peak (Best Batch):                      39.16 M ops/sec
+Average:                                26.11 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.get.set ---------------
+Peak (Best Batch):                      54.02 M ops/sec
+Average:                                48.20 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.entries ---------------
+Peak (Best Batch):                      7.51 M ops/sec
+Average:                                6.62 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.subscribe ---------------
+Peak (Best Batch):                      2.55 M ops/sec
+Average:                                2.32 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.persist.get ---------------
+Peak (Best Batch):                      59.26 M ops/sec
+Average:                                48.68 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.persist.has ---------------
+Peak (Best Batch):                      72.35 M ops/sec
+Average:                                64.40 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.store.persist.set ---------------
+Peak (Best Batch):                      50.32 M ops/sec
+Average:                                47.28 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.get ---------------
+Peak (Best Batch):                      53.19 M ops/sec
+Average:                                33.23 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.getHot ---------------
+Peak (Best Batch):                      145.39 M ops/sec
+Average:                                107.64 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.set ---------------
+Peak (Best Batch):                      33.32 M ops/sec
+Average:                                18.04 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.get.set ---------------
+Peak (Best Batch):                      80.10 M ops/sec
+Average:                                61.39 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.getAll ---------------
+Peak (Best Batch):                      6.68 M ops/sec
+Average:                                5.65 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.getByPrefix ---------------
+Peak (Best Batch):                      4.68 M ops/sec
+Average:                                4.17 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.subscribe ---------------
+Peak (Best Batch):                      2.90 M ops/sec
+Average:                                2.64 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.notify ---------------
+Peak (Best Batch):                      1.18 M ops/sec
+Average:                                0.96 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.get ---------------
+Peak (Best Batch):                      2.57 M ops/sec
+Average:                                2.08 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.set ---------------
+Peak (Best Batch):                      15.56 M ops/sec
+Average:                                14.42 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.get.set ---------------
+Peak (Best Batch):                      2.19 M ops/sec
+Average:                                1.80 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.selector.get ---------------
+Peak (Best Batch):                      2.46 M ops/sec
+Average:                                1.77 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.selector.set ---------------
+Peak (Best Batch):                      8.58 M ops/sec
+Average:                                8.18 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.derived.get ---------------
+Peak (Best Batch):                      2.47 M ops/sec
+Average:                                1.91 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.darkState.derived.set ---------------
+Peak (Best Batch):                      12.58 M ops/sec
+Average:                                12.15 M ops/sec
+---------------------------------------------------------
+</code></pre>
 </details>
+<div class="markdown-alert markdown-alert-note"><p class="markdown-alert-title"><svg class="octicon octicon-info mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>BUILDERS LOG #16</p><p></p>
+<p>TLDR: design bench so that the test runs in the sub one sec time window or when 11 secs has elapsed. This rule would remove all variables concerning v8.</p>
+<p>The discrepency in numbers... man, am I fucking so happy that... it dawned on me when it did hahaha, or else I would literally be here for days trying to figure this out...</p>
+<p>SOOOOO... couple of things are working against us, thankfully I only wasted like 20 mins on this, but since we are now benching against the real live implementation in place of a set up bench and harness it changes how we hit v8 than we did previously.</p>
+<p>The implementation has a ready boolean to signify once everything has been initalised, that is part of the problem.</p>
+<p>The second problem was where exactly during v8s execution window, were we hitting exactly. For those of you that dont know v8s execution window starts with the largest burst of performance fitting within a sub 1 second window. Which is how 99% of all users us v8, which is why this exists. If v8 continues to run, it sees a massive dip, obviously, following the burst up till around the 5-6 second mark. When it expereiences another dip, due to handing off the process to v8s turbo. From here... it takes till the around the 10 sec mark to finally start hitting v8s turbo when it has fully initialized.</p>
+<p>Basically... the hot paths we were testing fucking... just hit it at all the wrong times as you can see here:</p>
+<pre><code class="language-txt">------------ RAVEN.state.getHot2 ---------------
+Peak (Best Batch):                      1453.49 M ops/sec
+Average:                                587.23 M ops/sec
+---------------------------------------------------------
+------------ RAVEN.state.getHot ---------------
+Peak (Best Batch):                      376.36 M ops/sec
+Average:                                206.64 M ops/sec
+---------------------------------------------------------
+</code></pre>
+<p>Prior to this run, both hot paths were only hitting 100 mill lol... as you can see here, hot 2 is hitting the burst on its way down since it is only getting 1453 here, when it should be getting almost 1700. getHot, previousl runs at 100, now almost at the very end of the burst is at 375... sooo...</p>
+<p>In order to have complete control and give each test the same variables... we need to design the tests differently, that way each test atleast has the same parameters to run that way we aren't accidently changing them from test to test and not making us wonder about life on why one test is so much slower then the next. When in reality, it literally has nothing to do with the code, the bench or the harness... but in fact, it was v8 all along.</p>
+<p>But let me be clear. We are NOT designing your average bench mark of warm up phase, fucking 5+ seconds of other bullshit and then finally start testing for another 10 secs or whatever stupid and dumb processs they designed. THAT IS NOT HOW THE REAL WORLD USES V8, but instead benchmarkers, for whatever reason, bench against a made up and unreal synthetic test. The numbers do not translate to the real world in any form, but maybe sub 1% of use cases.</p>
+<p>There is a reason why v8 sub 1 sec performance... bursts the way it does. Since users only hit either the sub 1 burst, or when turbo has already flattened.</p>
+<p>The next time you create a test, keep that in mind. Because you may not even be hitting v8 at the exact timing you should be.</p>
+<p>If you do not beleive a fucking word of this... that's ok, go to the message queues repo... download the main test, and run vader, rule of 2, and raven and these three disruptors will give you an exact look into how v8s execution process actually runs in real time. And you can hit it as many times as you want to witness it.</p>
+<p>I would suggest keeping the tests to sub 20secs because at the 26 sec mark, you will heat soak the core and performance will drop based on your thermal situation. To run these tests, there is literally 0 configuration, just run 'bun run test.ts' since buns performance is much higher than nodes, and run the non-bare metal test. As the bare metal test does not log the results per second, but instead once when the test ends.</p>
+</div>
 <details style="font-size: 14.5px;"><summary><strong><span style="font-size: 16px; font-family: monospace">[THE DARK SIDE: USE STATE]</span> </strong></summary>
 <pre><code class="language-txt">
 </code></pre>
@@ -3241,6 +3624,73 @@ Average:                                11.36 M ops/sec
 <pre><code class="language-txt">
 </code></pre>
 </details>
+<div class="markdown-alert markdown-alert-note"><p class="markdown-alert-title"><svg class="octicon octicon-info mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>BUILDERS LOG #16</p><p></p>
+<p>I'm adding some final touches on the message queue and its adapters and an idea just came to me... along with a question... why do we always just create... a signle sub... when in reality there are in fact 2 subs, there is the one that devs usualy and almost 100% use which is the sub and unsub version, where you create the sub at the call site but also immediatly unsub the sub as soon as the first message comes in....</p>
+<p>Then theres the second kind, the kind that you do not want to unsub, the long standing version and in fact want it to stay open...</p>
+<p>It is super late in the game to change the api, but this would be adding to it in a way that won't disrupt the current paths, where they will stay the way they are as it already exposes the unsub version, and we simply just add the new one beside it.</p>
+</div>
+<pre><code class="language-tsx">	public sub = (<span class="hljs-function">() =&gt;</span> {
+		<span class="hljs-keyword">const</span> fn = (<span class="hljs-attr">handler</span>: A, <span class="hljs-attr">k</span>: S, <span class="hljs-attr">s</span>: S = <span class="hljs-string">&#x27;_globalThis&#x27;</span>, <span class="hljs-attr">m</span>: S = <span class="hljs-variable language_">this</span>.<span class="hljs-property">m</span>, <span class="hljs-attr">r</span>: S = <span class="hljs-variable language_">this</span>.<span class="hljs-property">r</span>, <span class="hljs-attr">c</span>: c_type = <span class="hljs-string">&quot;globalThis&quot;</span> ): <span class="hljs-function">() =&gt;</span> <span class="hljs-function"><span class="hljs-params">V</span> =&gt;</span> {	
+			<span class="hljs-keyword">let</span> <span class="hljs-attr">unsub</span>: <span class="hljs-function">() =&gt;</span> V = <span class="hljs-function">() =&gt;</span> {};
+			<span class="hljs-keyword">const</span> <span class="hljs-attr">once_handler</span>: A = <span class="hljs-function">(<span class="hljs-params">p: U</span>) =&gt;</span> {<span class="hljs-title function_">unsub</span>();<span class="hljs-title function_">handler</span>(p);};
+			unsub = <span class="hljs-variable language_">this</span>.<span class="hljs-title function_">sub_infinity</span>(once_handler, k, s, m, r, c);
+			<span class="hljs-keyword">return</span> unsub;
+		};
+
+	public sub_infinity = (<span class="hljs-function">() =&gt;</span> {
+		<span class="hljs-keyword">const</span> fn = (<span class="hljs-attr">handler</span>: A, <span class="hljs-attr">k</span>: S, <span class="hljs-attr">s</span>: S = <span class="hljs-string">&#x27;_globalThis&#x27;</span>, <span class="hljs-attr">m</span>: S = <span class="hljs-variable language_">this</span>.<span class="hljs-property">m</span>, <span class="hljs-attr">r</span>: S = <span class="hljs-variable language_">this</span>.<span class="hljs-property">r</span>, <span class="hljs-attr">c</span>: c_type = <span class="hljs-string">&quot;globalThis&quot;</span>): <span class="hljs-function">() =&gt;</span> <span class="hljs-function"><span class="hljs-params">V</span> =&gt;</span> {
+			<span class="hljs-comment">// CHANNEL LEVEL</span>
+			<span class="hljs-keyword">const</span> channelSet = (mesh.<span class="hljs-title function_">getR</span>(r, c)[r] ??= <span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>&lt;A&gt;()) <span class="hljs-keyword">as</span> <span class="hljs-title class_">Set</span>&lt;A&gt;;
+			channelSet.<span class="hljs-title function_">add</span>(handler);
+	
+			<span class="hljs-comment">// SUB_CHANNEL LEVEL</span>
+			<span class="hljs-keyword">const</span> subMap = mesh.<span class="hljs-title function_">getM</span>(m, r, c);
+			<span class="hljs-keyword">const</span> subSet = (subMap[r] ??= <span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>&lt;A&gt;()) <span class="hljs-keyword">as</span> <span class="hljs-title class_">Set</span>&lt;A&gt;;
+			subSet.<span class="hljs-title function_">add</span>(handler);
+	
+			<span class="hljs-comment">// TRIP_CHANNEL LEVEL</span>
+			<span class="hljs-keyword">const</span> tripMap = mesh.<span class="hljs-title function_">getS</span>(s, m, r, c);
+			<span class="hljs-keyword">const</span> tripSet = (tripMap[m] ??= <span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>&lt;A&gt;()) <span class="hljs-keyword">as</span> <span class="hljs-title class_">Set</span>&lt;A&gt;;
+			tripSet.<span class="hljs-title function_">add</span>(handler);
+	
+			<span class="hljs-comment">// QUAD_CHANNEL LEVEL</span>
+			<span class="hljs-keyword">const</span> quadMap = (tripMap[k] ??= <span class="hljs-title class_">Object</span>.<span class="hljs-title function_">create</span>(<span class="hljs-literal">null</span>)) <span class="hljs-keyword">as</span> <span class="hljs-title class_">Record</span>&lt;S, <span class="hljs-title class_">Set</span>&lt;A&gt;&gt;;
+			<span class="hljs-keyword">const</span> quadSet = (quadMap[s] ??= <span class="hljs-keyword">new</span> <span class="hljs-title class_">Set</span>&lt;A&gt;()) <span class="hljs-keyword">as</span> <span class="hljs-title class_">Set</span>&lt;A&gt;;
+			quadSet.<span class="hljs-title function_">add</span>(handler);
+	
+			<span class="hljs-keyword">return</span> <span class="hljs-function">() =&gt;</span> {
+				<span class="hljs-comment">// QUAD_CHANNEL</span>
+				quadSet.<span class="hljs-title function_">delete</span>(handler);
+				<span class="hljs-keyword">if</span> (!quadSet.<span class="hljs-property">size</span>) <span class="hljs-keyword">delete</span> quadMap[s];
+				<span class="hljs-keyword">if</span> (!<span class="hljs-title class_">Object</span>.<span class="hljs-title function_">keys</span>(quadMap).<span class="hljs-property">length</span>) <span class="hljs-keyword">delete</span> tripMap[k];
+	
+				<span class="hljs-comment">// TRIP_CHANNEL</span>
+				tripSet.<span class="hljs-title function_">delete</span>(handler);
+				<span class="hljs-keyword">if</span> (!tripSet.<span class="hljs-property">size</span>) <span class="hljs-keyword">delete</span> tripMap[m];
+	
+				<span class="hljs-comment">// SUB_CHANNEL</span>
+				subSet.<span class="hljs-title function_">delete</span>(handler);
+				<span class="hljs-keyword">if</span> (!subSet.<span class="hljs-property">size</span>) <span class="hljs-keyword">delete</span> subMap[r];
+	
+				<span class="hljs-comment">// CHANNEL</span>
+				channelSet.<span class="hljs-title function_">delete</span>(handler);
+				<span class="hljs-keyword">if</span> (!channelSet.<span class="hljs-property">size</span>) <span class="hljs-keyword">delete</span> mesh.<span class="hljs-title function_">getR</span>(r, c)[r];
+	
+				<span class="hljs-comment">// Remove empty hierarchy nodes</span>
+				<span class="hljs-keyword">if</span> (!<span class="hljs-title class_">Object</span>.<span class="hljs-title function_">keys</span>(subMap).<span class="hljs-property">length</span>) { <span class="hljs-keyword">delete</span> mesh.<span class="hljs-title function_">getR</span>(c, r)[m]; }
+				<span class="hljs-keyword">if</span> (!<span class="hljs-title class_">Object</span>.<span class="hljs-title function_">keys</span>(tripMap).<span class="hljs-property">length</span>) { <span class="hljs-keyword">delete</span> mesh.<span class="hljs-title function_">getR</span>(c, r)[m]; }
+			};
+		};
+	
+		<span class="hljs-keyword">return</span> fn;
+	})();
+</code></pre>
+<div class="markdown-alert markdown-alert-note"><p class="markdown-alert-title"><svg class="octicon octicon-info mr-2" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path></svg>PERFORMANCE NOTES</p><p></p>
+<ul>
+<li>replace all maps with objs, arrays even better if you have the use case for them but arrays aren't the best for real world app use cases</li>
+<li>nesting fns in iiffes seems to experience a drop in total ops, from the results I have experienced. I still do this for erverything but hot paths due to increases ergo</li>
+</ul>
+</div>
 
             <script async src="https://cdn.jsdelivr.net/npm/katex-copytex@latest/dist/katex-copytex.min.js"></script>
             
