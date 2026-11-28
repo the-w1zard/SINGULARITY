@@ -385,20 +385,16 @@ export const SIG_BUS_SCHEMA: AVROSchema = {
   type: "record",
   name: "SIGBusMessage",
   fields: [
-    { name: "v", type: "int" },          // protocol/schema version
-    { name: "kind", type: "int" },       // 0 request, 1 response, 2 event, 3 control
+    { name: "op", type: "int" },
     { name: "id", type: "string" },
     { name: "r", type: "string" },
     { name: "m", type: "string" },
     { name: "s", type: "string" },
     { name: "k", type: "string" },
     { name: "p", type: "bytes" },        // payload, optionally Avro/MessagePack encoded
-    { name: "ts", type: "long" },
-    { name: "ack", type: "boolean" },
-    { name: "replyTo", type: ["null", "string"] },
-    { name: "stream", type: ["null", "boolean"] },
-    { name: "end", type: ["null", "boolean"] },
-    { name: "ttl", type: ["null", "long"] },
+    { name: "replyTo", type: "string" },
+    { name: "end", type: "boolean" },
+    { name: "ttl", type:"int"  },
   ]
 };
 export const WAL_KVDB_SCHEMA: AVROSchema = {
@@ -413,8 +409,29 @@ export const WAL_KVDB_SCHEMA: AVROSchema = {
     { name: "k", type: "string" },
     { name: "p", type: "bytes" },       
     { name: "replyTo", type:"string" },
-    { name: "error", type: "string" }
+    { name: "adapter", type:"string" },
+    { name: "end", type:"boolean" },
+    { name: "ttl", type:"int" }
   ]
+};
+export const BUS_PAYLOAD_SCHEMA: AVROSchema = {
+  type: "record",
+  name: "BUSPayload",
+  fields: [
+    {
+      name: "value",
+      type: [
+        "null",
+        "boolean",
+        "int",
+        "long",
+        "float",
+        "double",
+        "string",
+        "bytes",
+      ],
+    },
+  ],
 };
 export const KV_PAYLOAD_SCHEMA: AVROSchema = {
   type: "record",
@@ -444,7 +461,7 @@ export const AVRO_ERROR_SCHEMA: AVROSchema = {
 };
 const codecRegistry = new Map<S, BINARY_AVRO_CODEGEN>();
 
-function getCodec(schemaName: S, schema: AVROSchema): BINARY_AVRO_CODEGEN {
+export function getCodec(schemaName: S, schema: AVROSchema): BINARY_AVRO_CODEGEN {
   let codec = codecRegistry.get(schemaName);
   if (!codec) {
     codec = new BINARY_AVRO_CODEGEN(schema); // only runs once per distinct schema, ever
@@ -452,6 +469,7 @@ function getCodec(schemaName: S, schema: AVROSchema): BINARY_AVRO_CODEGEN {
   }
   return codec;
 }
+export const BUS_PAYLOAD_CODEC = getCodec('BUSPayload', BUS_PAYLOAD_SCHEMA)
 export const ENVELOPE_CODEC = getCodec('SIGBusMessage', WAL_KVDB_SCHEMA)
 export const PAYLOAD_CODEC = getCodec('KVPayload', KV_PAYLOAD_SCHEMA)
 // #endregion

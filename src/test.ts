@@ -40,10 +40,10 @@ type SIG = { r: S; m: S; s: S; k: S; p: U };
 type H = (p: U, msg?: SIG) => number;
 type BUS_CHANNEL = { handler?: H };
 
-const r = "string";
-const m = "string";
-const s = "string";
-const k = "string";
+const r = "test";
+const m = "test";
+const s = "test";
+const k = "test";
 
 const handler = (p) => p.p + 1;
 const handle2 = (p) => p.p + 1;
@@ -1210,14 +1210,14 @@ if (FIGHT === 'bare') {
    
 
     root.bus.sub.infinity((msg) => {
-        console.log(msg,'test bed sub')
+        console.log(msg,'TEST BED SUB INFINITY')
         return { didItWork: true }
     }, k, s, m ,r )
 
     bench("O2Test['keyy']", async () => { 
        // bus.send('test', k)
         const v = await root.bus.send('BOOM', k, s, m ,r, c_type)
-        console.log(v, c_type,'test bed')
+        console.log(v, c_type,'TEST BED SEND')
     });
 
       

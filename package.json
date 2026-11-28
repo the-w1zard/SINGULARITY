@@ -31,7 +31,7 @@
   ],
   "devDependencies": {
     "@the-w1zard/alias_types": "^1.0.24",
-    "@the-w1zard/types": "^1.0.16",
+    "@the-w1zard/types": "^1.0.17",
     "@tsconfig/node-lts": "^24.0.1",
     "@types/node": "^24.19.4",
     "@typescript/typescript6": "^6.0.2",

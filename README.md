@@ -20,7 +20,7 @@
 <img src="https://img.shields.io/badge/SIDEBARS- 160+-95ED27?style=flat">
 <img src="https://img.shields.io/badge/PRODUCT ICONS- 651-95ED27?style=flat">
 <img src="https://img.shields.io/badge/FILE ICONS- 454-95ED27?style=flat">
-<img src="https://img.shields.io/badge/VSCode Extentions- 82+-95ED27?style=flat">
+<img src="https://img.shields.io/badge/VSCode Extensions- 82+-95ED27?style=flat">
 <img src="https://img.shields.io/badge/FEATURES- SHIT TONNE-95ED27?style=flat">
 </p>
 <p align="left">Small but powerful repos worth checking out:</p>
@@ -3758,6 +3758,28 @@ SIGNAL_ENGINE.graph.branch.16.recompute
 >
 > Build our own specialty websocket... still have to encode the payload. No matter which way we slice it... 
 
+
+> [!NOTE] BUILDERS LOG #20
+>
+> big dick problems...
+>
+> face palm moment, but still funny... git rejects my pushes... *squints* dafuq...
+>
+> FILES TOO BIG?! What fucking file...
+>
+> *deletes four files purely based out of assumption*
+>
+> git rejects
+>
+> *mumbles* I fucking hate you so much... 
+>
+> *actually looks into it...* How the FUCK is the db... its fucking GBS!@... I haven't used it... Havent even benched it yet... 
+>
+> Apparently, the one to two second bench runs, where I was just quickly checking to see where it was at... saw it wasn't high enough, stopping it and went back to review the code to figure out the issue. And as it started to climb, those one second and 2 second blips... were just SO FAST, that it turned into gbs lol
+>
+> With the way I code... I side skirt a LOT of problems that plague a lot of other people, but then I get weird shit like this.
+>
+> so note to self... future benches must output the db files to tmp atleast, and try to only do a single one as even a small run of a bill ops a sec with wal... omg lol
 
 > [!NOTE] PERFORMANCE NOTES
 >

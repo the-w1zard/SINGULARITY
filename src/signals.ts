@@ -2,10 +2,13 @@
 
 /*  ===========================================================================================================================
 	 CURRENT TO DO LIST
-	 - SWAP OUT SIGNALS
+	 x SWAP OUT SIGNALS
 	 - ADAPTERS NEED TO BE GONE OVER
 	 - CLIENT TO SERVER RPC ADAPTER FO RBUS
 	 - FINAL TRANSFER OVER TO INIT FILE
+	 - give incantions the abilitiy to decalre glboals within itself
+	 - make it so that incantioans and other are also distributedable
+	 - redo atoms aolutuion
 	 Welcome to the dark side...
      The counterpart to the traditional portion of the platform, where the light side gives you features... this does not.
      But... There is something that the dark side has, that the light does not... True, raw... power. Literally as much as we
@@ -61,15 +64,17 @@ import { BUS_CRYPTO } from "./comps/DISRUPTOR_CRYPTO";
 import { BINARY_CODEC } from "./comps/binary";
 import { MCR_Combo } from "@the-w1zard/dx/twx";
 import { CellVM } from "./comps/cell-worker";
+import { WebSocketServer, WebSocket as WsClient, type RawData } from "ws";
+
 //import { M2 } from "@the-w1zard/dx";
 // import { expose } from './slab';
 // import type { SlabServices } from './slab.types';
 // import { slab } from './slab.types';
 import { BinaryFrameSerializer } from './comps/serializer';
 import { ControlPlaneBootstrapper } from "./bus_db_rpc/RULE_OF_2_same_node";
-import { AVROSchema, BINARY_AVRO_CODEGEN, ENVELOPE_CODEC, PAYLOAD_CODEC, SIG_BUS_SCHEMA } from "./db/binary";
-import { KV_RPC_OP, KV_RPC_OP_VALUE } from "./db/op";
-import { WAL_KVDB } from "./db/db";
+import { AVROSchema, BINARY_AVRO_CODEGEN, ENVELOPE_CODEC, PAYLOAD_CODEC, BUS_PAYLOAD_CODEC } from "./kvdb/binary";
+import { KV_RPC_OP, KV_RPC_OP_VALUE } from "./kvdb/op";
+import { WAL_KVDB } from "./kvdb/db";
 // @ts-ignore -- native N-API addon; runtime resolves the .node binary
 const walSharedMemoryModule  = await require('./wal_shared_memory.node');
 
@@ -87,7 +92,6 @@ export interface DarkServices {
 }
 export type Slab = DarkServices;
 export const dark: Slab = Object.create(null) as Slab;
-
 export function expose<T extends object>(
   instance: T,
   name: keyof DarkServices & string,
@@ -114,7 +118,6 @@ export function expose<T extends object>(
   });
 }
 type c_type = "mesh" | "globalThis"
-
 // #endregion
 //                                                                                                                           M2 
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -770,7 +773,7 @@ interface StreamLink {
 	prev: StreamLink | undefined;
 	next: StreamLink | undefined;
 }
-export interface Rx<T> {
+export interface RxInterface<T> {
 	(): T;
 	(value: T): void;
 	readonly id: string;
@@ -779,7 +782,7 @@ export interface Rx<T> {
 	attach(parent: Node): this;
 	dispose(): void;
 }
-interface Binding<T = unknown> {
+interface Binding1<T = unknown> {
 	v: T;
 	node: Node | null;
 	el: Element | null;
@@ -1009,23 +1012,17 @@ type SIG_BUS_Message<P = A> = {
 	m: S;
 	s: S;
 	k: S;
-	p: { p: P };
+	p: U
 	ts?: N;
 	_ack?: B;
-	cache?: 'mesh'|"globalThis"
-	/** Correlates an async reply back to the awaiting send() call. */
-	replyTo?: S;
-  
-	/** Marks this message as part of a stream. */
+	cache?: 'mesh' | "globalThis"
+	adapter?: S;
 	stream?: B;
-	priority?: A
+	replyTo?: S;
 	/** Marks the final stream frame. */
 	end?: B;
   	ttl?: N
-	error?: {
-	  message: S;
-	  code?: S;
-	};
+	error?: S
   };
   type Handler = (payload: unknown) => unknown | Promise<unknown>;
   type Slot<P> = {
@@ -1079,7 +1076,7 @@ type SIG_BUS_Message<P = A> = {
 	subsTail?: Link;
 	flags: ReactiveFlags;
   }
-  export interface Link {
+  export interface Link1 {
 	version: number;
 	dep: ReactiveNode;
 	sub: ReactiveNode;
@@ -1260,7 +1257,6 @@ type ContractEntry = {
   } as const;
   export const rv = <T,>(v: UF<T>): T =>
 	typeof v === "function" ? (v as () => T)() : v;
-  export const sameValue = (a: A, b: A): B =>	Object.is(a, b) || (a instanceof Date && b instanceof Date && +a === +b);
   export const enum VM_OP {
 	PUSH_CONST = 0, PUSH_CELL = 1, ADD = 2, SUB = 3, MUL = 4, DIV = 5, RET = 7,
 	SUM_RANGE = 6, AVG_RANGE = 8, MIN_RANGE = 9, MAX_RANGE = 10, COUNT_RANGE = 11,
@@ -1367,686 +1363,596 @@ class GOVERNOR {
 	}
 }
 // #endregion
-//                                                                                                         [DARTH MAUL] SIGNALS
+//                                                                                                                      [FLAGS]
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-const queued = [];
-export const enum ReactiveFlags {
-	None = 0,
-	Mutable = 1,
-	Watching = 2,
-	RecursedCheck = 4,
-	Recursed = 8,
-	Dirty = 16,
-	Pending = 32,
-}
-const HasChildEffect = 64;
-let cycle = 0;
-let runDepth = 0;
+import "@the-w1zard/alias_types"
+import "@the-w1zard/types"
+import "@the-w1zard/dx"
+const NONE = 0;
+const MUTABLE = 1;
+const WATCHING = 2;
+const DIRTY = 4;
+const PENDING = 8;
+const QUEUED = 16;
+const DISPOSED = 32;
+const RUNNING = 64;
+const DIRECT = 128;
+const COMPUTED = 256;
+// #endregion
+//                                                                                                               [ENGINE STATE]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+let activeTarget: SubscriberNode | UD;
 let batchDepth = 0;
-let notifyIndex = 0;
-let queuedLength = 0;
-let activeSub;
-let _n = 0;
-const _rxid = () => `${_signals_root.id}:rx${++_n}`;;
-let _seq = 0;
-const seqId = () => `seq${++_seq}`;
-const str = (v: unknown) => (v == null ? '' : String(v));
-let _signals_root = {
+let cycle = 0;
+let isFlushing = false;
+let effectHead: Effect | UD;
+let effectTail: Effect | UD;
+// #endregion
+//                                                                                                                [GRAPH TYPES]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+interface SourceNode {
+  flags: N;
+  version: N;
+
+  targets: Link | UD;
+  targetsTail: Link | UD;
+}
+interface SubscriberNode {
+  flags: N;
+
+  sources: Link | UD;
+  sourcesTail: Link | UD;
+}
+interface Link {
+  source: SourceNode;
+  target: SubscriberNode;
+
+  /**
+   * The source version observed by target.
+   */
+  version: N;
+
+  prevSource: Link | UD;
+  nextSource: Link | UD;
+
+  prevTarget: Link | UD;
+  nextTarget: Link | UD;
+}
+function sameValue(a: U, b: U): B {
+  return a === b || (a !== a && b !== b) || Object.is(a, b);
+}
+export interface RxInterface<T> {
+	(): T;
+	(value: T): V;
+	readonly id: S;
+	readonly node: Node | NU;
+	readonly el: Element | NU;
+	attach(parent: Node): this;
+	dispose(): V;
+}
+interface Binding<T = U> {
+  signal: Signal<T>;
+  node: Node | Element | NU;
+  el: Node | Element | NU;
+  owned: Node[];
+  write(v: T): V;
+  disposeEffect?: () => V;
+}
+// #endregion
+//                                                                                                 [REACTIVE DOM BINDING LAYER]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export interface ComponentRoot {
+  id: S;
+  hooks: R<S, U>;
+  unmount: Set<() => V>;
+  contextProviders: R<S, U>;
+}
+
+let _signals_root: ComponentRoot = {
 	id: "THE_WIZARD_SIGNALS_ROOT",
-	hooks: Object.create(null) as Record<string, A>,
+	hooks: Object.create(null) as R<S, A>,
 	unmount: new Set(),
-	contextProviders: Object.create(null) as Record<string, A>,
-};
-const rx: Record<string, Binding> = Object.create(null);
-const rxSubs = new Set<(e: { op: string; k: string; v?: Binding }) => void>();
-const rxOn = (fn: (e: { op: string; k: string; v?: Binding }) => void) => { rxSubs.add(fn); return () => rxSubs.delete(fn); };
-rxOn((e) => {
-	if (e.op !== "set" && e.op !== "upd") return;
-	(e.v as Binding).write((e.v as Binding).v);
-});
-const get = <T>(id: string) => rx[id]!.v as T;
-const set = <T>(id: string, v: T) => {
-	const b = rx[id];
-	if (!b) return;
-	b.v = v;
-	b.write(b.v);
-	rxSubs.forEach((fn) => fn({ op: "set", k: id, v: b }));
-};
-function makeRx<T>(id: string, b: Binding<T>): Rx<T> {
+	contextProviders: Object.create(null) as R<S, A>,
+}; 
+let _rootSeq = 0;
+const rx: R<S, Binding> = Object.create(null);
+const str = (v: U) => (v == null ? '' : String(v));
+// #endregion
+//                                                                                                                         [RX]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export class Rx<X = A> {
+  private rxid(): S {
+    return `${_signals_root.id}:rx${++_rootSeq}`;
+  }
+  constructor() { }
+  public get<T = X | A>(id: S): T { return rx[id]!.signal.get() as T; }
+  public set<T = X | A>(id: S, v: T): void {
+    const b = rx[id];
+    if (!b) return;
+    b.signal.set(v);
+  }
+  private makeRx<T = X | A>(id: S, b: Binding<T>): RxInterface<T> {
     const fn = (...args: [] | [T]) => {
-        if (args.length === 0) return b.v;
-        set(id, args[0]);
+      if (args.length === 0) return this.get<T>(id);
+      this.set(id, args[0]);
     };
 
-    const r = fn as unknown as Rx<T>;
+    const r = fn as unknown as RxInterface<T>;
     Object.defineProperties(r, { id: { value: id }, node: { value: b.node }, el: { value: b.el } });
 
-    b.write(b.v);
     rx[id] = b;
+
+    b.disposeEffect = effect(() => { b.write(b.signal.get()); });
 
     r.attach = (parent) => { for (const n of b.owned) parent.appendChild(n); return r; };
     r.dispose = () => {
-        delete rx[id];
-        _signals_root.unmount.delete(r.dispose);
-        for (const n of b.owned) n.parentNode?.removeChild(n);
+      b.disposeEffect?.();
+      delete rx[id];
+      _signals_root.unmount.delete(r.dispose);
+      for (const n of b.owned) n.parentNode?.removeChild(n);
     };
 
     _signals_root.unmount.add(r.dispose);
 
     return r;
-}
-export function signalRx<T>(): Rx<T | undefined>;
-export function signalRx<T>(initialValue: T, injectDom?: boolean): Rx<T>;
-export function signalRx<T>(initialValue?: T, injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
-	const el = injectDom ? document.createElement('span') : null;
-	el?.setAttribute('data-sid', __sauron_id__);
+  }
+  public ele<T = X | A>(): RxInterface<T | UD>;
+  public ele<T = X | A>(initialValue: T, injectDom?: B): RxInterface<T>;
+  public ele<T = X | A>(initialValue?: T, injectDom = true): RxInterface<T | UD> {
+    const id = this.rxid();
+    const el = injectDom ? document.createElement('span') : null;
+    el?.setAttribute('data-sid', id);
 
-	return makeRx(__sauron_id__, {
-		v: initialValue, node: el, el, owned: el ? [el] : [],
-		write(v) { if (el) el.textContent = str(v); },
-	});
-}
-export function signalRxTxt<T>(): Rx<T | undefined>;
-export function signalRxTxt<T>(initialValue: T, node?: Node, injectDom?: boolean): Rx<T>;
-export function signalRxTxt<T>(initialValue?: T, node?: Node, injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
-	let text = (node as Text | null) ?? null;
-	const owned: Node[] = [];
+    return this.makeRx(id, {
+      signal: signal(initialValue),
+      node: el, el, owned: el ? [el] : [],
+      write(v) { if (el) el.textContent = str(v); },
+    });
+  }
+  public txt<T = X | A>(): RxInterface<T | UD>;
+  public txt<T = X | A>(initialValue: T, node?: Node, injectDom?: B): RxInterface<T>;
+  public txt<T = X | A>(initialValue?: T, node?: Node, injectDom = true): RxInterface<T | UD> {
+    const id = this.rxid();
+    let text = (node as Text | null) ?? null;
+    const owned: Node[] = [];
 
-	if (!text && injectDom) owned.push(document.createComment(__sauron_id__), (text = document.createTextNode('')));
+    if (!text && injectDom) owned.push(document.createComment(id), (text = document.createTextNode('')));
 
-	return makeRx(__sauron_id__, {
-		v: initialValue, node: text, el: text?.parentElement ?? null, owned,
-		write(v) { if (text) text.data = str(v); },
-	});
-}
-export function signalRxAtr<T>(): Rx<T | undefined>;
-export function signalRxAtr<T>(initialValue: T, node?: Element, attributeName?: string, injectDom?: boolean): Rx<T>;
-export function signalRxAtr<T>(initialValue?: T, node?: Element, attributeName = 'value',
-	injectDom = true, __sauron_id__ = _rxid()): Rx<T | undefined> {
+    return this.makeRx(id, {
+      signal: signal(initialValue),
+      node: text, el: text?.parentElement ?? null, owned,
+      write(v) { if (text) text.data = str(v); },
+    });
+  }
+  public atr<T = X | A>(): RxInterface<T | UD>;
+  public atr<T = X | A>(initialValue: T, node?: Element, attributeName?: S, injectDom?: B): RxInterface<T>;
+  public atr<T = X | A>(initialValue?: T, node?: Element, attributeName = 'value', injectDom = true): RxInterface<T | UD> {
+    const id = this.rxid();
+    if (node && injectDom && !node.hasAttribute('data-sid')) node.setAttribute('data-sid', id);
+    const live = node instanceof HTMLInputElement && attributeName === 'value' ? node : null;
 
-	if (node && injectDom && !node.hasAttribute('data-sid')) node.setAttribute('data-sid', __sauron_id__);
-	const live = node instanceof HTMLInputElement && attributeName === 'value' ? node : null;
+    return this.makeRx(id, {
+      signal: signal(initialValue),
+      node: node ?? null, el: node ?? null, owned: [],
+      write(v) {
+        if (!node) return;
+        if (v == null || v === false) node.removeAttribute(attributeName);
+        else node.setAttribute(attributeName, v === true ? '' : str(v));
+        if (live && live.value !== str(v) && document.activeElement !== live) live.value = str(v);
+      },
+    });
+  }
+  public scanRoot(root: ParentNode = document, componentId = _signals_root.id) {
+    const out: Record<string, string | null> = Object.create(null);
 
-	return makeRx(__sauron_id__, {
-		v: initialValue, node, el: node ?? null, owned: [],
-		write(v) {
-			if (!node) return;
-			if (v == null || v === false) node.removeAttribute(attributeName);
-			else node.setAttribute(attributeName, v === true ? '' : str(v));
-			if (live && live.value !== str(v) && document.activeElement !== live) live.value = str(v);
-		},
-	});
-}
-export function scanRoot(root: ParentNode = document, componentId = _signals_root.id) {
-	const out: Record<string, string | null> = Object.create(null);
-
-	for (const el of root.querySelectorAll('[data-sid]')) {
-		out[el.getAttribute('data-sid')!] = el.getAttribute('value') ?? el.textContent;
-	}
-
-	const w = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
-	while (w.nextNode()) {
-		const c = w.currentNode as Comment;
-		if (c.data.startsWith('rx')) out[c.data] = c.nextSibling?.textContent ?? null;
-	}
-
-	return out;
-}
-
-
-const { link, unlink, propagate, checkDirty, shallowPropagate, } = createReactiveSystem({
-    update(node) {
-        if ('getter' in node) {
-            return updateComputed(node);
-        }
-        if ('currentValue' in node) {
-            return updateSignal(node);
-        }
-        node.flags = 1;
-        return true;
-    },
-    notify(effect) {
-        let insertIndex = queuedLength;
-        let firstInsertedIndex = insertIndex;
-        do {
-            queued[insertIndex++] = effect;
-            effect.flags &= ~2;
-            effect = effect.subs?.sub;
-            if (effect === undefined || !(effect.flags & 2)) {
-                break;
-            }
-        } while (true);
-        queuedLength = insertIndex;
-        while (firstInsertedIndex < --insertIndex) {
-            const left = queued[firstInsertedIndex];
-            queued[firstInsertedIndex++] = queued[insertIndex];
-            queued[insertIndex] = left;
-        }
-    },
-    unwatched(node) {
-        if ('getter' in node) {
-            if (node.depsTail !== undefined) {
-                node.flags = 1 | 16;
-                disposeAllDepsInReverse(node);
-            }
-        }
-        else if ('currentValue' in node) {
-        }
-        else if ('fn' in node) {
-            effectOper.call(node);
-        }
-        else {
-            effectScopeOper.call(node);
-        }
-    },
-});
-function updateComputed(c) {
-    if (c.flags & HasChildEffect) {
-        let link = c.depsTail;
-        while (link !== undefined) {
-            const prev = link.prevDep;
-            const dep = link.dep;
-            if (!('getter' in dep) && !('currentValue' in dep)) {
-                unlink(link, c);
-            }
-            link = prev;
-        }
+    for (const el of root.querySelectorAll('[data-sid]')) {
+      out[el.getAttribute('data-sid')!] = el.getAttribute('value') ?? el.textContent;
     }
-    c.depsTail = undefined;
-    c.flags = 1 | 4;
-    const prevSub = setActiveSub(c);
-    try {
-        ++cycle;
-        const oldValue = c.value;
-        return oldValue !== (c.value = c.getter(oldValue));
+
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
+    while (w.nextNode()) {
+      const c = w.currentNode as Comment;
+      if (c.data.startsWith('rx')) out[c.data] = c.nextSibling?.textContent ?? null;
     }
-    finally {
-        activeSub = prevSub;
-        c.flags &= ~4;
-        purgeDeps(c);
-    }
+
+    return out;
+  }
+  public unmountAll(): V {
+    for (const dispose of [..._signals_root.unmount]) dispose();
+  }
 }
-function updateSignal(s) { s.flags = 1; return s.currentValue !== (s.currentValue = s.pendingValue);}
-function run(e) {
-    const flags = e.flags;
-    if (flags & 16
-        || (flags & 32
-            && checkDirty(e.deps, e))) {
-        if (flags & HasChildEffect) {
-            let link = e.depsTail;
-            while (link !== undefined) {
-                const prev = link.prevDep;
-                const dep = link.dep;
-                if (!('getter' in dep) && !('currentValue' in dep)) {
-                    unlink(link, e);
-                }
-                link = prev;
-            }
-        }
-        if (e.cleanup) {
-            runCleanup(e);
-            if (!e.flags) {
-                return;
-            }
-        }
-        e.depsTail = undefined;
-        e.flags = 2 | 4;
-        const prevSub = setActiveSub(e);
-        try {
-            ++cycle;
-            ++runDepth;
-            e.cleanup = e.fn();
-        }
-        finally {
-            --runDepth;
-            activeSub = prevSub;
-            e.flags &= ~4;
-            purgeDeps(e);
-        }
+// #endregion
+//                                                                                                                     [SIGNAL]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export class Signal<T = A> implements SourceNode {
+  flags = MUTABLE;
+  value: T;
+  version = 0;
+  targets: Link | UD;
+  targetsTail: Link | UD;
+  constructor(value: T) { this.value = value;  }
+  get(): T {
+    if (activeTarget !== undefined) { track(this, activeTarget);  }
+    return this.value;
+  }
+  peek(): T {  return this.value; }
+  set(value: T): V {
+    if (Object.is(this.value, value)) { return; }
+    this.value = value;
+    this.version = ++cycle;
+    const target = this.targets;
+    if (target === undefined) { return; }
+    const subscriber = target.target;
+    if (target.nextTarget === undefined && batchDepth === 0 && !isFlushing) {
+      const subFlags = subscriber.flags;
+      if ((subFlags & WATCHING) !== NONE) {
+        const effect = subscriber as Effect;
+        effect.flags |= DIRTY;
+        effect.runEffect();
+        return;
+      }
+      if ((subFlags & COMPUTED) !== NONE &&  (subFlags & (DIRTY | PENDING | DISPOSED)) === NONE &&  (subscriber as Computed<U>).targets === undefined ) {
+        subscriber.flags = subFlags | PENDING;
+        return;
+      }
     }
-    else if (e.deps !== undefined) {
-        e.flags = 2 | (flags & HasChildEffect);
-    }
+    propagate(target);
+    if (batchDepth === 0 && !isFlushing && effectHead !== undefined) { flushEffects(); }
+  }
+  dispose(): V {
+    clearSources(this as unknown as SubscriberNode);
+    clearTargets(this);
+  }
 }
-function flush() {
-    try {
-        while (notifyIndex < queuedLength) {
-            const effect = queued[notifyIndex];
-            queued[notifyIndex++] = undefined;
-            run(effect);
-        }
-    }
-    finally {
-        while (notifyIndex < queuedLength) {
-            const effect = queued[notifyIndex];
-            queued[notifyIndex++] = undefined;
-            effect.flags |= 2 | 8;
-        }
-        notifyIndex = 0;
-        queuedLength = 0;
-    }
-}
-function computedOper() {
+// #endregion
+//                                                                                                                   [COMPUTED]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export class Computed<T = A> implements SourceNode, SubscriberNode {
+  flags = DIRTY | COMPUTED;
+  value: T;
+  version = 0;
+  compute: (previous: T) => T;
+  sources: Link | UD;
+  sourcesTail: Link | UD;
+  targets: Link | UD;
+  targetsTail: Link | UD;
+  constructor(compute: (previous: T | UD) => T) {
+    this.value = undefined as T;
+    this.compute = compute as (previous: T) => T;
+  }
+  get(): T {
+    if (this.flags !== COMPUTED) {this.refresh(); }
+    if (activeTarget !== undefined) {track(this, activeTarget); }
+    return this.value;
+  }
+  private refresh(): V {
     const flags = this.flags;
-    if (flags & 16
-        || (flags & 32
-            && (checkDirty(this.deps, this)
-                || (this.flags = flags & ~32, false)))) {
-        if (updateComputed(this)) {
-            const subs = this.subs;
-            if (subs !== undefined) {
-                shallowPropagate(subs);
-            }
-        }
+  
+    if ((flags & DIRTY) !== NONE) {
+      this.recompute();
+    } else if ((flags & PENDING) !== NONE) {
+      if (checkDirty(this)) {
+        this.recompute();
+      } else {
+        this.flags &= ~PENDING;
+      }
     }
-    else if (!flags) {
-        this.flags = 1 | 4;
-        const prevSub = setActiveSub(this);
-        try {
-            this.value = this.getter();
-        }
-        finally {
-            activeSub = prevSub;
-            this.flags &= ~4;
-        }
+  }
+  recompute(): T {
+    const previousValue = this.value;
+    this.flags = (this.flags & ~(PENDING | DIRTY)) | RUNNING;
+    const previousTarget = activeTarget;
+    activeTarget = this;
+    const previousTail = this.sourcesTail;
+    this.sourcesTail = undefined;
+    try {
+      this.value = this.compute(previousValue);
+    } catch (error) {
+      this.flags |= DIRTY;
+      throw error;
+    } finally {
+      activeTarget = previousTarget;
+      if (this.sourcesTail !== previousTail) removeStaleSources(this);
+      this.flags &= ~RUNNING;
     }
-    const sub = activeSub;
-    if (sub !== undefined) {
-        link(this, sub, cycle);
+    if (!Object.is(previousValue, this.value)) {
+      this.version = ++cycle;
+      shallowPropagate(this.targets);
     }
     return this.value;
+  }
+  dispose(): V {
+    if ((this.flags & DISPOSED) !== NONE) { return; }
+    this.flags |= DISPOSED;
+    clearSources(this);
+    clearTargets(this);
+  }
 }
-function signalOper(...value) {
-    if (value.length) {
-        if (this.pendingValue !== (this.pendingValue = value[0])) {
-            this.flags = 1 | 16;
-            const subs = this.subs;
-            if (subs !== undefined) {
-                propagate(subs, !!runDepth);
-                if (!batchDepth) {
-                    flush();
-                }
-            }
-        }
-    }
-    else {
-        if (this.flags & 16) {
-            if (updateSignal(this)) {
-                const subs = this.subs;
-                if (subs !== undefined) {
-                    shallowPropagate(subs);
-                }
-            }
-        }
-        const sub = activeSub;
-        if (sub !== undefined) {
-            link(this, sub, cycle);
-        }
-        return this.currentValue;
-    }
-}
-function runCleanup(e) {
-    const cleanup = e.cleanup;
-    e.cleanup = undefined;
-    const prevSub = activeSub;
-    activeSub = undefined;
-    try {
-        cleanup();
-    }
-    finally {
-        activeSub = prevSub;
-    }
-}
-function effectOper() { effectScopeOper.call(this); if (this.cleanup) { runCleanup(this); }
-}
-function effectScopeOper() {
-    this.flags = 0;
-    disposeAllDepsInReverse(this);
-    const sub = this.subs;
-    if (sub !== undefined) {
-        unlink(sub);
-    }
-}
-function disposeAllDepsInReverse(sub) {
-    let link = sub.depsTail;
-    while (link !== undefined) {
-        const prev = link.prevDep;
-        unlink(link, sub);
-        link = prev;
-    }
-}
-function purgeDeps(sub) {
-    const depsTail = sub.depsTail;
-    let dep = depsTail !== undefined ? depsTail.nextDep : sub.deps;
-    while (dep !== undefined) {
-        dep = unlink(dep, sub);
-    }
-}
-function untrackFn<T>(fn: () => T): T {
-	const prev = setActiveSub(undefined);
-   try { return fn(); } finally { setActiveSub(prev); }
-}
-export function getActiveSub() { return activeSub;}
-export function setActiveSub(sub) { const prevSub = activeSub; activeSub = sub; return prevSub;}
-export function getBatchDepth() { return batchDepth;}
-export function startBatch() { ++batchDepth;}
-export function endBatch() { if (!--batchDepth) { flush(); }}
-export function isSignal(fn) { return fn.name === 'bound ' + signalOper.name;}
-export function isComputed(fn) { return fn.name === 'bound ' + computedOper.name;}
-export function isEffect(fn) { return fn.name === 'bound ' + effectOper.name;}
-export function isEffectScope(fn) { return fn.name === 'bound ' + effectScopeOper.name;}
-export function createReactiveSystem({ update, notify, unwatched, }) {
-    return {
-        link,
-        unlink,
-        propagate,
-        checkDirty,
-        shallowPropagate,
-    };
-    function link(dep, sub, version) {
-        const prevDep = sub.depsTail;
-        if (prevDep !== undefined && prevDep.dep === dep) {
-            return;
-        }
-        const nextDep = prevDep !== undefined ? prevDep.nextDep : sub.deps;
-        if (nextDep !== undefined && nextDep.dep === dep) {
-            nextDep.version = version;
-            sub.depsTail = nextDep;
-            return;
-        }
-        const prevSub = dep.subsTail;
-        if (prevSub !== undefined && prevSub.version === version && prevSub.sub === sub) {
-            return;
-        }
-        const newLink = sub.depsTail
-            = dep.subsTail
-                = {
-                    version,
-                    dep,
-                    sub,
-                    prevDep,
-                    nextDep,
-                    prevSub,
-                    nextSub: undefined,
-                };
-        if (nextDep !== undefined) {
-            nextDep.prevDep = newLink;
-        }
-        if (prevDep !== undefined) {
-            prevDep.nextDep = newLink;
-        }
-        else {
-            sub.deps = newLink;
-        }
-        if (prevSub !== undefined) {
-            prevSub.nextSub = newLink;
-        }
-        else {
-            dep.subs = newLink;
-        }
-    }
-    function unlink(link, sub = link.sub) {
-        const { dep, prevDep, nextDep, nextSub, prevSub } = link;
-        if (nextDep !== undefined) {
-            nextDep.prevDep = prevDep;
-        }
-        else {
-            sub.depsTail = prevDep;
-        }
-        if (prevDep !== undefined) {
-            prevDep.nextDep = nextDep;
-        }
-        else {
-            sub.deps = nextDep;
-        }
-        if (nextSub !== undefined) {
-            nextSub.prevSub = prevSub;
-        }
-        else {
-            dep.subsTail = prevSub;
-        }
-        if (prevSub !== undefined) {
-            prevSub.nextSub = nextSub;
-        }
-        else if ((dep.subs = nextSub) === undefined) {
-            unwatched(dep);
-        }
-        return nextDep;
-    }
-    function propagate(link, innerWrite) {
-        let next = link.nextSub;
-        let stack;
-        top: do {
-            const sub = link.sub;
-            let flags = sub.flags;
-            if (!(flags & (4 | 8 | 16 | 32))) {
-                sub.flags = flags | 32;
-                if (innerWrite) {
-                    sub.flags |= 8;
-                }
-            }
-            else if (!(flags & (4 | 8))) {
-                flags = 0;
-            }
-            else if (!(flags & 4)) {
-                sub.flags = (flags & ~8) | 32;
-            }
-            else if (!(flags & (16 | 32)) && isValidLink(link, sub)) {
-                sub.flags = flags | (8 | 32);
-                flags &= 1;
-            }
-            else {
-                flags = 0;
-            }
-            if (flags & 2) {
-                notify(sub);
-            }
-            if (flags & 1) {
-                const subSubs = sub.subs;
-                if (subSubs !== undefined) {
-                    const nextSub = (link = subSubs).nextSub;
-                    if (nextSub !== undefined) {
-                        stack = { value: next, prev: stack };
-                        next = nextSub;
-                    }
-                    continue;
-                }
-            }
-            if ((link = next) !== undefined) {
-                next = link.nextSub;
-                continue;
-            }
-            while (stack !== undefined) {
-                link = stack.value;
-                stack = stack.prev;
-                if (link !== undefined) {
-                    next = link.nextSub;
-                    continue top;
-                }
-            }
-            break;
-        } while (true);
-    }
-    function checkDirty(link, sub) {
-        let stack;
-        let checkDepth = 0;
-        let dirty = false;
-        top: do {
-            const dep = link.dep;
-            const flags = dep.flags;
-            if (sub.flags & 16) {
-                dirty = true;
-            }
-            else if ((flags & (1 | 16)) === (1 | 16)) {
-                const subs = dep.subs;
-                if (update(dep)) {
-                    if (subs.nextSub !== undefined) {
-                        shallowPropagate(subs);
-                    }
-                    dirty = true;
-                }
-            }
-            else if ((flags & (1 | 32)) === (1 | 32)) {
-                stack = { value: link, prev: stack };
-                link = dep.deps;
-                sub = dep;
-                ++checkDepth;
-                continue;
-            }
-            if (!dirty) {
-                const nextDep = link.nextDep;
-                if (nextDep !== undefined) {
-                    link = nextDep;
-                    continue;
-                }
-            }
-            while (checkDepth--) {
-                link = stack.value;
-                stack = stack.prev;
-                if (dirty) {
-                    const subs = sub.subs;
-                    if (update(sub)) {
-                        if (subs.nextSub !== undefined) {
-                            shallowPropagate(subs);
-                        }
-                        sub = link.sub;
-                        continue;
-                    }
-                    dirty = false;
-                }
-                else {
-                    sub.flags &= ~32;
-                }
-                sub = link.sub;
-                const nextDep = link.nextDep;
-                if (nextDep !== undefined) {
-                    link = nextDep;
-                    continue top;
-                }
-            }
-            return dirty && !!sub.flags;
-        } while (true);
-    }
-    function shallowPropagate(link) {
-        do {
-            const sub = link.sub;
-            const flags = sub.flags;
-            if ((flags & (32 | 16)) === 32) {
-                sub.flags = flags | 16;
-                if ((flags & (2 | 4)) === 2) {
-                    notify(sub);
-                }
-            }
-        } while ((link = link.nextSub) !== undefined);
-    }
-    function isValidLink(checkLink, sub) {
-        let link = sub.depsTail;
-        while (link !== undefined) {
-            if (link === checkLink) {
-                return true;
-            }
-            link = link.prevDep;
-        }
-        return false;
-    }
-}
-export function signal(initialValue) {
-    return signalOper.bind({
-        currentValue: initialValue,
-        pendingValue: initialValue,
-        subs: undefined,
-        subsTail: undefined,
-        flags: 1,
-    });
-}
-export function computed(getter) {
-    return computedOper.bind({
-        value: undefined,
-        subs: undefined,
-        subsTail: undefined,
-        deps: undefined,
-        depsTail: undefined,
-        flags: 0,
-        getter: getter,
-    });
-}
-export function effect(fn) {
-    const e = {
-        fn,
-        cleanup: undefined,
-        subs: undefined,
-        subsTail: undefined,
-        deps: undefined,
-        depsTail: undefined,
-        flags: 2 | 4,
-    };
-    const prevSub = setActiveSub(e);
-    if (prevSub !== undefined) {
-        link(e, prevSub, 0);
-        prevSub.flags |= HasChildEffect;
-    }
-    try {
-        ++runDepth;
-        e.cleanup = e.fn();
-    }
-    finally {
-        --runDepth;
-        activeSub = prevSub;
-        e.flags &= ~4;
-    }
-    return effectOper.bind(e);
-}
-export function effectScope(fn) {
-    const e = {
-        deps: undefined,
-        depsTail: undefined,
-        subs: undefined,
-        subsTail: undefined,
-        flags: 1,
-    };
-    const prevSub = setActiveSub(e);
-    if (prevSub !== undefined) {
-        link(e, prevSub, 0);
-        prevSub.flags |= HasChildEffect;
-    }
-    try {
-        fn();
-    }
-    finally {
-        activeSub = prevSub;
-    }
-    return effectScopeOper.bind(e);
-}
-export function trigger(fn) {
-    const sub = {
-        deps: undefined,
-        depsTail: undefined,
-        flags: 2,
-    };
-    const prevSub = setActiveSub(sub);
-    try {
-        fn();
-    }
-    finally {
-        activeSub = prevSub;
-        sub.flags = 0;
-        let link = sub.deps;
-        while (link !== undefined) {
-            const dep = link.dep;
-            link = unlink(link, sub);
-            const subs = dep.subs;
-            if (subs !== undefined) {
-                propagate(subs, !!runDepth);
-                shallowPropagate(subs);
-            }
-        }
-        if (!batchDepth) {
-            flush();
-        }
-    }
-}
-
 // #endregion
+//                                                                                                                     [EFFECT]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export class Effect implements SubscriberNode {
+  flags = WATCHING;
+  run: () => U | (() => U);
+  cleanup: (() => U) | UD;
+  sources: Link | UD;
+  sourcesTail: Link | UD;
+  nextQueuedEffect: Effect | UD;
+  constructor(run: () => U | (() => U)) { this.run = run;  }
+  runEffect(): V {
+    if ((this.flags & DIRTY) !== NONE) { this.execute();  return; }
+    if ((this.flags & PENDING) !== NONE && (this.flags & DIRECT) === NONE && checkDirty(this)) { this.execute(); return; }
+    this.flags &= ~PENDING;
+  }
+  execute(): V {
+    if (this.cleanup !== undefined) {
+      const cleanup = this.cleanup;
+      this.cleanup = undefined;
+      const previousTarget = activeTarget;
+      activeTarget = undefined;
+      try { cleanup(); } 
+      finally {activeTarget = previousTarget;}
+    }
+    this.flags &= ~(PENDING | DIRTY);
+    const previousTarget = activeTarget;
+    activeTarget = this;
+    const previousTail = this.sourcesTail;
+    this.sourcesTail = undefined;
+    try {
+      const result = this.run();
+      this.cleanup = typeof result === 'function' ? (result as () => U) : undefined;
+    } finally {
+      activeTarget = previousTarget;
+      if (this.sourcesTail !== previousTail) { removeStaleSources(this); }
+    }
+  }
+  dispose(): V {
+    if ((this.flags & DISPOSED) !== NONE) { return; }
+    this.flags |= DISPOSED;
+    if (this.cleanup !== undefined) {
+      const cleanup = this.cleanup;
+      this.cleanup = undefined;
+      const previousTarget = activeTarget;
+      activeTarget = undefined;
+      cleanup();
+      activeTarget = previousTarget;
+    }
+    clearSources(this);
+  }
+}
+// #endregion
+//                                                                                                                   [TRACKING]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+function track(source: SourceNode, target: SubscriberNode): V {
+  const tail = target.sourcesTail;
+ if (tail !== undefined && tail.source === source) { if (tail.version !== source.version) { tail.version = source.version; } return; }
+  let link = tail !== undefined ? tail.nextSource : target.sources;
+  while (link !== undefined) {
+    if (link.source === source) {
+      if (link.version !== source.version) { link.version = source.version; }
+      target.sourcesTail = link;
+      return;
+    }
+    link = link.nextSource;
+  }
+  link = target.sources;
+  while (link !== tail) {
+    const current = link!;
+    if (current.source === source) {
+      unlink(current);
+      const previousTargetLink = source.targetsTail;
+      current.prevSource = tail;
+      current.nextSource = tail !== undefined ? tail.nextSource : target.sources;
+      current.prevTarget = previousTargetLink;
+      current.nextTarget = undefined;
+      target.sourcesTail = current;
+      if (tail !== undefined) { tail.nextSource = current; }
+      else { target.sources = current; }
+      if (current.nextSource !== undefined) { current.nextSource.prevSource = current; }
+      source.targetsTail = current;
+      if (previousTargetLink !== undefined) { previousTargetLink.nextTarget = current; }
+      else { source.targets = current; }
+      if (current.version !== source.version) { current.version = source.version; }
+      return;
+    }
+    link = current.nextSource;
+  }
+  const previousTargetLink = source.targetsTail;
+  link = {
+    source,
+    target,
+    version: source.version,
+    prevSource: tail,
+    nextSource: tail !== undefined ? tail.nextSource : target.sources,
+    prevTarget: previousTargetLink,
+    nextTarget: undefined,
+  };
+  target.sourcesTail = link;
+  if (tail !== undefined) {tail.nextSource = link;} 
+  else {target.sources = link;}
+  if (link.nextSource !== undefined) { link.nextSource.prevSource = link; }
+  source.targetsTail = link;
+  if (previousTargetLink !== undefined) {previousTargetLink.nextTarget = link; } 
+  else { source.targets = link; }
+}
+function removeStaleSources(target: SubscriberNode): V {
+  const tail = target.sourcesTail;
+  let link = tail !== undefined ? tail.nextSource : target.sources;
+  while (link !== undefined) {
+    const next = link.nextSource;
+    unlink(link);
+    link = next;
+  }
+}
+function clearSources(target: SubscriberNode): V {
+  let link = target.sources;
+  while (link !== undefined) {
+    const next = link.nextSource;
+    unlink(link);
+    link = next;
+  }
+  target.sources = undefined;
+  target.sourcesTail = undefined;
+}
+function clearTargets(target: SourceNode): V {
+  let link = target.targets;
+  while (link !== undefined) {
+    const next = link.nextTarget;
+    unlink(link);
+    link = next;
+  }
+  target.targets = undefined;
+  target.targetsTail = undefined;
+}
+function unlink(link: Link): V {
+  const source = link.source;
+  const target = link.target;
+  const previousSource = link.prevSource;
+  const nextSource = link.nextSource;
+  const previousTarget = link.prevTarget;
+  const nextTarget = link.nextTarget;
+  if (nextSource !== undefined) {nextSource.prevSource = previousSource;} 
+  else {target.sourcesTail = previousSource; }
+  if (previousSource !== undefined) {previousSource.nextSource = nextSource; } 
+  else {target.sources = nextSource;}
+  if (nextTarget !== undefined) {nextTarget.prevTarget = previousTarget;} 
+  else {source.targetsTail = previousTarget;}
+  if (previousTarget !== undefined) {previousTarget.nextTarget = nextTarget; } 
+  else {source.targets = nextTarget;}
+}
+// #endregion
+//                                                                                                                [PROPAGATION]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+const propagateStack: Link[] = [];
+let propagateStackLength = 0;
+
+function propagate(startLink: Link | UD): V {
+  let link = startLink;
+  propagateStackLength = 0;
+  while (true) {
+    while (link !== undefined) {
+      const target = link.target;
+      const flags = target.flags;
+      if ((flags & (DIRTY | PENDING | DISPOSED)) !== NONE) {
+        link = link.nextTarget;
+        continue;
+      }
+      target.flags = flags | PENDING;
+      if ((flags & WATCHING) !== NONE) { enqueueEffect(target as Effect);} 
+      else if ((flags & COMPUTED) !== NONE) {
+        const computedTarget = target as Computed<unknown>;
+        if (computedTarget.targets !== undefined) {
+          const next = link.nextTarget;
+          if (next !== undefined) {propagateStack[propagateStackLength++] = next; }
+          link = computedTarget.targets;
+          continue;
+        }
+      }
+      link = link.nextTarget;
+    }
+    if (propagateStackLength === 0) { return; }
+    link = propagateStack[--propagateStackLength];
+  }
+}
+function shallowPropagate(startLink: Link | UD): V {
+  let link = startLink;
+  while (link !== undefined) {
+    const target = link.target;
+    const flags = target.flags;
+    if ((flags & RUNNING) === NONE && (flags & (DIRTY | PENDING | DISPOSED)) === PENDING ) {
+      target.flags = flags | DIRTY;
+      if ((flags & WATCHING) !== NONE) { enqueueEffect(target as Effect); }
+    }
+    link = link.nextTarget;
+  }
+}
+const checkDirtyStack: Link[] = [];
+let checkDirtyStackLength = 0;
+
+function checkDirty(target: SubscriberNode): B {
+  let link = target.sources;
+  checkDirtyStackLength = 0;
+  while (true) {
+    while (link !== undefined) {
+      const source = link.source;
+      const sourceFlags = source.flags;
+      if ((sourceFlags & DIRTY) !== NONE) { return true; }
+      if (link.version !== source.version) { return true; }
+      if ((sourceFlags & MUTABLE) === NONE &&  (sourceFlags & PENDING) !== NONE ) {
+        const next = link.nextSource;
+        if (next !== undefined) { checkDirtyStack[checkDirtyStackLength++] = next; }
+        link = (source as Computed<unknown>).sources;
+        continue;
+      }
+      link = link.nextSource;
+    }
+    if (checkDirtyStackLength === 0) { return false; }
+    link = checkDirtyStack[--checkDirtyStackLength];
+  }
+}
+// #endregion
+//                                                                                                               [EFFECT QUEUE] 
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+function enqueueEffect(effect: Effect): V {
+  if ((effect.flags & QUEUED) !== NONE || (effect.flags & DISPOSED) !== NONE  ) { return; }
+  effect.flags |= QUEUED;
+  if (effectTail === undefined) {
+    effectHead = effect;
+    effectTail = effect;
+    return;
+  }
+  effectTail.nextQueuedEffect = effect;
+  effectTail = effect;
+}
+function flushEffects(): V {
+    if (effectHead === undefined) return; 
+    if (isFlushing) return;
+    isFlushing = true;
+    let firstError: U;
+    try {
+      while (effectHead !== undefined) {
+        const head = effectHead;
+        effectHead = undefined;
+        effectTail = undefined;
+        let effect: Effect | undefined = head;
+        while (effect !== undefined) {
+          const next: Effect | undefined = effect.nextQueuedEffect;
+          effect.nextQueuedEffect = undefined;
+          effect.flags &= ~QUEUED;
+          try {  effect.runEffect(); } 
+          catch (error) { firstError ??= error; }
+          effect = next;
+        }
+      }
+    } finally {
+      isFlushing = false;
+    }
+}
+// #endregion
+//                                                                                                                 [PUBLIC API]
+// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export function signal<T = A>(initialValue: T): Signal<T> {  return new Signal(initialValue);}
+export function computed<T = A>(compute: (previous: T | UD) => T,): Computed<T> {  return new Computed(compute);}
+export function effect( fn: () => U | (() => U),): () => V {
+  const node = new Effect(fn);
+  node.flags |= DIRTY;
+  node.runEffect();
+  return () => node.dispose();
+}
+export function batch<T = A>(fn: () => T): T {
+  batchDepth++;
+  try { return fn(); } 
+  finally { if (--batchDepth === 0) { flushEffects(); }  }
+}
+export function startBatch(): V {  batchDepth++;}
+export function endBatch(): V { if (--batchDepth === 0) { flushEffects(); }}
+export function untracked<T = A>(fn: () => T): T {
+  const previousTarget = activeTarget;
+  activeTarget = undefined;
+  try { return fn(); } 
+  finally {  activeTarget = previousTarget; }
+}
+// #endregion 
 //                                                                                                  [DARTH MAUL] RAPTOR SIGNALS
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 class SIGNALS {
@@ -2350,58 +2256,62 @@ class SIGNALS {
 	//                                                                                                                      SIGNALS
 	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 	public derive = (() => {
-		const fn = <T>(k: A, deps: A[], compute: (...values: A[]) => T, s = this.s, m = this.m, r = this.r, options?: { eager?: B; onError?: (err: Error) => V },	): S => {
-			if (this.meta(k, s, m, r).sys?.isComputed) return k;
-	
-		const reg = this.atom_reg(s, m, r);
-	
-		for (const d of deps) {
+		const fn = <T>(k: A, deps: A[], compute: (...values: A[]) => T, s = this.s, m = this.m, r = this.r, options?: { eager?: B; onError?: (err: Error) => V; }, ): S => {
+		  const meta = this.meta(k, s, m, r);
+	  
+		  if (meta.sys?.isComputed) return k;
+	  
+		  const reg = this.atom_reg(s, m, r);
+	  
+		  for (const d of deps) {
 			const depAtom = reg[d] as SIGNAL_CELL<A> | undefined;
 			this._sys.ensure(d, depAtom?.peek(), s, m, r);
-		}
-	
-		const c = computed(() => {
+		  }
+	  
+		  const c = computed<T>((previous: T | UD) => {
 			try {
-				const vals = deps.map(d => this._sys.ensure(d, undefined, s, m, r).read());
-				return compute(...vals);
+			  const values = deps.map(
+				(d) => this._sys.ensure(d, undefined, s, m, r).read(),
+			  );
+	  
+			  return compute(...values);
 			} catch (err) {
-				options?.onError?.(err as Error);
-				throw err;
+			  options?.onError?.(err as Error);
+			  throw err;
 			}
-		});
-	
-		this.meta(k, s, m, r).sys = {
-			read: () => c(),
+		  });
+	  
+		  meta.sys = {
+			read: () => c.get(),
 			write: () => {},
 			node: c as A,
 			isComputed: true,
+		  };
+	  
+		  const initial = untracked(() => c.get());
+	  
+		  this.create(k, initial, s, m, r);
+	  
+		  if (options?.eager) {
+			meta.sys.dispose = effect(() => {this._.writeResolved( k, c.get(), "derived", s, m, r, "eager", ); });
+		  }
+	  
+		  return k;
 		};
-	
-		const initial = untrackFn(() => c());
-		this.create(k, initial, s, m, r);
-	
-		if (options?.eager) {
-			for (const dep of deps) {
-				const depAtom = reg[dep] as SIGNAL_CELL<A> | UD;
-				if (!depAtom) continue;
-	
-				depAtom.subscribe(() =>
-					this._.writeResolved(
-						k,
-						untrackFn(() => c()),
-						"derived",
-						s, m, r,
-						dep as S,
-					),
-				);
-			}
-		}
-		return k;
-		};
-		fn.invalidate = (k: A, s = this.s, m = this.m, r = this.r): V => {
-			const entry = this.meta(k, s, m, r).sys;
-			if (!entry || !entry.isComputed) return;
-			this._.writeResolved(k, untrackFn(() => entry.read()), "derived", s, m, r, "invalidate");
+		fn.invalidate = (k: A, s = this.s, m = this.m, r = this.r, ): V => {	
+				  const entry = this.meta(k, s, m, r).sys;
+	  
+		  if (!entry || !entry.isComputed) return;
+	  
+		  this._.writeResolved(
+			k,
+			untracked(() => entry.read()),
+			"derived",
+			s,
+			m,
+			r,
+			"invalidate",
+		  );
 		};
 		return fn;
 	})();
@@ -2451,7 +2361,7 @@ class SIGNALS {
 	public peek<T = A>(k: SignalKey, s = this.s, m = this.m, r = this.r): T | undefined {
 		const sig = this.atom_reg(s, m, r)[k];
 		if (!sig) return undefined;
-		return untrackFn(() => sig());
+		return untracked(() => sig());
 	}
 	public _ = (() => {
 		const fn = () => {};
@@ -2547,7 +2457,7 @@ class SIGNALS {
 			const meta = this.meta(k, s, m, r);
 			if (meta.sealed || meta.frozen) {
 				console.warn(`[Sauron] Write to ${meta.sealed ? "sealed" : "frozen"} signal "${String(k)}" ignored.`);
-				return untrackFn(() => sig()) as T;
+				return untracked(() => sig()) as T;
 			}
 		
 			sig(resolvedValue);
@@ -2667,7 +2577,7 @@ class SIGNALS {
 
 			this.surgery.journal.push({ key: k, previous, next: written, s, m, r });
 
-			return written;
+			return written as T;
 		}; //  Undo the most recent surgery. Restoration goes through the normal write path, so computeds, effects, subscribers, history, and channels all see a real write.
 		fn.journal = [] as Array<{ key: SignalKey; previous: A; next: A; s: S; m: S; r: S }>;
 		fn.undo = (): A | UD => {
@@ -2724,25 +2634,34 @@ class SIGNALS {
 	})();
 	public _sys = (() => {
 		const fn = () => {};
-		fn.ensure = (rk: S, v: A, s = this.s, m = this.m, r = this.r): SysEntry => {
+		fn.ensure = (rk: S, v: A, s = this.s, m = this.m, r = this.r, ): SysEntry => {
 			const metaEntry = this.meta(rk, s, m, r);
+		  
 			if (metaEntry.sys) return metaEntry.sys;
-		
+		  
 			const sig = signal(v);
-			const entry: SysEntry = { read: () => sig(), write: (v: A) => sig(v), node: sig as A, isComputed: false };
+		  
+			const entry: SysEntry = {
+			  read: () => sig.get(),
+			  write: (value: A) => sig.set(value),
+			  node: sig as A,
+			  isComputed: false,
+			};
+		  
 			metaEntry.sys = entry;
-		
+		  
 			if (dark.state.get(rk, { s, m, r }) === undefined) {
-				dark.state.set(rk, v, { s, m, r, triggerRender: false });
+			  dark.state.set(rk, v, { s, m, r, triggerRender: false });
 			}
+		  
 			return entry;
-		};
+		  };
 		fn.snapshot = (k: S, s = this.s, m = this.m, r = this.r): M<S, A> => {
 			const out = new Map<string, A>();
 			const bucket = this.meta_reg(s, m, r);
 			for (const rk of Object.keys(bucket)) {
 				const entry = (bucket[rk] as MetaEntry).sys;
-				if (entry && !entry.isComputed) out.set(rk, untrackFn(() => entry.read()));
+				if (entry && !entry.isComputed) out.set(rk, untracked(() => entry.read()));
 			}
 			return out;
 		};
@@ -2890,7 +2809,7 @@ class SIGNALS {
 		};
 		fn.hot = <T = A>(key: SignalKey): P<T> => {
 			const existing = this.hot(key);
-			const current = typeof existing === "function" ? untrackFn(() => existing()) : existing;
+			const current = typeof existing === "function" ? untracked(() => existing()) : existing;
 			if (current !== undefined) return Promise.resolve(current as T);
 	
 			return new Promise<T>(resolve => {
@@ -6839,7 +6758,7 @@ class SIGNALS {
 			): Promise<{ ok: boolean; result?: unknown; error?: string }> {
 				const envelope: Required<Pick<HttpEnvelope, "ts" | "id">> & HttpEnvelope = {
 					ts: Date.now(),
-					id: seqId(),
+					id: dark.reg._sid(),
 					...env,
 				};
 		
@@ -8972,52 +8891,66 @@ class SIGNALS {
 				throw err;
 			}
 		}
+
 		public derive = (() => {
-			const fn = <T,>(k: A, deps: A[], compute: (...values: A[]) => T, s = this.s, m = this.m, r = this.r, options?: { eager?: B; onError?: (err: Error) => V }): S => {
-				if (this._getMetadata(s, m, r)._sys.get(k)?.isComputed) return k;
-				const reg = this._raptor_signals;
-				for (const d of deps) {
-					this._sys.ensure(d, reg.get(d), s, m, r);
+			const fn = <T>(k: A, deps: A[], compute: (...values: A[]) => T, s = this.s, m = this.m, r = this.r, options?: { eager?: B; onError?: (err: Error) => V; }, ): S => {
+			  const meta = this._getMetadata(s, m, r)._sys.get(k)?.isComputed 
+		  
+		  
+			  const reg = this._raptor_signals
+		  
+			  for (const d of deps) {
+				const depAtom = reg[d] as SIGNAL_CELL<A> | undefined;
+				this._sys.ensure(d, depAtom?.peek(), s, m, r);
+			  }
+		  
+			  const c = computed<T>((previous: T | UD) => {
+				try {
+				  const values = deps.map(
+					(d) => this._sys.ensure(d, undefined, s, m, r).read(),
+				  );
+		  
+				  return compute(...values);
+				} catch (err) {
+				  options?.onError?.(err as Error);
+				  throw err;
 				}
-	
-				const c = computed(() => {
-					try {
-						const vals = deps.map((d) => this._sys.ensure(d, reg.get(d), s, m, r).read());
-						return compute(...vals);
-					} catch (err) {
-						options?.onError?.(err as Error);
-						throw err;
-					}
-				});
-	
-				this._getMetadata(s, m, r)._sys.set(k, { read: () => c(), write: () => {}, node: c as A, isComputed: true });
-				reg.set(
-					k,
-					this.DARTH_MAUL_ENGINE.untrack(() => c()),
-				);
-	
-				if (options?.eager) {
-					// Warm the computed cache once. Do not write its result back
-					// into another signal; that defeats lazy recomputation.
-					this.DARTH_MAUL_ENGINE.untrack(() => c());
-				}
-				return k;
+			  });
+		  
+			  meta.sys = {
+				read: () => c.get(),
+				write: () => {},
+				node: c as A,
+				isComputed: true,
+			  };
+		  
+			  const initial = untracked(() => c.get());
+		  
+			  this.create(k, initial, undefined, s, m, r);
+		  
+			  if (options?.eager) {
+				meta.sys.dispose = effect(() => {this._.writeResolved( k, c.get(), "derived", s, m, r, "eager", ); });
+			  }
+		  
+			  return k;
 			};
-			fn.invalidate = (k: A, s = this.s, m = this.m, r = this.r): V => {
-				const entry = this._getMetadata(s, m, r)._sys.get(k);
-				if (!entry || !entry.isComputed) return;
-				this._.writeResolved(
-					k,
-					this.DARTH_MAUL_ENGINE.untrack(() => entry.read()),
-					"derived",
-					"invalidate",
-					s,
-					m,
-					r,
-				);
+			fn.invalidate = (k: A, s = this.s, m = this.m, r = this.r, ): V => {	
+					  const entry = this._getMetadata(s, m, r)._sys.get(k)
+		  
+			  if (!entry || !entry.isComputed) return;
+		  
+			  this._.writeResolved(
+				k,
+				untracked(() => entry.read()),
+				"derived",
+				s,
+				m,
+				r,
+				"invalidate",
+			  );
 			};
 			return fn;
-		})();
+		  })();
 		// #endregion
 		//                                                                                                                   SEND / SUB
 		// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -9205,18 +9138,26 @@ class SIGNALS {
 		})();
 		public _sys = (() => {
 			const fn = () => {};
-			fn.ensure = (rk: S, v: A, s = this.s, m = this.m, r = this.r): SysEntry => {
-				const sysMap = this._getMetadata(s, m, r)._sys;
-				let entry = sysMap.get(rk);
-				if (entry) return entry;
+			fn.ensure = (rk: S, v: A, s = this.s, m = this.m, r = this.r, ): SysEntry => {
+				const metaEntry = this._getMetadata(s, m, r)._sys;
+			  
 				const sig = signal(v);
-				entry = { read: () => sig(), write: (v: A) => sig(v), node: sig as A, isComputed: false };
-				sysMap.set(rk, entry);
+			  
+				const entry: SysEntry = {
+				  read: () => sig.get(),
+				  write: (value: A) => sig.set(value),
+				  node: sig as A,
+				  isComputed: false,
+				};
+			  
+				metaEntry.sys = entry;
+			  
 				if (dark.state.get(rk, { s, m, r }) === undefined) {
-					dark.state.set(rk, v, { s, m, r, triggerRender: false });
+				  dark.state.set(rk, v, { s, m, r, triggerRender: false });
 				}
+			  
 				return entry;
-			};
+			  };
 			fn.snapshot = (s = this.s, m = this.m, r = this.r): M<S, A> => {
 				const out = new Map<string, A>();
 				for (const [rk, entry] of this._getMetadata(s, m, r)._sys) {
@@ -9983,6 +9924,106 @@ class PidTable {
 // #endregion
 //                                                                                                                   MESH STORE 
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+export const XE = {
+	//                                                                                                                   DARK SIDE 
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+	SEND: 0,
+	SUB: 1,
+	REPLY: 2,
+	SEND_STREAM: 3,
+	SEND_ADP: 4,
+  
+	SUB_INF: 5,
+	HOT: 6,
+	HOT_SUB: 7,
+  
+	AUTO: 8,
+	AUTO_SUB: 9,
+	AUTO_PHONE_HOME: 10,
+  
+	STREAM_GEN: 11,
+	STREAM: 12,
+	STREAM_NATIVE: 13,
+	STREAM_OPEN_SYNC: 14,
+	STREAM_SYNC: 15,
+	STREAM_HOT: 16,
+	STREAM_REQUEST: 17,
+  
+	HANDLER: 18,
+	HANDLER_NATIVE: 19,
+	HANDLER_OPEN_SYNC: 20,
+	HANDLER_SYNC: 21,
+  
+	DUPLEX: 22,
+	DUPLEX_PLUS: 23,
+	DUPLEX_PLUS_STREAM: 24,
+	DUPLEX_PLUS_HANDLER: 25,
+	DUPLEX_STREAM: 26,
+	DUPLEX_SX: 27,
+	DUPLEX_ASYNC: 28,
+	DUPLEX_OPEN: 29,
+  
+	D_HANDLER: 30,
+	D_HANDLER_SX: 31,
+  
+	GBUS_SEND: 32,
+	GBUS_SEND_STREAM: 33,
+	GBUS_SUB: 34,
+	GBUS_STREAM: 35,
+	GBUS_DUPLEX: 36,
+	GBUS_HOT_SEND: 37,
+  
+	DRS: 38,
+	DRS_USE_CELL: 39,
+	DRS_CELL: 40,
+  
+	SPREADSHEET: 41,
+	USE_SPREADSHEET: 42,
+  
+	BATCHING_RAPTOR_SUB: 43,
+	BATCHING_RAPTOR_PUBLISH: 44,
+	BATCHING_RAPTOR_EMIT: 45,
+	BATCHING_RAPTOR_CLAIM: 46,
+  
+	STREAMING_RAPTOR_SUB: 47,
+	STREAMING_RAPTOR_POST: 48,
+	STREAMING_RAPTOR_POST_SWITCH: 49,
+	STREAMING_RAPTOR_POST_ORIGINAL: 50,
+	STREAMING_RAPTOR_STREAM: 51,
+	STREAMING_RAPTOR_OPEN_STREAM: 52,
+	STREAMING_RAPTOR_DUPLEX: 53,
+  
+	RULE_OF_2_PUBLISH: 54,
+	RULE_OF_2_HANDLER: 55,
+  
+	EXOGUL: 65,
+	DB_GET: 56,
+	DB_GET_MANY: 57,
+	DB_SET: 58,
+	DB_SET_MANY: 59,
+	DB_HOT: 60,
+	DB_HOT_MANY: 61,
+	DB_DELETE: 62,
+	DB_DELETE_MANY: 63,
+	DB_HAS: 64,
+	DB_UPDATE: 66,
+	DB_UPDATE_MANY: 67,
+	CLIENT_DELETE: 68,
+	CLIENT_DELETE_MANY: 69,
+	CLIENT_SET: 70,
+	CLIENT_SET_MANY: 71,
+	CLIENT_UPDATE: 72,
+	CLIENT_UPDATE_MANY: 73,
+	CLIENT_RESET: 74,
+	CLIENT_HOT: 75,
+	CLIENT_HAS: 76,
+	// #endregion
+	//                                                                                                                 [LIGHT SIDE]
+	// #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+
+	// #endregion
+} as const;
 class THE_MESH_STORE {
 	//                                                                              CONSTANTS
 	// #region ═════════════════════════════════════════════════════════════════════════════════════
@@ -11474,14 +11515,38 @@ class THE_MESH_STORE {
 		};
 		return fn;
 	})();
-	binary = new BINARY_AVRO_CODEGEN(SIG_BUS_SCHEMA);
-	public async invokeHandlers(msg: SIG_BUS_Message): P<U> {
+	/**	// #region ═════════════════════════════════════════════════════════════════════════════════════
+	 if (msg.r && msg.r.startsWith(":reply:")) {
+		const originalMsgId = msg.r.replace(":reply:", "");
+		const pendingTx = this.pending[originalMsgId];
+	
+		if (pendingTx) {
+			clearTimeout(pendingTx.timer);
+			delete this.pending[originalMsgId];
+			pendingTx.resolve(msg.p);
+			return { success: true, isReply: true };
+		}
+	}
+	// #endregion */
+	/**			const localListeners = dark.mesh._subscribers(raw.k, raw.s, raw.m, raw.r)
+	 if (localListeners && localListeners.size > 0) {
+		 queueMicrotask(() => {
+			 for (const listener of localListeners) {
+				 listener(msg);
+			 }
+		 });
+   }  */
+	// if (msg instanceof Uint8Array || (typeof Buffer !== "undefined" && Buffer.isBuffer(msg))) { msg = this.binary.decode_msg(msg); if (!msg) return {success: false, decodeFailed: true}; }
+
+	// binary = new BINARY_AVRO_CODEGEN(SIG_BUS_SCHEMA);
+	public async invokeHandlers1(msg: SIG_BUS_Message): P<U> {
 		const root = this.THE_MESH_CACHE;//this.cache === "globalThis" ? (globalThis as A) : this.THE_MESH_CACHE;
 		const rL = (root[msg.r] ??= Object.create(null));
 		const mL = (rL[msg.m] ??= Object.create(null));
 		const channel = mL[msg.s] ??= Object.create(null);
 		const set = channel[msg.k]?.handler;
 		if (!set || !set.size) return { success: false };
+		
 	
 		const results = await Promise.all( [...set].map((h: A) => Promise.resolve(h(msg.p)).catch(() => ({ success: false }))) );
 	
@@ -11506,31 +11571,106 @@ class THE_MESH_STORE {
 	
 		return Object.keys(merged).length === 0 ? { success: true } : merged;
 	}
-	/**	// #region ═════════════════════════════════════════════════════════════════════════════════════
-	 if (msg.r && msg.r.startsWith(":reply:")) {
-		const originalMsgId = msg.r.replace(":reply:", "");
-		const pendingTx = this.pending[originalMsgId];
-	
-		if (pendingTx) {
-			clearTimeout(pendingTx.timer);
-			delete this.pending[originalMsgId];
-			pendingTx.resolve(msg.p);
-			return { success: true, isReply: true };
+	public async invokeHandlers(msg: SIG_BUS_Message): Promise<void> {
+		const root = this.THE_MESH_CACHE;
+		const rL = (root[msg.r] ??= Object.create(null));
+		const mL = (rL[msg.m] ??= Object.create(null));
+		const channel = mL[msg.s] ??= Object.create(null);
+		const set = channel[msg.k]?.handler;
+	  
+		if (!set || !set.size) {this.sendReply(msg, { success: false, reason: "no_handler" });return; }
+	  
+		const results = await Promise.all([...set].map((handler) => Promise.resolve(handler(msg.p)).catch((err) => ({ success: false, error: err instanceof Error ? err.message : String(err), })) ) );
+	  
+		const merged: Record<string, unknown> = {};
+		const collisions: { key: string; r: string }[] = [];
+	  
+		for (const result of results) {
+		  if (result == null) continue;
+		  if (typeof result !== "object") {merged.value = result; continue;}
+		  for (const [key, value] of Object.entries(result)) {
+			if (key in merged) collisions.push({ key, r: msg.r });
+			merged[key] = value;
+		  }
 		}
+	  
+		if (collisions.length) merged._cse_collisions = collisions;
+	  
+		this.sendReply(msg, Object.keys(merged).length ? merged : { success: true } );
 	}
-	// #endregion */
-	/**			const localListeners = dark.mesh._subscribers(raw.k, raw.s, raw.m, raw.r)
-	 if (localListeners && localListeners.size > 0) {
-		 queueMicrotask(() => {
-			 for (const listener of localListeners) {
-				 listener(msg);
-			 }
-		 });
-   }  */
-	// if (msg instanceof Uint8Array || (typeof Buffer !== "undefined" && Buffer.isBuffer(msg))) { msg = this.binary.decode_msg(msg); if (!msg) return {success: false, decodeFailed: true}; }
-
+	private sendReply(request: SIG_BUS_Message, payload: unknown) {
+		const reply: SIG_BUS_Message = {
+		  ...request,
+		  id: dark.reg._sid(),
+		  replyTo: request.id,
+		  op: XE.REPLY,
+		  p: payload
+		}
+		console.log(reply,'reply')
+		this.DISPATCH(reply);
+	}
+	private completeReply1(msg: SIG_BUS_Message) {
+		const pending = this.pending[msg.replyTo];
+		if (!pending) return false;
+	  
+		if (pending.timer) clearTimeout(pending.timer);
+		delete this.pending[msg.replyTo];
+	  
+		pending.resolve(msg.p);
+		return true;
+    }
+	private completeReply(msg: SIG_BUS_Message) {
+		console.log("COMPLETE REPLY ENTERED", {
+		  replyTo: msg.replyTo,
+		  pendingKeys: Object.keys(this.pending),
+		  pending: this.pending[msg.replyTo],
+		});
+	  
+		const pending = this.pending[msg.replyTo];
+		if (!pending) return false;
+	  
+		console.log("ABOUT TO RESOLVE", msg.replyTo, msg.p);
+	  
+		if (pending.timer) clearTimeout(pending.timer);
+		delete this.pending[msg.replyTo];
+	  
+		pending.resolve(msg.p);
+	  
+		return true;
+	}
+	public async receive(raw: SIG_BUS_Message): P<U> {
+		let msg
+		if ((raw instanceof Uint8Array) || (raw instanceof ArrayBuffer)) {
+			msg = ENVELOPE_CODEC.decode_msg(raw);
+		   if (!msg) return;
+		   const payload = BUS_PAYLOAD_CODEC.decode_msg(msg.p);
+		   msg = { ...msg, p: payload }
+	   }
+		if (this.seen.has(msg.id)) return;
+		if (msg.ttl && msg.ts !== undefined && Date.now() - msg.ts > msg.ttl) return;
+		if (this.seen.size > 10000) this.seen.clear();
+		this.seen.add(msg.id);
+	
+		if (!(await this.BACK_END.run.beforeReceive(msg))) return;
+		if (!this.BACK_END.run.middleware(msg)) return;
+	
+		// schema validation
+		const schema = this.schemas[msg.r] as A;
+		if (schema) {
+			const ok = schema.validate(msg.p);
+			if (!ok) {
+				this.deadLetters.push(msg);
+				await this.BACK_END.run.onError(new Error(`schema validation failed for ${msg.r}`), msg);
+				return;
+			}
+			if (schema.coerce) msg.p = schema.coerce(msg.p);
+		}
+	
+		const result = await this.invokeHandlers(msg);
+		return result;
+	}
 	public DISPATCH = (() => {
-		const fn = async (raw: A, adapter?: string) => {
+		const fn = async (raw: A) => {
 			let msg: A = raw;
 			//                                    SECURE UNWRAP
 			// #region ═════════════════════════════════════════════════════════════════════════════════════
@@ -11541,9 +11681,10 @@ class THE_MESH_STORE {
 			if ((raw instanceof Uint8Array) || (raw instanceof ArrayBuffer)) {
 				 msg = ENVELOPE_CODEC.decode_msg(msg);
 				if (!msg) return;
-				const payload = PAYLOAD_CODEC.decode_msg(msg.p);
+				const payload = BUS_PAYLOAD_CODEC.decode_msg(msg.p);
 				msg = { ...msg, p: payload }
 			}
+			if (msg.op === XE.REPLY) {return this.completeReply(msg)}
 			// #endregion
 			//                                    CHANNEL MAPPING
 			// #region ═════════════════════════════════════════════════════════════════════════════════════
@@ -11612,67 +11753,81 @@ class THE_MESH_STORE {
 			//                                    SEND
 			// #region ═════════════════════════════════════════════════════════════════════════════════════
 			//console.log(adapter,'dispatch adapter')
-			switch (adapter) {
-					case "http": this.DISPATCH.sendMessage(msg, this.adp.http);break;
-					case "atom": this.DISPATCH.sendMessage(msg, this.adp.atom);break;
-					case "mesh": this.DISPATCH.sendMessage(msg, this.adp.registry);break;
-					case "globalThis": this.DISPATCH.sendMessage(msg, this.adp.globalThis);break;
-					case "cross_boundary": this.DISPATCH.sendMessage(msg, this.adp.cross_boundary); break;
-					case "same_boundary": this.DISPATCH.sendMessage(msg, this.adp.same_boundary); break;
-					case "disruptor": this.DISPATCH.sendMessage(msg, this.adp.disruptor); break;
-					// case "ws": this.DISPATCH.sendMessage(msg, this.adp.ws); break;
-					case "reliableSocket": this.DISPATCH.sendMessage(msg, this.adp.reliableSocket); break;
-					case "workerThreadAdapter": this.DISPATCH.sendMessage(msg, this.adp.workerThread); break;
-					case "webTransportDatagramsAdapter": this.DISPATCH.sendMessage(msg, this.adp.webTransportDatagrams); break;
-					case "webTransportClientAdapter": this.DISPATCH.sendMessage(msg, this.adp.webTransportClient); break;
-					case "webRtcDataChannelHostAdapter": this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelHost); break;
-					case "webRtcDataChannelClientAdapter": this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelClient); break;
-					case "dataChannelAdapter": this.DISPATCH.sendMessage(msg, this.adp.dataChannel); break;
-					case "startWebTransportServer": this.DISPATCH.sendMessage(msg, this.adp.startWebTransportServer); break;
-					case "webTransportAdapter": this.DISPATCH.sendMessage(msg, this.adp.webTransport); break;
-					case "webRTCAdapter": this.DISPATCH.sendMessage(msg, this.adp.webRTC); break;
-					case "sseAdapter": this.DISPATCH.sendMessage(msg, this.adp.sse); break;
-					case "sharedArrayBufferAdapter": this.DISPATCH.sendMessage(msg, this.adp.sharedArrayBuffer); break;
-					case "sharedWorkerAdapter": this.DISPATCH.sendMessage(msg, this.adp.sharedWorker); break;
-					case "serviceWorkerAdapter": this.DISPATCH.sendMessage(msg, this.adp.serviceWorker); break;
-					case "postMessageAdapter": this.DISPATCH.sendMessage(msg, this.adp.postMessage); break;
-					case "startNamedPipeBroker": this.DISPATCH.sendMessage(msg, this.adp.startNamedPipeBroker); break;
-					case "startMQTTBroker": this.DISPATCH.sendMessage(msg, this.adp.startMQTTBroker); break;
-					case "mqttAdapter": this.DISPATCH.sendMessage(msg, this.adp.mqtt); break;
-					case "messageChannelAdapter": this.DISPATCH.sendMessage(msg, this.adp.messageChannel); break;
-					case "messageChannel": this.DISPATCH.sendMessage(msg, this.adp.messageChannel); break;
-					case "http2ClientAdapter": this.DISPATCH.sendMessage(msg, this.adp.http2Client); break;
-					case "http2ServerAdapter": this.DISPATCH.sendMessage(msg, this.adp.http2Server); break;
-					case "httpAdapter": this.DISPATCH.sendMessage(msg, this.adp.http); break;
-					case "electronIPCMainAdapter": this.DISPATCH.sendMessage(msg, this.adp.electronIPCMain); break;
-					case "electronIPCRendererAdapter": this.DISPATCH.sendMessage(msg, this.adp.electronIPCRenderer); break;
-					case "nativeMessagingHostAdapter": this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingHost); break;
-					case "nativeMessagingBrowserAdapter": this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingBrowser); break;
-					case "childProcessAdapter": this.DISPATCH.sendMessage(msg, this.adp.childProcess); break;
-					case "broadcastChannelAdapter2": this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel2); break;
-					case "broadcastChannelAdapter": this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel); break;
-					default:this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel);
-					// this.sendMessage(msg, a.http);
-					// this.sendMessage(msg, a.same_boundary);
-			}
+			/**		switch (adapter) {
+			 case "http": this.DISPATCH.sendMessage(msg, this.adp.http);break;
+			case "atom": this.DISPATCH.sendMessage(msg, this.adp.atom);break;
+			case "mesh": this.DISPATCH.sendMessage(msg, this.adp.registry);break;
+			case "globalThis": this.DISPATCH.sendMessage(msg, this.adp.globalThis);break;
+			case "cross_boundary": this.DISPATCH.sendMessage(msg, this.adp.cross_boundary); break;
+			case "same_boundary": this.DISPATCH.sendMessage(msg, this.adp.same_boundary); break;
+			case "disruptor": this.DISPATCH.sendMessage(msg, this.adp.disruptor); break;
+			// case "ws": this.DISPATCH.sendMessage(msg, this.adp.ws); break;
+			case "reliableSocket": this.DISPATCH.sendMessage(msg, this.adp.reliableSocket); break;
+			case "workerThreadAdapter": this.DISPATCH.sendMessage(msg, this.adp.workerThread); break;
+			case "webTransportDatagramsAdapter": this.DISPATCH.sendMessage(msg, this.adp.webTransportDatagrams); break;
+			case "webTransportClientAdapter": this.DISPATCH.sendMessage(msg, this.adp.webTransportClient); break;
+			case "webRtcDataChannelHostAdapter": this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelHost); break;
+			case "webRtcDataChannelClientAdapter": this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelClient); break;
+			case "dataChannelAdapter": this.DISPATCH.sendMessage(msg, this.adp.dataChannel); break;
+			case "startWebTransportServer": this.DISPATCH.sendMessage(msg, this.adp.startWebTransportServer); break;
+			case "webTransportAdapter": this.DISPATCH.sendMessage(msg, this.adp.webTransport); break;
+			case "webRTCAdapter": this.DISPATCH.sendMessage(msg, this.adp.webRTC); break;
+			case "sseAdapter": this.DISPATCH.sendMessage(msg, this.adp.sse); break;
+			case "sharedArrayBufferAdapter": this.DISPATCH.sendMessage(msg, this.adp.sharedArrayBuffer); break;
+			case "sharedWorkerAdapter": this.DISPATCH.sendMessage(msg, this.adp.sharedWorker); break;
+			case "serviceWorkerAdapter": this.DISPATCH.sendMessage(msg, this.adp.serviceWorker); break;
+			case "postMessageAdapter": this.DISPATCH.sendMessage(msg, this.adp.postMessage); break;
+			case "startNamedPipeBroker": this.DISPATCH.sendMessage(msg, this.adp.startNamedPipeBroker); break;
+			case "startMQTTBroker": this.DISPATCH.sendMessage(msg, this.adp.startMQTTBroker); break;
+			case "mqttAdapter": this.DISPATCH.sendMessage(msg, this.adp.mqtt); break;
+			case "messageChannelAdapter": this.DISPATCH.sendMessage(msg, this.adp.messageChannel); break;
+			case "messageChannel": this.DISPATCH.sendMessage(msg, this.adp.messageChannel); break;
+			case "http2ClientAdapter": this.DISPATCH.sendMessage(msg, this.adp.http2Client); break;
+			case "http2ServerAdapter": this.DISPATCH.sendMessage(msg, this.adp.http2Server); break;
+			case "httpAdapter": this.DISPATCH.sendMessage(msg, this.adp.http); break;
+			case "electronIPCMainAdapter": this.DISPATCH.sendMessage(msg, this.adp.electronIPCMain); break;
+			case "electronIPCRendererAdapter": this.DISPATCH.sendMessage(msg, this.adp.electronIPCRenderer); break;
+			case "nativeMessagingHostAdapter": this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingHost); break;
+			case "nativeMessagingBrowserAdapter": this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingBrowser); break;
+			case "childProcessAdapter": this.DISPATCH.sendMessage(msg, this.adp.childProcess); break;
+			case "broadcastChannelAdapter2": this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel2); break;
+			case "broadcastChannelAdapter": this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel); break;
+			default:this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel);
+			// this.sendMessage(msg, a.http);
+			// this.sendMessage(msg, a.same_boundary);
+		} */
 			// #endregion
 			// added for client to server bridges
-			this.DISPATCH.sendMessage(msg, this.adp.ws);
+			this.DISPATCH.sendMessage(msg)
 			console.log(msg, "DISPATCH");
 			const result = await this.invokeHandlers(msg);
 			return result;
 		};
-		fn.sendMessage = (msg: SIG_BUS_Message, adapter: SIG_BUS_Adapter, boundary?: "same-app" | "same-node" | "cross-node") => {
-			let finalizedPayload = ENVELOPE_CODEC.encode_msg({
-				...msg,
-				p: PAYLOAD_CODEC.encode_msg(msg.p), 
-				replyTo: adapter.id,
-			  }) as unknown as Uint8Array<ArrayBuffer>
+		fn.sendMessage = (msg: SIG_BUS_Message) => {
+			const adapter = this.adp[msg.adapter as keyof typeof this.adp] ?? this.adp.ws;
+			let wsadapter
+			if (msg.adapter !== 'ws') wsadapter = this.adp.ws;
+			let finalizedPayload  
+			console.log(msg, 'msg sendMessage')
+			if (
+				msg.adapter === 'ws' || 
+				msg.adapter === 'disruptor' ||
+				msg.adapter === 'http2Client' ||
+				msg.adapter === 'http2Server' ||
+				msg.adapter === 'cross_boundary' ||
+				msg.adapter === 'webTransport' ||
+				msg.adapter === 'webTransportDatagrams' ||
+				msg.adapter === 'webRtcDataChannelClient' ||
+				msg.adapter === 'startNamedPipeBroker' ||
+				msg.adapter === 'http' ||
+				msg.adapter === 'reliableSocket'
+			) finalizedPayload = ENVELOPE_CODEC.encode_msg({ ...msg, p: BUS_PAYLOAD_CODEC.encode_msg(msg.p), }) as U as Uint8Array<ArrayBuffer>
 
 			console.log(adapter.id, 'adapterid sendMessage')
 
 			if (this._auth_initialized) finalizedPayload = this.encryption.wrap(finalizedPayload);
 			adapter.send(finalizedPayload);
+			if (msg.adapter !== 'ws') wsadapter.send(finalizedPayload);
 		};
 		fn.drain = async (): P<V> => {
 			const startTime = Date.now();
@@ -11693,7 +11848,7 @@ class THE_MESH_STORE {
 				this.log.log(`[THE_WIZARD][SIGNALS][ENQUEUE]`, {msg: msg}, this.log.t.deep); //this.drop.t.error
 				// this.emitDevtoolsEvent('enqueue', msg.r, msg.m || undefined, msg.id, { priority: msg.priority, ttl: msg.ttl });
 				this.metrics.recordFeature("floodGate"); // _metrics
-				this.metrics.traceStage(msg.id, String(msg.r), "enqueue", {priority: msg.priority, ttl: msg.ttl}); // _metrics
+				this.metrics.traceStage(msg.id, String(msg.r), "enqueue", { ttl: msg.ttl}); // _metrics
 				this.metrics.tracePayloadSize(msg.id, JSON.stringify(msg.p ?? "").length); // _metrics
 			}
 
@@ -11728,51 +11883,51 @@ class THE_MESH_STORE {
 		};
 		return fn;
 	})();
-	public hot_send(msg: SIG_BUS_Message, adapter: SIG_BUS_Adapter, boundary?: "same-app" | "same-node" | "cross-node") {
+	public hot_send(msg: SIG_BUS_Message, adapter: SIG_BUS_Adapter) {
 		    console.log(adapter.id, 'adapterid hot_send')
 			adapter.send(msg);
 	}
-	public hot_dispatch = async (raw: A, adapter?: string) => {
+	public hot_dispatch = async (raw: A) => {
 		let msg: A = raw;
 
-		GateSmasher(adapter, () => ({
+		GateSmasher(msg.adapter, () => ({
 			http: {  match: (e) => e === "http", execute: () => this.hot_send(msg, this.adp.http), },
 			disruptor: {  match: (e) => e === "disruptor", execute: () => {this.hot_send(msg, this.adp.disruptor);} },
 			cross_boundary: {  match: (e) => e === "cross_boundary", execute: () => this.hot_send(msg, this.adp.cross_boundary), },
 			same_boundary: {  match: (e) => e === "same_boundary", execute: () => this.hot_send(msg, this.adp.same_boundary), },
-			atom: {  match: (e) => e === "atom", execute: () => this.DISPATCH.sendMessage(msg, this.adp.atom), },
+			atom: {  match: (e) => e === "atom", execute: () => this.hot_send(msg, this.adp.atom), },
 			// ws: {  match: (e) => e === "ws", execute: () => this.DISPATCH.sendMessage(msg, this.adp.ws), },
-			reliableSocket: {  match: (e) => e === "reliableSocket", execute: () => this.DISPATCH.sendMessage(msg, this.adp.reliableSocket), },
-			workerThread: {  match: (e) => e === "workerThread", execute: () => this.DISPATCH.sendMessage(msg, this.adp.workerThread), },
-			webTransportDatagrams: {  match: (e) => e === "webTransportDatagrams", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransportDatagrams), },
-			webTransportClient: {  match: (e) => e === "webTransportClient", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransportClient), },
-			webRtcDataChannelHost: {  match: (e) => e === "webRtcDataChannelHost", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelHost), },
-			webRtcDataChannelClient: {  match: (e) => e === "webRtcDataChannelClient", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRtcDataChannelClient), },
-			dataChannel: {  match: (e) => e === "dataChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.dataChannel), },
-			startWebTransportServer: {  match: (e) => e === "startWebTransportServer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startWebTransportServer), },
-			webTransport: {  match: (e) => e === "webTransport", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webTransport), },
-			webRTC: {  match: (e) => e === "webRTC", execute: () => this.DISPATCH.sendMessage(msg, this.adp.webRTC), },
-			sse: {  match: (e) => e === "sse", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sse), },
-			sharedArrayBuffer: {  match: (e) => e === "sharedArrayBuffer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sharedArrayBuffer), },
-			sharedWorker: {  match: (e) => e === "sharedWorker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.sharedWorker), },
-			postMessage: {  match: (e) => e === "postMessage", execute: () => this.DISPATCH.sendMessage(msg, this.adp.postMessage), },
-			serviceWorker: {  match: (e) => e === "serviceWorker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.serviceWorker), },
-			startNamedPipeBroker: {  match: (e) => e === "startNamedPipeBroker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startNamedPipeBroker), },
-			startMQTTBroker: {  match: (e) => e === "startMQTTBroker", execute: () => this.DISPATCH.sendMessage(msg, this.adp.startMQTTBroker), },
-			mqtt: {  match: (e) => e === "mqtt", execute: () => this.DISPATCH.sendMessage(msg, this.adp.mqtt), },
-			messageChannel: {  match: (e) => e === "messageChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.messageChannel), },
-			http2Client: {  match: (e) => e === "http2Client", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http2Client), },
-			http2Server: {  match: (e) => e === "http2Server", execute: () => this.DISPATCH.sendMessage(msg, this.adp.http2Server), },
-			electronIPCMain: {  match: (e) => e === "electronIPCMain", execute: () => this.DISPATCH.sendMessage(msg, this.adp.electronIPCMain), },
-			electronIPCRenderer: {  match: (e) => e === "electronIPCRenderer", execute: () => this.DISPATCH.sendMessage(msg, this.adp.electronIPCRenderer), },
-			nativeMessagingHost: {  match: (e) => e === "nativeMessagingHost", execute: () => this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingHost), },
-			nativeMessagingBrowser: {  match: (e) => e === "nativeMessagingBrowser", execute: () => this.DISPATCH.sendMessage(msg, this.adp.nativeMessagingBrowser), },
-			childProcess: {  match: (e) => e === "childProcess", execute: () => this.DISPATCH.sendMessage(msg, this.adp.childProcess), },
-			broadcastChannel2: {  match: (e) => e === "broadcastChannel2", execute: () => this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel2), },
-			broadcastChannel: {  match: (e) => e === "broadcastChannel", execute: () => this.DISPATCH.sendMessage(msg, this.adp.broadcastChannel), },
+			reliableSocket: {  match: (e) => e === "reliableSocket", execute: () => this.hot_send(msg, this.adp.reliableSocket), },
+			workerThread: {  match: (e) => e === "workerThread", execute: () => this.hot_send(msg, this.adp.workerThread), },
+			webTransportDatagrams: {  match: (e) => e === "webTransportDatagrams", execute: () => this.hot_send(msg, this.adp.webTransportDatagrams), },
+			webTransportClient: {  match: (e) => e === "webTransportClient", execute: () => this.hot_send(msg, this.adp.webTransportClient), },
+			webRtcDataChannelHost: {  match: (e) => e === "webRtcDataChannelHost", execute: () => this.hot_send(msg, this.adp.webRtcDataChannelHost), },
+			webRtcDataChannelClient: {  match: (e) => e === "webRtcDataChannelClient", execute: () => this.hot_send(msg, this.adp.webRtcDataChannelClient), },
+			dataChannel: {  match: (e) => e === "dataChannel", execute: () => this.hot_send(msg, this.adp.dataChannel), },
+			startWebTransportServer: {  match: (e) => e === "startWebTransportServer", execute: () => this.hot_send(msg, this.adp.startWebTransportServer), },
+			webTransport: {  match: (e) => e === "webTransport", execute: () => this.hot_send(msg, this.adp.webTransport), },
+			webRTC: {  match: (e) => e === "webRTC", execute: () => this.hot_send(msg, this.adp.webRTC), },
+			sse: {  match: (e) => e === "sse", execute: () => this.hot_send(msg, this.adp.sse), },
+			sharedArrayBuffer: {  match: (e) => e === "sharedArrayBuffer", execute: () => this.hot_send(msg, this.adp.sharedArrayBuffer), },
+			sharedWorker: {  match: (e) => e === "sharedWorker", execute: () => this.hot_send(msg, this.adp.sharedWorker), },
+			postMessage: {  match: (e) => e === "postMessage", execute: () => this.hot_send(msg, this.adp.postMessage), },
+			serviceWorker: {  match: (e) => e === "serviceWorker", execute: () => this.hot_send(msg, this.adp.serviceWorker), },
+			startNamedPipeBroker: {  match: (e) => e === "startNamedPipeBroker", execute: () => this.hot_send(msg, this.adp.startNamedPipeBroker), },
+			startMQTTBroker: {  match: (e) => e === "startMQTTBroker", execute: () => this.hot_send(msg, this.adp.startMQTTBroker), },
+			mqtt: {  match: (e) => e === "mqtt", execute: () => this.hot_send(msg, this.adp.mqtt), },
+			messageChannel: {  match: (e) => e === "messageChannel", execute: () => this.hot_send(msg, this.adp.messageChannel), },
+			http2Client: {  match: (e) => e === "http2Client", execute: () => this.hot_send(msg, this.adp.http2Client), },
+			http2Server: {  match: (e) => e === "http2Server", execute: () => this.hot_send(msg, this.adp.http2Server), },
+			electronIPCMain: {  match: (e) => e === "electronIPCMain", execute: () => this.hot_send(msg, this.adp.electronIPCMain), },
+			electronIPCRenderer: {  match: (e) => e === "electronIPCRenderer", execute: () => this.hot_send(msg, this.adp.electronIPCRenderer), },
+			nativeMessagingHost: {  match: (e) => e === "nativeMessagingHost", execute: () => this.hot_send(msg, this.adp.nativeMessagingHost), },
+			nativeMessagingBrowser: {  match: (e) => e === "nativeMessagingBrowser", execute: () => this.hot_send(msg, this.adp.nativeMessagingBrowser), },
+			childProcess: {  match: (e) => e === "childProcess", execute: () => this.hot_send(msg, this.adp.childProcess), },
+			broadcastChannel2: {  match: (e) => e === "broadcastChannel2", execute: () => this.hot_send(msg, this.adp.broadcastChannel2), },
+			broadcastChannel: {  match: (e) => e === "broadcastChannel", execute: () => this.hot_send(msg, this.adp.broadcastChannel), },
 		  })
 		);
-		this.DISPATCH.sendMessage(msg, this.adp.ws);
+		this.hot_send(msg, this.adp.ws);
 		//console.log(result, "emitter.dispatch.result");
 		const result = await this.invokeHandlers(msg);
 		return result;
@@ -11816,7 +11971,16 @@ class THE_MESH_STORE {
 			adapter.onDisconnect?.(() => {this.online = false;});	
 			return () => {unsub();};
 		}
-		fn.ws = () => { this._register_adapters.registerAdapter(this._adapters.ws(), 0) };
+		function getCurrentWorkspaceName() { 
+			if (isVSCode) {
+				const vscode = load('vscode')
+				return vscode.workspace.workspaceFolders?.[0]?.name ?? 'unknown-instance'
+			} else {
+				return this.m
+			}
+		}
+		// fn.ws = () => { this._register_adapters.registerAdapter(this._adapters.ws(), 0) };
+		fn.ws = (url = "ws://localhost:6453", protocols?) => { this._register_adapters.registerAdapter(this._adapters.createWsAdapter(url, protocols, getCurrentWorkspaceName()), 0)};
 		fn.disruptor = () => { this._register_adapters.registerAdapter(this._adapters.disruptor(this.k, this.s, this.m, this.r), 1) };
 		fn.pipe = () => { this._register_adapters.registerAdapter(this._adapters.pipe(), 2) };
 		fn.http = () => { this._register_adapters.registerAdapter(this._adapters.http(), 3) };
@@ -11969,7 +12133,7 @@ class THE_MESH_STORE {
 				}
 			};
 		};
-		fn.ws = (url: string = "ws://localhost:6453", protocols?: string | string[]): SIG_BUS_Adapter => {
+		fn.ws2 = (url: string = "ws://localhost:6453", protocols?: string | string[]): SIG_BUS_Adapter => {
 			let ws: WebSocket | null = null;
 			let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 			let reconnectDelay = 1000;
@@ -11999,6 +12163,211 @@ class THE_MESH_STORE {
 				onDisconnect(handler) { disconnectHandler = handler; },
 			};
 		};
+		// ws-dual-mode-adapter.ts
+		//
+		// Drop-in replacement for the existing `_adapters.ws` factory. Same call
+		// signature, same single `registerAdapter(adapter, 0)` call site, same
+		// returned SIG_BUS_Adapter shape -- nothing in _register_adapters, DISPATCH,
+		// receive, or sendReply changes.
+		//
+		// What's different is internal only: this adapter can be the fan-out hub or
+		// a client, and can FLIP between the two at runtime without ever being
+		// re-registered. registerAdapter wires onMessage/onConnect/onDisconnect to
+		// this one object exactly once, at startup; everything after that -- mode
+		// switches included -- happens behind that same object, invisibly.
+		//
+		// Ported from the old crossCseNginConnect/startSupervisor pair: the bind-or-
+		// connect decision, the standing liveness check, and the staggered reclaim
+		// delay (so N surviving instances don't all slam the port at once when the
+		// hub dies). NOT ported: clientSockets / cloudState / route correlation --
+		// that existed to do manual per-workspace targeting and response-routing,
+		// which invokeHandlers' exact (r, m, s, k) match and each node's own local
+		// `pending` map already do for free now. Also not ported: reliableSocket --
+		// the existing queue-and-backoff reconnect below already covers that job.
+		function toUint8(data: RawData): U8 {
+			if (Array.isArray(data)) return new Uint8Array(Buffer.concat(data));
+			if (data instanceof ArrayBuffer) return new Uint8Array(data);
+			return data as Buffer;
+		}
+		function toBuffer(bytes: U8 | ArrayBuffer): Buffer {
+			return bytes instanceof ArrayBuffer ? Buffer.from(bytes) : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+		}
+		function randomInstanceId(): string {
+			return `inst_${Math.random().toString(36).slice(2, 10)}`;
+		}
+		// Pass the real workspace name here in the actual integration, same as the
+		// old supervisor's getCurrentWorkspaceName() -- it's what makes the
+		// staggered-reclaim delay deterministic per instance. Falls back to a
+		// random id so this file has no hard dependency on vscode.
+		fn.createWsAdapter = (url: S = "ws://localhost:6453", protocols?: S | S[], instanceId: S = this.m, ): SIG_BUS_Adapter => {
+			const { hostname, port: portStr } = new URL(url);
+			const host = hostname || "127.0.0.1";
+			const port = Number(portStr);
+
+			let mode: "hub" | "client" = "client";
+			let wss: WebSocketServer | null = null;
+			const hubSockets = new Set<WsClient>();
+			let clientSocket: WsClient | null = null;
+
+			const sendQueue: Buffer[] = [];
+			let reconnectDelay = 1000;
+			const maxReconnectDelay = 30000;
+			let claiming = false;
+			let failureCount = 0;
+
+			let messageHandler: ((raw: Uint8Array) => void) | null = null;
+			let connectHandler: (() => void) | null = null;
+			let disconnectHandler: (() => void) | null = null;
+
+			function flushQueue(send: (buf: Buffer) => void) {
+				while (sendQueue.length) send(sendQueue.shift()!);
+			}
+
+			function becomeHub(server: WebSocketServer) {
+				// Coming from client mode -- drop the outbound connection, we don't
+				// need it anymore now that we are the hub.
+				clientSocket?.close();
+				clientSocket = null;
+
+				mode = "hub";
+				wss = server;
+				failureCount = 0;
+
+				server.on("connection", (socket) => {
+				hubSockets.add(socket);
+				connectHandler?.();
+				socket.on("message", (data) => messageHandler?.(toUint8(data)));
+				socket.on("close", () => {
+					hubSockets.delete(socket);
+					if (!hubSockets.size) disconnectHandler?.();
+				});
+				socket.on("error", () => socket.close());
+				});
+
+				flushQueue((buf) => {
+				for (const socket of hubSockets) if (socket.readyState === socket.OPEN) socket.send(buf);
+				});
+			}
+
+			function becomeClient() {
+				mode = "client";
+				wss = null;
+
+				const socket = new WsClient(url, protocols);
+				clientSocket = socket;
+
+				socket.on("open", () => {
+				reconnectDelay = 1000;
+				failureCount = 0;
+				flushQueue((buf) => socket.send(buf));
+				connectHandler?.();
+				});
+				socket.on("message", (data) => messageHandler?.(toUint8(data)));
+				socket.on("close", () => {
+				disconnectHandler?.();
+				if (clientSocket === socket) clientSocket = null;
+				setTimeout(() => {
+					if (mode === "client" && !clientSocket) becomeClient();
+				}, reconnectDelay);
+				reconnectDelay = Math.min(reconnectDelay * 2, maxReconnectDelay);
+				});
+				socket.on("error", () => socket.close());
+			}
+
+			// Attempt the real bind; EADDRINUSE on *that* attempt decides the role,
+			// same no-race-window approach as the single-shot version.
+			function attemptClaim() {
+				if (claiming) return;
+				claiming = true;
+
+				const server = new WebSocketServer({ port, host });
+				const onListening = () => {
+				server.off("error", onError);
+				claiming = false;
+				becomeHub(server);
+				};
+				const onError = (err: NodeJS.ErrnoException) => {
+				server.off("listening", onListening);
+				claiming = false;
+				if (err.code === "EADDRINUSE") {
+					if (mode !== "client" || !clientSocket) becomeClient();
+				} else {
+					throw err;
+				}
+				};
+				server.once("listening", onListening);
+				server.once("error", onError);
+			}
+
+			function canReachHub(): Promise<boolean> {
+				return new Promise((resolve) => {
+				const probe = new WsClient(url);
+				probe.once("open", () => {
+					probe.close();
+					resolve(true);
+				});
+				probe.once("error", () => resolve(false));
+				});
+			}
+
+			// Standing supervisor: only acts while we're a client. A dead hub gets
+			// reclaimed after a per-instance staggered delay (expressed here as "wait
+			// this many missed checks") so surviving instances don't all rebind at
+			// once -- same shape as the old (name.length % 3) + 1 stagger.
+			const SUPERVISOR_INTERVAL_MS = 30_000;
+			const allowedMissedChecks = (instanceId.length % 3) + 1;
+
+			setInterval(async () => {
+				if (mode === "hub" || claiming) return;
+
+				const alive = await canReachHub();
+				if (alive) {
+				failureCount = 0;
+				return;
+				}
+
+				failureCount++;
+				if (failureCount < allowedMissedChecks) return;
+
+				failureCount = 0;
+				attemptClaim();
+			}, SUPERVISOR_INTERVAL_MS);
+
+			// Initial attempt, same timing as the original factory's immediate
+			// connect() call.
+			attemptClaim();
+
+			return {
+				id: "ws",
+				send(bytes) {
+				const buf = toBuffer(bytes);
+				if (mode === "hub") {
+					for (const socket of hubSockets) if (socket.readyState === socket.OPEN) socket.send(buf);
+				} else if (clientSocket?.readyState === clientSocket.OPEN) {
+					clientSocket.send(buf);
+				} else {
+					sendQueue.push(buf);
+				}
+				},
+				onMessage(handler) {
+				messageHandler = handler;
+				return () => {
+					messageHandler = null;
+				};
+				},
+				onConnect(handler) {
+				connectHandler = handler;
+				},
+				onDisconnect(handler) {
+				disconnectHandler = handler;
+				},
+			};
+		}
+		// ---------------------------------------------------------------------------
+		// Wiring -- identical to the original call site, nothing else changes:
+		//
+		//   fn.ws = (url = "ws://localhost:6453", protocols?) => { this._register_adapters.registerAdapter(this._adapters.createWsAdapter(url, protocols, getCurrentWorkspaceName()), 0)};
+		// ---------------------------------------------------------------------------
 		fn.disruptor = (
 			k: string, s: string, m: string, r: string,
 			localAddressSpaceId: string = `disruptor:${Math.random().toString(36).slice(2)}`,
@@ -12475,37 +12844,37 @@ class THE_MESH_STORE {
 				},
 			};
 		};
-/**		fn.workerThread = (worker: import("worker_threads").Worker = new Worker(new URL("./cse.worker.ts", import.meta.url))): CSEAdapter => {
- let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
- let connectHandler: (() => void) | null = null;
- let disconnectHandler: (() => void) | null = null;
+		/**		fn.workerThread = (worker: import("worker_threads").Worker = new Worker(new URL("./cse.worker.ts", import.meta.url))): CSEAdapter => {
+		 let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
+		let connectHandler: (() => void) | null = null;
+		let disconnectHandler: (() => void) | null = null;
 
- worker.on("message", (raw: A) => {
-	 try {
-		 messageHandler?.(typeof raw === "string" ? JSON.parse(raw) : (raw as SIG_BUS_Message));
-	 } catch {}
- });
- worker.on("exit", () => disconnectHandler?.());
- process.nextTick(() => connectHandler?.());
+		worker.on("message", (raw: A) => {
+			try {
+				messageHandler?.(typeof raw === "string" ? JSON.parse(raw) : (raw as SIG_BUS_Message));
+			} catch {}
+		});
+		worker.on("exit", () => disconnectHandler?.());
+		process.nextTick(() => connectHandler?.());
 
- return {
-	 send(msg) {
-		 worker.postMessage(msg);
-	 },
-	 onMessage(handler) {
-		 messageHandler = handler;
-		 return () => {
-			 messageHandler = null;
-		 };
-	 },
-	 onConnect(handler) {
-		 connectHandler = handler;
-	 },
-	 onDisconnect(handler) {
-		 disconnectHandler = handler;
-	 },
- };
-}; */
+		return {
+			send(msg) {
+				worker.postMessage(msg);
+			},
+			onMessage(handler) {
+				messageHandler = handler;
+				return () => {
+					messageHandler = null;
+				};
+			},
+			onConnect(handler) {
+				connectHandler = handler;
+			},
+			onDisconnect(handler) {
+				disconnectHandler = handler;
+			},
+		};
+		}; */
 		fn.webTransportDatagrams = (session: WebTransportDatagramsLike): CSEAdapter => {
 			let messageHandler: ((msg: SIG_BUS_Message) => void) | null = null;
 			let connectHandler: (() => void) | null = null;
@@ -13859,30 +14228,6 @@ self.addEventListener('activate', async () => {
             return f
         },
     }
-	public async receive(msg: SIG_BUS_Message): P<U> {
-		if (this.seen.has(msg.id)) return;
-		if (msg.ttl && msg.ts !== undefined && Date.now() - msg.ts > msg.ttl) return;
-		if (this.seen.size > 10000) this.seen.clear();
-		this.seen.add(msg.id);
-	
-		if (!(await this.BACK_END.run.beforeReceive(msg))) return;
-		if (!this.BACK_END.run.middleware(msg)) return;
-	
-		// schema validation
-		const schema = this.schemas[msg.r] as A;
-		if (schema) {
-			const ok = schema.validate(msg.p);
-			if (!ok) {
-				this.deadLetters.push(msg);
-				await this.BACK_END.run.onError(new Error(`schema validation failed for ${msg.r}`), msg);
-				return;
-			}
-			if (schema.coerce) msg.p = schema.coerce(msg.p);
-		}
-	
-		const result = await this.handlers_.invoke(msg);
-		return result;
-	}
 	public log = new (class ORC_SHOUT {
 		/**
 		 * ✔ ✘
@@ -15146,6 +15491,7 @@ self.addEventListener('activate', async () => {
 // #endregion
 //                                                               [SITH] [PALPATINE] [DARTH VADER] [GALEN MAREK] [RULE OF 2] BUS 
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 export class SITH {
 	public root: DEATH_STAR;
 	// public mesh_store: THE_MESH_STORE 
@@ -15168,16 +15514,17 @@ export class SITH {
 	public DEVTOOLS_ACTIVE = false
 	constructor() {  }
 	public send = (() => {
-		//const msg: SIG_BUS_Message = { id: this.hub.reg._sid(), r: r, m: m, s: s, k: k,  p: p, ts: Date.now(), _ack: false };
-		const fn = <T = A>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r, adapter = "mesh") => {
-			let v: A = dark.mesh.DISPATCH({ id: dark.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
+		const fn = <T = A>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r, adapter = "mesh", op = 0, end = false, ) => {
+			const id = dark.reg._sid()
+			let v: A = dark.mesh.DISPATCH({ op, id, r, m, s, k, p: p, replyTo: id, adapter, end, ttl: 0  });
 			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 			else {
 				const tMs = 5000;
 				return MaybePromise( (() => {
 						return new P<T>((resolve, reject) => {
 							let timer: RT<typeof setTimeout> | UD;
-							if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+							dark.mesh.pending[id] = { resolve, reject, timer };
+							if (v !== undefined && !(v instanceof Promise)) { if (timer) clearTimeout(timer); resolve(v as T); return; }
 							if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
 						});
 					})(),
@@ -15186,20 +15533,22 @@ export class SITH {
 		};
 		fn.gt = (() => {
 			const fn =<T = U, P = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r, c:S='mesh')  => {
+				const id = dark.reg._sid()
 				const root = c === "globalThis" ? globalThis as any : dark.mesh.THE_MESH_CACHE;
 				const rL = (root[r] ??= Object.create(null));
 				const mL = (rL[m] ??= Object.create(null));
 				const channel = mL[s] ??= Object.create(null);
 				const handler = channel[k]?.handler;
 				if (!handler) return undefined;
-				const v: A = handler(p, { r, m, s, k, p: p });
+				const v: A = handler(p, {  id, r, m, s, k, p, replyTo: id  });
 				if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 				else {
 					const tMs = 5000;
 					return MaybePromise( (() => {
 							return new P<T>((resolve, reject) => {
 								let timer: RT<typeof setTimeout> | UD;
-								if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+								dark.mesh.pending[id] = { resolve, reject, timer };
+								if (v !== undefined && !(v instanceof Promise)) { if (timer) clearTimeout(timer); resolve(v as T); return; }
 								if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
 							});
 						})(),
@@ -15208,16 +15557,18 @@ export class SITH {
 			}
 			fn.hot = (() => {
 				const fn =<T = U, P = U>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r, c:S='mesh') => {
+					const id = dark.reg._sid()
 					const handler = mesh[k]._handlers;
 					if (!handler) return undefined;
-					const v: A = handler(p, { r, m, s, k, p: p });
+					const v: A = handler(p, { id, r, m, s, k, p });
 					if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 					else {
 						const tMs = 5000;
 						return MaybePromise( (() => {
 								return new P<T>((resolve, reject) => {
 									let timer: RT<typeof setTimeout> | UD;
-									if (v) { if (timer) clearTimeout(timer); resolve(v as T); return; }
+									dark.mesh.pending[id] = { resolve, reject, timer };
+									if (v !== undefined && !(v instanceof Promise)) { if (timer) clearTimeout(timer); resolve(v as T); return; }
 									if (tMs) { timer = setTimeout(() => { reject(new Error(`wait() timed out after ${tMs}ms`)); }, tMs); }
 								});
 							})(),
@@ -15314,7 +15665,7 @@ export class SITH {
 					}
 				}
 			};
-	};
+		};
 		return fn;
 	})();
 	public hot = (() => {
@@ -15335,7 +15686,7 @@ export class SITH {
 	public auto = (() => {
 		const fn = <T = A>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r, adapter?: S) => {
 			const selectedAdapter = adapter ?? dark.mesh.THE_MESH_CACHE[r]?.[m]?.[s]?.[k]?.adapter ?? "ws";
-			let v: A = dark.mesh.DISPATCH({ id: dark.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, selectedAdapter);
+			let v: A = dark.mesh.DISPATCH({ id: dark.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false });
 			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 			else {
 				const tMs = 5000;
@@ -15377,7 +15728,7 @@ export class SITH {
 		
 			for (const adapter of this.auto.AUTO_TRANSPORT_ORDER) {
 				try {
-					const result = await dark.mesh.DISPATCH({ id: dark.reg._sid(), r, m, s, k, p: { cmd: "ET_PHONE_HOME", key: k }, _ack: false }, adapter);
+					const result = await dark.mesh.DISPATCH({ id: dark.reg._sid(), r, m, s, k, p: { cmd: "ET_PHONE_HOME", key: k }, _ack: false });
 					if (result !== undefined && result !== null) {
 						entry.adapter = adapter;
 						return adapter;
@@ -20361,7 +20712,7 @@ export class SITH {
 			fn.switch = <T = A> (p: U, k: A, s: S = this.s, m: S = this.m, r: S = this.r,  adapter = "ws") => {
 				const msg: SIG_BUS_Message = { id: dark.reg._sid(), r: r, m: m, s: s, k: k, p: { p }, ts: Date.now(), _ack: false };
 	
-				let v: A = mesh.DISPATCH(msg, adapter);
+				let v: A = mesh.DISPATCH(msg);
 				if (v !== undefined && !(v instanceof Promise)) {
 					return MaybePromise<T>(v);
 				} else {
@@ -22064,13 +22415,13 @@ export class SITH {
 			private addressToPidMap = new Map<string, number>();
 			public nextPid = 1;
 			// SoA Memory Lanes (Indexed by PID)
-			public readonly typeMap: Uint8Array; // 0 = Single String, 1 = Multi-Channel
-			public readonly channelMap: Int32Array; // r channel
-			public readonly subChannelMap: Int32Array; // m channel
-			public readonly tripChannelMap: Int32Array; // s channel
-			public readonly keyMap: Int32Array; // k channel / single key string ID
+			public  typeMap: Uint8Array; // 0 = Single String, 1 = Multi-Channel
+			public  channelMap: Int32Array; // r channel
+			public  subChannelMap: Int32Array; // m channel
+			public  tripChannelMap: Int32Array; // s channel
+			public  keyMap: Int32Array; // k channel / single key string ID
 			// Zero-alloc flyweight for multi-channel decoding
-			public readonly multiFlyweight = { r: "", m: "", s: "", k: "" };
+			public multiFlyweight = { r: "", m: "", s: "", k: "" };
 			constructor(maxPids = 65536) {
 				this.typeMap = new Uint8Array(maxPids);
 				this.channelMap = new Int32Array(maxPids);
@@ -22318,7 +22669,7 @@ class SITH_2 {
 	public send = (() => {
 		//const msg: SIG_BUS_Message = { id: this.hub.reg._sid(), r: r, m: m, s: s, k: k,  p: p, ts: Date.now(), _ack: false };
 		const fn = <T = A>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r, adapter = "ws") => {
-			let v: A = dark.mesh.DISPATCH({ id: dark.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
+			let v: A = dark.mesh.DISPATCH({ id: dark.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false });
 			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 			else {
 				const tMs = 5000;
@@ -22470,7 +22821,7 @@ class SITH_2 {
 			try {
 				return dark.mesh.handlers[k]?.handler({ p: p });
 			} catch {
-				let v: A = dark.mesh.hot_dispatch({ id: dark.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, adapter);
+				let v: A = dark.mesh.hot_dispatch({ id: dark.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false });
 				if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 				else {
 					const tMs = 5000;
@@ -22499,7 +22850,7 @@ class SITH_2 {
 	public auto = (() => {
 		const fn = <T = A>(p: U, k: S, s: S = this.s, m: S = this.m, r: S = this.r, adapter?: S) => {
 			const selectedAdapter = adapter ?? dark.mesh.THE_MESH_CACHE[r]?.[m]?.[s]?.[k]?.adapter ?? "ws";
-			let v: A = dark.mesh.DISPATCH({ id: dark.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false }, selectedAdapter);
+			let v: A = dark.mesh.DISPATCH({ id: dark.reg._sid(), r: r, m: m, s: s, k: k, p: p, _ack: false });
 			if (v !== undefined && !(v instanceof Promise)) { return MaybePromise<T>(v); }
 			else {
 				const tMs = 5000;
@@ -22541,7 +22892,7 @@ class SITH_2 {
 		
 			for (const adapter of this.auto.AUTO_TRANSPORT_ORDER) {
 				try {
-					const result = await dark.mesh.DISPATCH({ id: dark.reg._sid(), r, m, s, k, p: { cmd: "ET_PHONE_HOME", key: k }, _ack: false }, adapter);
+					const result = await dark.mesh.DISPATCH({ id: dark.reg._sid(), r, m, s, k, p: { cmd: "ET_PHONE_HOME", key: k }, _ack: false });
 					if (result !== undefined && result !== null) {
 						entry.adapter = adapter;
 						return adapter;
@@ -23698,50 +24049,85 @@ class SITH_2 {
 // #endregion
 //                                                                                                                     WAL KVDB 
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-class WAL_KVDB_SERVER {
-	constructor(db: WAL_KVDB, bus: SITH, s: S, m: S, r: S) {
-	  bus.d_handler(async (raw: Uint8Array, stream: any) => {
-		const send = (message: A, payload: A, errorMessage: S | null = null) => {
-		  stream.send(ENVELOPE_CODEC.encode_msg({
-			op: message.op, id: message.id, r: message.r, m: message.m, s: message.s, k: message.k,
-			p: PAYLOAD_CODEC.encode_msg(payload), replyTo: message.id,
-			error: errorMessage ? { message: errorMessage, code: 1 } : null
-		  }))
-		};
-	
-		const sendError = (message: A, error: S) => send(message, { value: null, ok: false }, error);
-	
-		const message = ENVELOPE_CODEC.decode_msg(raw) as A;
-		if (!message) return;
-	
-		const payload = PAYLOAD_CODEC.decode_msg(message.p) as A;
-		if (!payload) return sendError(message, "Invalid KV payload");
-	
-		try {
-		  switch (message.op) {
-			case KV_RPC_OP.GET: {
-			  const value = await db.get<Uint8Array>(message.k);
-			  return send(message, { value: value ?? null, ok: true });
-			}
-	
-			case KV_RPC_OP.SET: {
-			  await db.set(message.k, payload.value as Uint8Array);
-			  return send(message, { value: null, ok: true });
-			}
-	
-			case KV_RPC_OP.DELETE: {
-			  const deleted = await db.delete(message.k);
-			  return send(message, { value: null, ok: deleted });
-			}
-	
-			default: return sendError(message, "Unsupported KV operation");
-		  }
-		} catch (error) {
-		  sendError(message, error instanceof Error ? error.message : "KV operation failed");
-		}
-	  }, 'WAL_KVDB', s, m, r);
-	}
-   
+export class WAL_KVDB_SERVER {
+    constructor(db: WAL_KVDB, bus: SITH, s: S, m: S, r: S) {
+        bus.d_handler(async (raw: Uint8Array, stream: any) => {
+            const send = (
+                message: A,
+                payload: A,
+                errorMessage: S | null = null
+            ) => {
+                stream.send(ENVELOPE_CODEC.encode_msg({
+                    op: payload.op,
+                    id: message.id,
+                    r: message.r,
+                    m: message.m,
+                    s: message.s,
+                    k: payload.k ?? message.k,
+                    p: PAYLOAD_CODEC.encode_msg(payload),
+                    replyTo: message.id,
+                    error: errorMessage
+                        ? { message: errorMessage, code: 1 }
+                        : null,
+                }));
+            };
+
+            const sendError = (message: A, error: S) =>
+                send(message, { op: message.op, k: message.k, v: null }, error);
+
+            const message = ENVELOPE_CODEC.decode_msg(raw) as A;
+            if (!message) return;
+
+            const payload = PAYLOAD_CODEC.decode_msg(message.p) as A;
+            if (!payload) return sendError(message, 'Invalid KV payload');
+
+            try {
+                switch (message.op) {
+                    case XE.CLIENT_HOT: {
+                        const value = await db.get(message.k);
+                        return send(message, {op: XE.DB_HOT, k: message.k, v: value ?? null, });
+                    }
+                    case XE.CLIENT_HAS: {
+                        const exists = db.has(message.k);
+                        return send(message, {op: XE.DB_HOT, k: message.k, v: exists, });
+                    }
+                    case XE.CLIENT_SET: {
+                        await db.set(message.k, payload.v);
+                        return send(message, {op: XE.CLIENT_SET, k: message.k, v: payload.v, });
+                    }
+                    case XE.CLIENT_SET_MANY: {
+                        await db.set.many(payload.entries);
+                        return send(message, {op: XE.CLIENT_SET_MANY, entries: payload.entries, });
+                    }
+                    case XE.CLIENT_UPDATE: {
+                        const next = await db.update(message.k, payload.updater );
+                        return send(message, {op: XE.CLIENT_UPDATE, k: message.k, v: next, });
+                    }
+                    case XE.CLIENT_DELETE: {
+                        const deleted = await db.delete(message.k);
+                        return send(message, {op: XE.CLIENT_DELETE, k: message.k, deleted, });
+                    }
+                    case XE.CLIENT_DELETE_MANY: {
+                        await db.delete.many(payload.keys);
+                        return send(message, {op: XE.CLIENT_DELETE_MANY, keys: payload.keys, });
+                    }
+                    case XE.CLIENT_RESET: {
+                        db.hot_cache[message.k] = payload.v;
+                        return send(message, {op: XE.CLIENT_RESET, k: message.k, v: payload.v, });
+                    }
+                    default:
+                        return sendError(message, 'Unsupported KV operation');
+                }
+            } catch (error) {
+                sendError(
+                    message,
+                    error instanceof Error
+                        ? error.message
+                        : 'KV operation failed'
+                );
+            }
+        }, 'WAL_KVDB', s, m, r);
+    }
 }
 // #endregion
 //                                                                                                                RAPTORS RAVEN 
@@ -25450,7 +25836,7 @@ export const root = new DEATH_STAR();
 export const mesh = root.mesh
 // export { dark }
 
-
+globalThis.XE = XE
 class _serialExecutor {
 	chain = Promise.resolve();
 	enqueue(fn) {
@@ -25479,6 +25865,7 @@ function subDark<T = A>(fn: (value: T) => void, k: S, s?: S, m?: S, r?: S): () =
 	if (!k || !fn) return () => {};
 	return MaybePromise(root.state.subscribe<T>(k, fn, { s, m, r }));
 }
+// #endregion
 // #endregion
 //                                                                                                                    USE STATE
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════

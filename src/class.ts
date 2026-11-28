@@ -13,102 +13,99 @@ const COMPUTED = 256;
 // #endregion
 //                                                                                                               [ENGINE STATE]
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-let activeTarget: SubscriberNode | undefined;
+let activeTarget: SubscriberNode | UD;
 let batchDepth = 0;
 let cycle = 0;
 let isFlushing = false;
-let effectHead: Effect | undefined;
-let effectTail: Effect | undefined;
+let effectHead: Effect | UD;
+let effectTail: Effect | UD;
 // #endregion
 //                                                                                                                [GRAPH TYPES]
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 interface SourceNode {
-  flags: number;
-  version: number;
+  flags: N;
+  version: N;
 
-  targets: Link | undefined;
-  targetsTail: Link | undefined;
+  targets: Link | UD;
+  targetsTail: Link | UD;
 }
 interface SubscriberNode {
-  flags: number;
+  flags: N;
 
-  sources: Link | undefined;
-  sourcesTail: Link | undefined;
+  sources: Link | UD;
+  sourcesTail: Link | UD;
 }
 interface Link {
   source: SourceNode;
   target: SubscriberNode;
 
-  /**
-   * The source version observed by target.
-   */
-  version: number;
+  version: N;
 
-  prevSource: Link | undefined;
-  nextSource: Link | undefined;
+  prevSource: Link | UD;
+  nextSource: Link | UD;
 
-  prevTarget: Link | undefined;
-  nextTarget: Link | undefined;
+  prevTarget: Link | UD;
+  nextTarget: Link | UD;
 }
-function sameValue(a: unknown, b: unknown): boolean {
+function sameValue(a: U, b: U): B {
   return a === b || (a !== a && b !== b) || Object.is(a, b);
 }
-export interface Rx<T> {
+export interface RxInterface<T> {
 	(): T;
-	(value: T): void;
-	readonly id: string;
-	readonly node: Node | null;
-	readonly el: Element | null;
+	(value: T): V;
+	readonly id: S;
+	readonly node: Node | NU;
+	readonly el: Element | NU;
 	attach(parent: Node): this;
-	dispose(): void;
+	dispose(): V;
 }
-interface Binding<T = unknown> {
+interface Binding<T = U> {
   signal: Signal<T>;
-  node: Node | Element | null;
-  el: Node | Element | null;
+  node: Node | Element | NU;
+  el: Node | Element | NU;
   owned: Node[];
-  write(v: T): void;
-  disposeEffect?: () => void;
+  write(v: T): V;
+  disposeEffect?: () => V;
 }
 // #endregion
 //                                                                                                 [REACTIVE DOM BINDING LAYER]
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 export interface ComponentRoot {
-  id: string;
-  hooks: Record<string, unknown>;
-  unmount: Set<() => void>;
-  contextProviders: Record<string, unknown>;
+  id: S;
+  hooks: R<S, U>;
+  unmount: ST<() => V>;
+  contextProviders: R<S, U>;
 }
 let _signals_root: ComponentRoot = {
 	id: "THE_WIZARD_SIGNALS_ROOT",
-	hooks: Object.create(null) as Record<string, A>,
+	hooks: Object.create(null) as R<S, A>,
 	unmount: new Set(),
-	contextProviders: Object.create(null) as Record<string, A>,
+	contextProviders: Object.create(null) as R<S, A>,
 }; 
 let _rootSeq = 0;
-const rx: Record<string, Binding> = Object.create(null);
-const str = (v: unknown) => (v == null ? '' : String(v));
+const rx: R<S, Binding> = Object.create(null);
+const str = (v: U) => (v == null ? '' : String(v));
 // #endregion
 //                                                                                                                         [RX]
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-export class SignalRx<X = any> {
-  private rxid(): string {
+export class Rx<X = A> {
+  private rxid(): S {
     return `${_signals_root.id}:rx${++_rootSeq}`;
   }
   constructor() { }
-  public get<T = X | any>(id: string): T { return rx[id]!.signal.get() as T; }
-  public set<T = X | any>(id: string, v: T): void {
+  public get<T = X | A>(id: S): T { return rx[id]!.signal.get() as T; }
+  public set<T = X | A>(id: S, v: T): V {
     const b = rx[id];
     if (!b) return;
     b.signal.set(v);
   }
-  private makeRx<T = X | any>(id: string, b: Binding<T>): Rx<T> {
+  private makeRx<T = X | A>(id: S, b: Binding<T>): RxInterface<T> {
     const fn = (...args: [] | [T]) => {
       if (args.length === 0) return this.get<T>(id);
       this.set(id, args[0]);
     };
 
-    const r = fn as unknown as Rx<T>;
+    const r = fn as unknown as RxInterface<T>;
     Object.defineProperties(r, { id: { value: id }, node: { value: b.node }, el: { value: b.el } });
 
     rx[id] = b;
@@ -127,9 +124,9 @@ export class SignalRx<X = any> {
 
     return r;
   }
-  public ele<T = X | any>(): Rx<T | undefined>;
-  public ele<T = X | any>(initialValue: T, injectDom?: boolean): Rx<T>;
-  public ele<T = X | any>(initialValue?: T, injectDom = true): Rx<T | undefined> {
+  public ele<T = X | A>(): RxInterface<T | UD>;
+  public ele<T = X | A>(initialValue: T, injectDom?: B): RxInterface<T>;
+  public ele<T = X | A>(initialValue?: T, injectDom = true): RxInterface<T | UD> {
     const id = this.rxid();
     const el = injectDom ? document.createElement('span') : null;
     el?.setAttribute('data-sid', id);
@@ -140,9 +137,9 @@ export class SignalRx<X = any> {
       write(v) { if (el) el.textContent = str(v); },
     });
   }
-  public txt<T = X | any>(): Rx<T | undefined>;
-  public txt<T = X | any>(initialValue: T, node?: Node, injectDom?: boolean): Rx<T>;
-  public txt<T = X | any>(initialValue?: T, node?: Node, injectDom = true): Rx<T | undefined> {
+  public txt<T = X | A>(): RxInterface<T | UD>;
+  public txt<T = X | A>(initialValue: T, node?: Node, injectDom?: B): RxInterface<T>;
+  public txt<T = X | A>(initialValue?: T, node?: Node, injectDom = true): RxInterface<T | UD> {
     const id = this.rxid();
     let text = (node as Text | null) ?? null;
     const owned: Node[] = [];
@@ -155,9 +152,9 @@ export class SignalRx<X = any> {
       write(v) { if (text) text.data = str(v); },
     });
   }
-  public atr<T = X | any>(): Rx<T | undefined>;
-  public atr<T = X | any>(initialValue: T, node?: Element, attributeName?: string, injectDom?: boolean): Rx<T>;
-  public atr<T = X | any>(initialValue?: T, node?: Element, attributeName = 'value', injectDom = true): Rx<T | undefined> {
+  public atr<T = X | A>(): RxInterface<T | UD>;
+  public atr<T = X | A>(initialValue: T, node?: Element, attributeName?: S, injectDom?: B): RxInterface<T>;
+  public atr<T = X | A>(initialValue?: T, node?: Element, attributeName = 'value', injectDom = true): RxInterface<T | UD> {
     const id = this.rxid();
     if (node && injectDom && !node.hasAttribute('data-sid')) node.setAttribute('data-sid', id);
     const live = node instanceof HTMLInputElement && attributeName === 'value' ? node : null;
@@ -199,15 +196,15 @@ export class Signal<T> implements SourceNode {
   flags = MUTABLE;
   value: T;
   version = 0;
-  targets: Link | undefined;
-  targetsTail: Link | undefined;
+  targets: Link | UD;
+  targetsTail: Link | UD;
   constructor(value: T) { this.value = value;  }
   get(): T {
     if (activeTarget !== undefined) { track(this, activeTarget);  }
     return this.value;
   }
   peek(): T {  return this.value; }
-  set(value: T): void {
+  set(value: T): V {
     if (Object.is(this.value, value)) { return; }
     this.value = value;
     this.version = ++cycle;
@@ -230,7 +227,7 @@ export class Signal<T> implements SourceNode {
     propagate(target);
     if (batchDepth === 0 && !isFlushing && effectHead !== undefined) { flushEffects(); }
   }
-  dispose(): void {
+  dispose(): V {
     clearSources(this as unknown as SubscriberNode);
     clearTargets(this);
   }
@@ -243,11 +240,11 @@ export class Computed<T> implements SourceNode, SubscriberNode {
   value: T;
   version = 0;
   compute: (previous: T) => T;
-  sources: Link | undefined;
-  sourcesTail: Link | undefined;
-  targets: Link | undefined;
-  targetsTail: Link | undefined;
-  constructor(compute: (previous: T | undefined) => T) {
+  sources: Link | UD;
+  sourcesTail: Link | UD;
+  targets: Link | UD;
+  targetsTail: Link | UD;
+  constructor(compute: (previous: T | UD) => T) {
     this.value = undefined as T;
     this.compute = compute as (previous: T) => T;
   }
@@ -273,7 +270,7 @@ export class Computed<T> implements SourceNode, SubscriberNode {
     return this.value;
   }
   
-  private refresh(): void {
+  private refresh(): V {
     const flags = this.flags;
   
     if ((flags & DIRTY) !== NONE) {
@@ -309,7 +306,7 @@ export class Computed<T> implements SourceNode, SubscriberNode {
     }
     return this.value;
   }
-  dispose(): void {
+  dispose(): V {
     if ((this.flags & DISPOSED) !== NONE) { return; }
     this.flags |= DISPOSED;
     clearSources(this);
@@ -321,18 +318,18 @@ export class Computed<T> implements SourceNode, SubscriberNode {
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 export class Effect implements SubscriberNode {
   flags = WATCHING;
-  run: () => unknown | (() => unknown);
-  cleanup: (() => unknown) | undefined;
-  sources: Link | undefined;
-  sourcesTail: Link | undefined;
-  nextQueuedEffect: Effect | undefined;
-  constructor(run: () => unknown | (() => unknown)) { this.run = run;  }
-  runEffect(): void {
+  run: () => U | (() => U);
+  cleanup: (() => U) | UD;
+  sources: Link | UD;
+  sourcesTail: Link | UD;
+  nextQueuedEffect: Effect | UD;
+  constructor(run: () => U | (() => U)) { this.run = run;  }
+  runEffect(): V {
     if ((this.flags & DIRTY) !== NONE) { this.execute();  return; }
     if ((this.flags & PENDING) !== NONE && (this.flags & DIRECT) === NONE && checkDirty(this)) { this.execute(); return; }
     this.flags &= ~PENDING;
   }
-  execute(): void {
+  execute(): V {
     if (this.cleanup !== undefined) {
       const cleanup = this.cleanup;
       this.cleanup = undefined;
@@ -348,13 +345,13 @@ export class Effect implements SubscriberNode {
     this.sourcesTail = undefined;
     try {
       const result = this.run();
-      this.cleanup = typeof result === 'function' ? (result as () => unknown) : undefined;
+      this.cleanup = typeof result === 'function' ? (result as () => U) : undefined;
     } finally {
       activeTarget = previousTarget;
       if (this.sourcesTail !== previousTail) { removeStaleSources(this); }
     }
   }
-  dispose(): void {
+  dispose(): V {
     if ((this.flags & DISPOSED) !== NONE) { return; }
     this.flags |= DISPOSED;
     if (this.cleanup !== undefined) {
@@ -372,7 +369,7 @@ export class Effect implements SubscriberNode {
 //                                                                                                                   [TRACKING]
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-function track(source: SourceNode, target: SubscriberNode,): void {
+function track(source: SourceNode, target: SubscriberNode,): V {
   const tail = target.sourcesTail;
  if (tail !== undefined && tail.source === source) { if (tail.version !== source.version) { tail.version = source.version; } return; }
   let link = tail !== undefined ? tail.nextSource : target.sources;
@@ -423,7 +420,7 @@ function track(source: SourceNode, target: SubscriberNode,): void {
   if (previousTargetLink !== undefined) {previousTargetLink.nextTarget = link; } 
   else { source.targets = link; }
 }
-function removeStaleSources(target: SubscriberNode): void {
+function removeStaleSources(target: SubscriberNode): V {
   const tail = target.sourcesTail;
   let link = tail !== undefined ? tail.nextSource : target.sources;
   while (link !== undefined) {
@@ -432,7 +429,7 @@ function removeStaleSources(target: SubscriberNode): void {
     link = next;
   }
 }
-function clearSources(target: SubscriberNode): void {
+function clearSources(target: SubscriberNode): V {
   let link = target.sources;
   while (link !== undefined) {
     const next = link.nextSource;
@@ -442,7 +439,7 @@ function clearSources(target: SubscriberNode): void {
   target.sources = undefined;
   target.sourcesTail = undefined;
 }
-function clearTargets(target: SourceNode): void {
+function clearTargets(target: SourceNode): V {
   let link = target.targets;
   while (link !== undefined) {
     const next = link.nextTarget;
@@ -452,7 +449,7 @@ function clearTargets(target: SourceNode): void {
   target.targets = undefined;
   target.targetsTail = undefined;
 }
-function unlink(link: Link): void {
+function unlink(link: Link): V {
   const source = link.source;
   const target = link.target;
   const previousSource = link.prevSource;
@@ -474,7 +471,7 @@ function unlink(link: Link): void {
 const propagateStack: Link[] = [];
 let propagateStackLength = 0;
 
-function propagate(startLink: Link | undefined): void {
+function propagate(startLink: Link | UD): V {
   let link = startLink;
   propagateStackLength = 0;
   while (true) {
@@ -502,7 +499,7 @@ function propagate(startLink: Link | undefined): void {
     link = propagateStack[--propagateStackLength];
   }
 }
-function shallowPropagate(startLink: Link | undefined): void {
+function shallowPropagate(startLink: Link | UD): V {
   let link = startLink;
   while (link !== undefined) {
     const target = link.target;
@@ -517,7 +514,7 @@ function shallowPropagate(startLink: Link | undefined): void {
 const checkDirtyStack: Link[] = [];
 let checkDirtyStackLength = 0;
 
-function checkDirty(target: SubscriberNode): boolean {
+function checkDirty(target: SubscriberNode): B {
   let link = target.sources;
   checkDirtyStackLength = 0;
   while (true) {
@@ -541,7 +538,7 @@ function checkDirty(target: SubscriberNode): boolean {
 // #endregion
 //                                                                                                               [EFFECT QUEUE] 
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-function enqueueEffect(effect: Effect): void {
+function enqueueEffect(effect: Effect): V {
   if ((effect.flags & QUEUED) !== NONE || (effect.flags & DISPOSED) !== NONE  ) { return; }
   effect.flags |= QUEUED;
   if (effectTail === undefined) {
@@ -552,7 +549,7 @@ function enqueueEffect(effect: Effect): void {
   effectTail.nextQueuedEffect = effect;
   effectTail = effect;
 }
-function flushEffects(): void {
+function flushEffects(): V {
     if (effectHead === undefined) return; 
     if (isFlushing) return;
     isFlushing = true;
@@ -575,14 +572,13 @@ function flushEffects(): void {
     } finally {
       isFlushing = false;
     }
-   // if (firstError !== undefined) { throw firstError; }
 }
 // #endregion
 //                                                                                                                 [PUBLIC API]
 // #region ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 export function signal<T>(initialValue: T): Signal<T> {  return new Signal(initialValue);}
-export function computed<T>(compute: (previous: T | undefined) => T,): Computed<T> {  return new Computed(compute);}
-export function effect( fn: () => unknown | (() => unknown),): () => void {
+export function computed<T>(compute: (previous: T | UD) => T,): Computed<T> {  return new Computed(compute);}
+export function effect( fn: () => unknown | (() => U),): () => V {
   const node = new Effect(fn);
   node.flags |= DIRTY;
   node.runEffect();
@@ -593,8 +589,8 @@ export function batch<T>(fn: () => T): T {
   try { return fn(); } 
   finally { if (--batchDepth === 0) { flushEffects(); }  }
 }
-export function startBatch(): void {  batchDepth++;}
-export function endBatch(): void { if (--batchDepth === 0) { flushEffects(); }}
+export function startBatch(): V {  batchDepth++;}
+export function endBatch(): V { if (--batchDepth === 0) { flushEffects(); }}
 export function untracked<T>(fn: () => T): T {
   const previousTarget = activeTarget;
   activeTarget = undefined;
@@ -604,7 +600,7 @@ export function untracked<T>(fn: () => T): T {
 // #endregion 
 
 
-function track1(  source: SourceNode,  target: SubscriberNode,): void {
+function track1(  source: SourceNode,  target: SubscriberNode,): V {
   const tail = target.sourcesTail;
 
   // Fast path: same source as the immediately preceding read.
